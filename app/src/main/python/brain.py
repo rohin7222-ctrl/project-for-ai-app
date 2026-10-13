@@ -36,21 +36,29 @@ class ApiError(Exception):
         self.code, self.text = code, text
 
 
-def _http(url, body=None, headers=None, timeout=60):
+def _http(url, body=None, headers=None, timeout=45):
     data = json.dumps(body).encode("utf-8") if body is not None else None
     h = {"Content-Type": "application/json"}
     h.update(headers or {})
     req = urllib.request.Request(url, data=data, headers=h,
                                  method="POST" if body is not None else "GET")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        raise ApiError(e.code, e.read().decode("utf-8", "ignore")[:300])
-    except urllib.error.URLError as e:
-        raise ApiError(0, str(e.reason))
-    except (TimeoutError, OSError) as e:
-        raise ApiError(0, str(e))
+    last_err = None
+    # Retry loop to handle slow internet, transient DNS delays, and brief socket drops
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            raise ApiError(e.code, e.read().decode("utf-8", "ignore")[:300])
+        except urllib.error.URLError as e:
+            last_err = ApiError(0, str(e.reason))
+        except (TimeoutError, OSError) as e:
+            last_err = ApiError(0, str(e))
+        if attempt == 0:
+            time.sleep(1.2)
+    if last_err:
+        raise last_err
+    raise ApiError(0, "Network timeout")
 
 
 def _local_base(url):
@@ -139,17 +147,17 @@ def _complete(cfg, system, hist):
 MSG = {
     "ta-IN": {"busy": "AI சர்வர் இப்போது பிஸியா இருக்கு. கொஞ்சம் கழித்து மீண்டும் சொல்லுங்க.",
               "key": "API key தவறு அல்லது அனுமதி இல்லை. Settings-ல சரிபார்க்கவும்.",
-              "net": "இன்டர்நெட் இல்லை. இணைப்பை சரிபார்க்கவும்.",
+              "net": "இன்டர்நெட் இணைப்பு மிகவும் மெதுவாக உள்ளது அல்லது தடைபட்டுள்ளது. மீண்டும் முயற்சிக்கவும்.",
               "err": "ஏதோ பிரச்சனை. மீண்டும் முயற்சிக்கவும்.",
               "unclear": "புரியவில்லை. கொஞ்சம் எளிமையா சொல்லுங்க, உதாரணம்: WhatsApp open பண்ணு."},
     "en-US": {"busy": "The AI server is busy right now. Please try again in a moment.",
               "key": "The API key is wrong or not allowed. Please check it in settings.",
-              "net": "No internet connection. Please check your network.",
+              "net": "Internet is slow or disconnected. Please check connection and try again.",
               "err": "Something went wrong. Please try again.",
               "unclear": "I did not understand. Please say it simply, like: open WhatsApp."},
     "ja-JP": {"busy": "AIサーバーが混み合っています。少し待ってからもう一度お試しください。",
               "key": "APIキーが正しくないか、許可されていません。設定を確認してください。",
-              "net": "インターネットに接続されていません。",
+              "net": "インターネット接続が遅いか不安定です。もう一度お試しください。",
               "err": "問題が発生しました。もう一度お試しください。",
               "unclear": "よく分かりませんでした。例えば「WhatsAppを開いて」のように言ってください。"},
 }
@@ -185,7 +193,7 @@ def _fallback_models(cfg):
 
 
 def _complete_resilient(cfg, system, hist):
-    """503/429/5xx -> retry same model 3x (1s, 2s), then try 3 other models."""
+    """503/429/5xx and network code 0 -> retry same model 3x (1s, 2s), then try 3 other models."""
     last = None
     for model in [cfg["model"]] + _fallback_models_lazy(cfg):
         c = dict(cfg, model=model)
@@ -194,7 +202,8 @@ def _complete_resilient(cfg, system, hist):
                 return _complete(c, system, hist)
             except ApiError as e:
                 last = e
-                if e.code not in (429, 500, 502, 503, 504):
+                # Also retry on slow network / timeout (code 0) up to 3 times before giving up
+                if e.code not in (0, 429, 500, 502, 503, 504):
                     raise
                 time.sleep(1 + attempt)
     raise last
@@ -430,6 +439,30 @@ def _parse_one(p, last_app):
         is_off = any(w in t for w in ("off", "aff", "நிறுத்து", "அணை", "ஆஃப்", "ஆப்", "மூடு", "消"))
         return [{"type": "flashlight", "on": not is_off, "desc": "Torch Off" if is_off else "Torch On"}], "torch_off" if is_off else "torch_on"
 
+    # --- Wi-Fi
+    wifi_words = ("wifi", "wi-fi", "வைஃபை", "வைபை", "ワイファイ")
+    if any(w in t for w in wifi_words):
+        if "settings" in t or "செட்டிங்ஸ்" in t or "அமைப்புகள்" in t:
+            return [{"type": "settings", "page": "wifi", "desc": "Wi-Fi Settings"}], "ok"
+        is_off = any(w in t for w in ("off", "aff", "நிறுத்து", "அணை", "ஆஃப்", "ஆப்", "மூடு", "disable"))
+        return [{"type": "wifi", "on": not is_off, "desc": "Wi-Fi Off" if is_off else "Wi-Fi On"}], "wifi_off" if is_off else "wifi_on"
+
+    # --- Bluetooth
+    bt_words = ("bluetooth", "blue tooth", "ப்ளூடூத்", "ブルートゥース")
+    if any(w in t for w in bt_words):
+        if "settings" in t or "செட்டிங்ஸ்" in t or "அமைப்புகள்" in t:
+            return [{"type": "settings", "page": "bluetooth", "desc": "Bluetooth Settings"}], "ok"
+        is_off = any(w in t for w in ("off", "aff", "நிறுத்து", "அணை", "ஆஃப்", "ஆப்", "மூடு", "disable"))
+        return [{"type": "bluetooth", "on": not is_off, "desc": "Bluetooth Off" if is_off else "Bluetooth On"}], "bt_off" if is_off else "bt_on"
+
+    # --- Mobile Data / Hotspot / Airplane Mode
+    if any(w in t for w in ("mobile data", "data on", "data off", "மொபைல் டேட்டா")):
+        return [{"type": "settings", "page": "data", "desc": "Mobile Data"}], "ok"
+    if any(w in t for w in ("hotspot", "ஹாட்ஸ்பாட்")):
+        return [{"type": "settings", "page": "hotspot", "desc": "Hotspot"}], "ok"
+    if any(w in t for w in ("airplane mode", "flight mode", "ஏரோப்ளேன் மோட்")):
+        return [{"type": "settings", "page": "airplane", "desc": "Airplane Mode"}], "ok"
+
     # --- volume
     if any(w in t for w in ("volume", "வால்யூம்", "சத்தம்", "ஒலி", "mute", "silent", "மியூட்", "சைலன்ட்")):
         if any(w in t for w in ("mute", "silent", "மியூட்", "சைலன்ட்")):
@@ -566,14 +599,20 @@ SAY = {  # spoken confirmation per language
     "ta-IN": {"app": "%s திறக்கிறேன்.", "search": "%s தேடுகிறேன்.", "call": "%s க்கு கால் செய்யவா? உறுதிப்படுத்துங்கள்.",
               "nth": "%d-வது ஐ திறக்கிறேன்.", "ok": "சரி.", "yt": "YouTube-ல %s தேடுகிறேன்.",
               "torch_on": "டார்ச் ஆன் செய்துள்ளேன்.", "torch_off": "டார்ச் ஆஃப் செய்துள்ளேன்.",
+              "wifi_on": "வைஃபை ஆன் செய்கிறேன்.", "wifi_off": "வைஃபை ஆஃப் செய்கிறேன்.",
+              "bt_on": "ப்ளூடூத் ஆன் செய்கிறேன்.", "bt_off": "ப்ளூடூத் ஆஃப் செய்கிறேன்.",
               "screenshot": "ஸ்கிரீன்ஷாட் எடுக்கப்பட்டது.", "media": "இசை மாற்றப்பட்டது.", "clipboard": "நகலெடுக்கப்பட்டது."},
     "en-US": {"app": "Opening %s.", "search": "Searching %s.", "call": "Calling %s. Please confirm.",
               "nth": "Opening number %d.", "ok": "Done.", "yt": "Searching %s on YouTube.",
               "torch_on": "Flashlight turned on.", "torch_off": "Flashlight turned off.",
+              "wifi_on": "Turning on Wi-Fi.", "wifi_off": "Turning off Wi-Fi.",
+              "bt_on": "Turning on Bluetooth.", "bt_off": "Turning off Bluetooth.",
               "screenshot": "Screenshot captured.", "media": "Media updated.", "clipboard": "Copied to clipboard."},
     "ja-JP": {"app": "%sを開きます。", "search": "%sを検索します。", "call": "%sに電話します。確認してください。",
               "nth": "%d番目を開きます。", "ok": "はい。", "yt": "YouTubeで%sを検索します。",
               "torch_on": "ライトをつけました。", "torch_off": "ライトを消しました。",
+              "wifi_on": "Wi-Fiをオンにします。", "wifi_off": "Wi-Fiをオフにします。",
+              "bt_on": "Bluetoothをオンにします。", "bt_off": "Bluetoothをオフにします。",
               "screenshot": "スクリーンショットを撮影しました。", "media": "メディアを更新しました。", "clipboard": "コピーしました。"},
 }
 
@@ -602,6 +641,10 @@ def local_command(text, lang="en-US"):
         elif kind.startswith("search:"): said.append(s["search"] % acts[-1]["query"])
         elif kind == "torch_on": said.append(s["torch_on"])
         elif kind == "torch_off": said.append(s["torch_off"])
+        elif kind == "wifi_on": said.append(s["wifi_on"])
+        elif kind == "wifi_off": said.append(s["wifi_off"])
+        elif kind == "bt_on": said.append(s["bt_on"])
+        elif kind == "bt_off": said.append(s["bt_off"])
         elif kind == "screenshot": said.append(s["screenshot"])
         elif kind == "media": said.append(s["media"])
         elif kind == "clipboard": said.append(s["clipboard"])

@@ -2,6 +2,9 @@ package com.nextgen.agent;
 
 import android.Manifest;
 import android.accessibilityservice.AccessibilityService;
+import android.bluetooth.BluetoothAdapter;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -10,11 +13,11 @@ import android.database.Cursor;
 import android.hardware.camera2.CameraManager;
 import android.media.AudioManager;
 import android.net.Uri;
+import android.net.wifi.WifiManager;
+import android.os.Build;
+import android.os.SystemClock;
 import android.provider.AlarmClock;
 import android.provider.ContactsContract;
-import android.content.ClipData;
-import android.content.ClipboardManager;
-import android.os.SystemClock;
 import android.provider.Settings;
 import android.telecom.TelecomManager;
 import android.telephony.SmsManager;
@@ -67,6 +70,8 @@ public class DeviceController {
                     return start(i);
                 }
                 case "flashlight": return flashlight(a.optBoolean("on", true));
+                case "wifi": return wifi(a.optBoolean("on", true));
+                case "bluetooth": return bluetooth(a.optBoolean("on", true));
                 case "volume": return volume(a.optString("dir"));
                 case "media": return media(a.optString("cmd"));
                 case "clipboard": return clipboard(a.optString("text"));
@@ -99,34 +104,144 @@ public class DeviceController {
 
     private String view(String uri) { return start(new Intent(Intent.ACTION_VIEW, Uri.parse(uri))); }
 
-    /** Phone number as-is, or look a contact name up in the address book. */
+    /** Phone number as-is, or look a contact name up in the address book with smart phonetic/fuzzy matching. */
     private String resolveNumber(String target) {
         if (target == null || target.trim().isEmpty()) return null;
         String digits = target.replaceAll("[\\s\\-()]", "");
         if (digits.matches("\\+?\\d{3,15}")) return digits;
         if (!has(Manifest.permission.READ_CONTACTS)) return null;
-        // Speech recognition often adds extra words ("abhi night"): if nothing matches, drop trailing words and retry.
+
         String name = target.trim();
-        while (!name.isEmpty()) {
-            String num = lookup(name);
+        // 1. Spelled-out letter handling: e.g. "a b i k n i g h t" -> "abiknight"
+        String spelledOut = name.replaceAll("(?<=\\b[a-zA-Z])\\s+(?=[a-zA-Z]\\b)", "").trim();
+
+        // 2. Try exact/smart lookup with target
+        String num = smartLookup(name);
+        if (num != null) return num;
+
+        // 3. Try smart lookup with spelled-out concatenated version
+        if (!spelledOut.equalsIgnoreCase(name) && spelledOut.length() >= 2) {
+            num = smartLookup(spelledOut);
             if (num != null) return num;
+        }
+
+        // 4. Speech recognition often adds extra words ("abhi night"): if nothing matches, drop trailing words and retry
+        while (name.contains(" ")) {
             int sp = name.lastIndexOf(' ');
-            if (sp < 0) break;
             name = name.substring(0, sp).trim();
+            if (name.length() >= 3) {
+                num = smartLookup(name);
+                if (num != null) return num;
+            }
         }
         return null;
     }
 
-    private String lookup(String name) {
+    private static String phonetic(String s) {
+        if (s == null) return "";
+        String p = s.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+        p = p.replaceAll("kn", "n"); // knight -> night
+        p = p.replaceAll("gn", "n"); // knignt -> nignt
+        p = p.replaceAll("ph", "f");
+        p = p.replaceAll("bh", "b");
+        p = p.replaceAll("dh", "d");
+        p = p.replaceAll("th", "t");
+        p = p.replaceAll("gh", "g");
+        p = p.replaceAll("kh", "k");
+        p = p.replaceAll("sh", "s");
+        p = p.replaceAll("zh", "l");
+        p = p.replaceAll("ee", "i");
+        p = p.replaceAll("oo", "u");
+        p = p.replaceAll("ck", "k");
+        return p;
+    }
+
+    private static int levenshtein(String a, String b) {
+        if (a == null || b == null) return 999;
+        int[][] dp = new int[a.length() + 1][b.length() + 1];
+        for (int i = 0; i <= a.length(); i++) dp[i][0] = i;
+        for (int j = 0; j <= b.length(); j++) dp[0][j] = j;
+        for (int i = 1; i <= a.length(); i++) {
+            for (int j = 1; j <= b.length(); j++) {
+                int cost = (a.charAt(i - 1) == b.charAt(j - 1)) ? 0 : 1;
+                dp[i][j] = Math.min(Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1), dp[i - 1][j - 1] + cost);
+            }
+        }
+        return dp[a.length()][b.length()];
+    }
+
+    private String smartLookup(String query) {
+        if (query == null || query.trim().length() < 2) return null;
+        String qNorm = query.toLowerCase(Locale.ROOT).trim();
+        String qClean = qNorm.replaceAll("[^a-z0-9]", "");
+        String qPhonetic = phonetic(qNorm);
+
+        String bestNumber = null;
+        int bestScore = -1;
+
         try (Cursor c = ctx.getContentResolver().query(
                 ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                new String[]{ContactsContract.CommonDataKinds.Phone.NUMBER},
-                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ?",
-                new String[]{"%" + name + "%"},
-                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC LIMIT 1")) {
-            if (c != null && c.moveToFirst()) return c.getString(0);
-        }
-        return null;
+                new String[]{ContactsContract.CommonDataKinds.Phone.NUMBER, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME},
+                null, null, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC")) {
+
+            if (c != null) {
+                while (c.moveToNext()) {
+                    String number = c.getString(0);
+                    String displayName = c.getString(1);
+                    if (displayName == null || displayName.trim().isEmpty() || number == null) continue;
+
+                    String dNorm = displayName.toLowerCase(Locale.ROOT).trim();
+                    String dClean = dNorm.replaceAll("[^a-z0-9]", "");
+                    String dPhonetic = phonetic(dNorm);
+
+                    int score = 0;
+
+                    // Exact match
+                    if (dNorm.equals(qNorm)) {
+                        score = 1000;
+                    } else if (dClean.equals(qClean)) {
+                        score = 950;
+                    } else if (!qPhonetic.isEmpty() && dPhonetic.equals(qPhonetic)) {
+                        // Phonetic exact match (e.g. "abhi night" vs "abi knight" or "abi knignt")
+                        score = 900;
+                    } else if (dNorm.startsWith(qNorm)) {
+                        score = 800;
+                    } else if (dNorm.contains(qNorm) && qNorm.length() >= 3) {
+                        score = 700;
+                    } else if (!qPhonetic.isEmpty() && dPhonetic.contains(qPhonetic) && qPhonetic.length() >= 3) {
+                        score = 650;
+                    } else {
+                        // Fuzzy similarity
+                        int dist = levenshtein(qClean, dClean);
+                        int maxLen = Math.max(qClean.length(), dClean.length());
+                        if (maxLen > 0) {
+                            double sim = 1.0 - ((double) dist / maxLen);
+                            if (sim >= 0.70) {
+                                score = (int) (sim * 600);
+                            }
+                        }
+
+                        // Also check phonetic distance
+                        int pDist = levenshtein(qPhonetic, dPhonetic);
+                        int pMaxLen = Math.max(qPhonetic.length(), dPhonetic.length());
+                        if (pMaxLen > 0) {
+                            double pSim = 1.0 - ((double) pDist / pMaxLen);
+                            if (pSim >= 0.75) {
+                                int pScore = (int) (pSim * 620);
+                                if (pScore > score) score = pScore;
+                            }
+                        }
+                    }
+
+                    if (score > bestScore && score >= 400) {
+                        bestScore = score;
+                        bestNumber = number;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
+        return bestNumber;
     }
 
     // ---------- actions ----------
@@ -141,7 +256,7 @@ public class DeviceController {
         if (!has(Manifest.permission.SEND_SMS)) return "ERR:sms permission not granted";
         String num = resolveNumber(target);
         if (num == null) return "ERR:contact not found: " + target;
-        SmsManager sm = android.os.Build.VERSION.SDK_INT >= 31
+        SmsManager sm = Build.VERSION.SDK_INT >= 31
                 ? ctx.getSystemService(SmsManager.class) : SmsManager.getDefault();
         ArrayList<String> parts = sm.divideMessage(text);
         sm.sendMultipartTextMessage(num, null, parts, null, null);
@@ -173,6 +288,51 @@ public class DeviceController {
         return "ERR:no flashlight";
     }
 
+    private String wifi(boolean on) {
+        try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                // Floating Wi-Fi panel for Android 10+
+                Intent panel = new Intent(Settings.Panel.ACTION_WIFI);
+                panel.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(panel);
+                return "OK";
+            } else {
+                WifiManager wm = (WifiManager) ctx.getSystemService(Context.WIFI_SERVICE);
+                if (wm != null) {
+                    wm.setWifiEnabled(on);
+                    return "OK";
+                }
+            }
+        } catch (Exception ignored) {}
+        return start(new Intent(Settings.ACTION_WIFI_SETTINGS));
+    }
+
+    private String bluetooth(boolean on) {
+        try {
+            BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+            if (adapter != null) {
+                if (on) {
+                    if (Build.VERSION.SDK_INT >= 31 && has(Manifest.permission.BLUETOOTH_CONNECT)) {
+                        if (!adapter.isEnabled()) {
+                            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+                            enableBtIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            ctx.startActivity(enableBtIntent);
+                            return "OK";
+                        }
+                        return "OK";
+                    } else {
+                        adapter.enable();
+                        return "OK";
+                    }
+                } else {
+                    adapter.disable();
+                    return "OK";
+                }
+            }
+        } catch (Exception ignored) {}
+        return start(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));
+    }
+
     private String volume(String dir) {
         AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
         int d = "down".equals(dir) ? AudioManager.ADJUST_LOWER
@@ -182,9 +342,14 @@ public class DeviceController {
     }
 
     private String system(String name) {
+        if ("home".equals(name)) {
+            // Home works directly without accessibility
+            Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(home);
+            return "OK";
+        }
         int act;
         switch (name) {
-            case "home": act = AccessibilityService.GLOBAL_ACTION_HOME; break;
             case "back": act = AccessibilityService.GLOBAL_ACTION_BACK; break;
             case "recents": act = AccessibilityService.GLOBAL_ACTION_RECENTS; break;
             case "notifications": act = AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS; break;
@@ -206,6 +371,9 @@ public class DeviceController {
             case "sound": a = Settings.ACTION_SOUND_SETTINGS; break;
             case "battery": a = Settings.ACTION_BATTERY_SAVER_SETTINGS; break;
             case "apps": a = Settings.ACTION_APPLICATION_SETTINGS; break;
+            case "hotspot": a = Settings.ACTION_WIRELESS_SETTINGS; break;
+            case "data": a = Settings.ACTION_DATA_ROAMING_SETTINGS; break;
+            case "airplane": a = Settings.ACTION_AIRPLANE_MODE_SETTINGS; break;
             default: a = Settings.ACTION_SETTINGS;
         }
         return start(new Intent(a));

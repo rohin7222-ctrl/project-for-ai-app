@@ -870,6 +870,24 @@ class MainActivity : FragmentActivity() {
                                     }
                                 }
 
+                                if (!a11yActive) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text(
+                                                text = tr("a11y_guide"),
+                                                fontSize = 11.5.sp,
+                                                lineHeight = 16.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+
                                 Button(
                                     onClick = {
                                         val ok = AgentAccessibilityService.autoEnable(this@MainActivity)
@@ -877,7 +895,13 @@ class MainActivity : FragmentActivity() {
                                         if (ok || a11yActive) {
                                             Toast.makeText(this@MainActivity, tr("a11y_active"), Toast.LENGTH_SHORT).show()
                                         } else {
-                                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                                            try {
+                                                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                                startActivity(intent)
+                                            } catch (e: Exception) {
+                                                startActivity(Intent(Settings.ACTION_SETTINGS))
+                                            }
                                         }
                                     },
                                     shape = RoundedCornerShape(12.dp),
@@ -1193,9 +1217,11 @@ class MainActivity : FragmentActivity() {
                                 Spacer(Modifier.height(10.dp))
 
                                 val suggestions = listOf(
+                                    Triple(tr("chip_wifi"), "📶", if (cfg.lang == "ta-IN") "வைஃபை ஆன் பண்ணு" else "Turn on Wi-Fi"),
+                                    Triple(tr("chip_bt"), "🎧", if (cfg.lang == "ta-IN") "ப்ளூடூத் ஆன் பண்ணு" else "Turn on Bluetooth"),
                                     Triple(tr("chip_whatsapp"), "💬", "Open WhatsApp"),
-                                    Triple(tr("chip_call"), "📞", "Call Amma"),
-                                    Triple(tr("chip_yt"), "🔍", "Search YouTube for songs"),
+                                    Triple(tr("chip_call"), "📞", "Call Contact"),
+                                    Triple(tr("chip_yt"), "🔍", "Search YouTube"),
                                     Triple(tr("chip_alarm"), "⏰", "7 AM Alarm"),
                                     Triple(tr("chip_torch"), "🔦", if (cfg.lang == "ta-IN") "டார்ச் ஆன் பண்ணு" else "Turn on torch"),
                                     Triple(tr("chip_screenshot"), "📸", if (cfg.lang == "ta-IN") "ஸ்கிரீன்ஷாட் எடு" else "Take screenshot")
