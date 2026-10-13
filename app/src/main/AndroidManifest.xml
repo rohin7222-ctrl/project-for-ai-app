@@ -16,6 +16,8 @@
 
     <application
         android:name="com.chaquo.python.android.PyApplication"
+        android:icon="@drawable/ic_launcher"
+        android:roundIcon="@drawable/ic_launcher"
         android:label="NextGen AI Agent"
         android:allowBackup="false"
         android:theme="@style/Theme.App">
