@@ -256,6 +256,7 @@ PART = r"(?:ah|a|ai|ku|kku|la|le|ல|இல்|ஐ|க்கு|を|に|で)"
 
 def _app_name(raw):
     t = raw.strip().lower()
+    t = re.sub(r"^(?:the|my|a)\s+", "", t)
     t = re.sub(r"\s+(app|application|ஆப்|アプリ)$", "", t).strip()
     for k in sorted(APPS, key=len, reverse=True):
         if t == k or t.startswith(k + " ") or t.endswith(" " + k):
@@ -277,8 +278,24 @@ def _ordinal(t):
     return int(m.group(1)) if m else None
 
 
+LEAD = re.compile(r"^(?:(?:hey|hi|hello|ok|okay|bro|da|dei|machi|sir|please|plz|pls|kindly|just|now|"
+                  r"can you|could you|would you|will you|can u|could u|can i|i want you to|i want to|i would like to|"
+                  r"i need to|i need you to|let's|lets|go ahead and|try to|nee|neenga)\s+)+")
+TAIL = re.compile(r"(?:\s+(?:please|plz|pls|now|for me|bro|da|pa|ok|okay|quickly|thanks|thank you))+$")
+_assistant = {"name": ""}
+
+
 def _norm(p):
     p = p.strip().lower()
+    nm = _assistant["name"]
+    if nm:
+        p = re.sub(r"^" + re.escape(nm) + r"[\s,]+|[\s,]+" + re.escape(nm) + r"$", "", p)
+    p = re.sub(r"[?!]+", " ", p).strip()
+    p = LEAD.sub("", p)
+    if nm:
+        p = re.sub(r"^" + re.escape(nm) + r"[\s,]+", "", p)
+        p = LEAD.sub("", p)
+    p = TAIL.sub("", p)
     p = re.sub(r"(\w)-(la|le|ku|kku|ah|a)\b", r"\1 \2", p)      # "whatsapp-la" -> "whatsapp la"
     p = re.sub(FILLER, " ", p)
     return re.sub(r"\s+", " ", p).strip(" ?!")
@@ -312,7 +329,7 @@ def _parse_one(p, last_app):
     if re.search(r"\b(end|cut|disconnect|hang ?up)\b.*\bcall\b|\bcall\b.*\b(end|cut)\b", t):
         return [{"type": "end_call"}], "ok"
     m = re.match(r"^(?:call|dial|phone)\s+(?P<t>.+)$", t) or \
-        re.match(r"^(?P<t>.+?)\s+" + PART + r"?\s*(?:call|phone|dial|போன்|கால்|電話)(?=\s|$).*$", t)
+        re.match(r"^(?P<t>.+?)\s+" + PART + r"?\s*(?:call|phone|dial|போன்|கால்|電話)(?:\s+(?:vidu|panni vidu|pa|da))?$", t)
     if m and not re.search(r"\b(search|thedu|open|in whatsapp)\b", t):
         tgt = m.group("t").strip()
         tgt = re.sub(r"\s+" + PART + r"$", "", tgt).strip()
@@ -444,6 +461,7 @@ def chat(cfg_json, user_text):
     """Returns JSON: {"ok":true,"speech":..,"actions":[..]}. Commands run locally; only chat uses the API."""
     cfg = json.loads(cfg_json)
     lang = cfg.get("lang", "en-US")
+    _assistant["name"] = (cfg.get("name") or "").strip().lower()
     try:
         cmd = local_command(user_text, lang)
         if cmd:
