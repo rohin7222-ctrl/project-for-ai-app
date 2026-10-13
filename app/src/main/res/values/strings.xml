@@ -1,3 +1,3 @@
 <resources>
-    <style name="Theme.App" parent="android:Theme.Material.Light.NoActionBar" />
+    <string name="a11y_desc">Lets the AI assistant press Home, Back, Recents, open notifications, lock the screen and take screenshots when you ask by voice.</string>
 </resources>
