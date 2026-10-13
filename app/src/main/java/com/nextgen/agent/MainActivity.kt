@@ -92,6 +92,7 @@ class MainActivity : FragmentActivity() {
 
     private var cfg by mutableStateOf(Config())
     private var screen by mutableStateOf(Screen.LANG)
+    private var changeModel by mutableStateOf(false)   // true when the model screen was opened from the settings menu
     private var listening by mutableStateOf(false)
     private var thinking by mutableStateOf(false)
     private var unlocked by mutableStateOf(true)
@@ -330,10 +331,10 @@ class MainActivity : FragmentActivity() {
     private fun BrainScreen() {
         var type by remember { mutableStateOf(cfg.type) }
         var provider by remember { mutableStateOf(cfg.provider) }
-        var key by remember { mutableStateOf("") }
+        var key by remember { mutableStateOf(cfg.key) }          // kept when changing model from settings (empty after logout)
         var model by remember { mutableStateOf("") }
         var url by remember { mutableStateOf(cfg.url) }
-        var lmodel by remember { mutableStateOf("") }
+        var lmodel by remember { mutableStateOf(if (cfg.type == "local") cfg.model else "") }
         var models by remember { mutableStateOf(listOf<Pair<String, String>>()) }
         var loading by remember { mutableStateOf(false) }
         var err by remember { mutableStateOf("") }
@@ -354,7 +355,7 @@ class MainActivity : FragmentActivity() {
 
         Box(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                BackButton { screen = Screen.NAME }
+                BackButton { if (changeModel) { changeModel = false; screen = Screen.MAIN } else screen = Screen.NAME }
                 GlassCard {
                     Text(tr("brain_title"), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
                     Text(tr("brain_sub"), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f))
@@ -415,7 +416,7 @@ class MainActivity : FragmentActivity() {
                             it.copy(type = type, provider = provider, key = key.trim(),
                                 model = if (type == "api") model else lmodel.trim(), url = url.trim())
                         }
-                        store.setReady(true); Brain.reset(); screen = Screen.MAIN
+                        store.setReady(true); Brain.reset(); changeModel = false; screen = Screen.MAIN
                     }
                 }
             }
@@ -445,6 +446,8 @@ class MainActivity : FragmentActivity() {
                                     onClick = { page = "voice" })
                                 DropdownMenuItem(text = { Text(tr("app_lang")) }, leadingIcon = { Icon(Icons.Default.Language, null) },
                                     onClick = { page = "lang" })
+                                DropdownMenuItem(text = { Text(tr("ai_model")) }, leadingIcon = { Icon(Icons.Default.Settings, null) },
+                                    onClick = { menu = false; changeModel = true; screen = Screen.BRAIN })
                                 DropdownMenuItem(text = { Text(tr("sys_control")) }, leadingIcon = { Icon(Icons.Default.AdminPanelSettings, null) },
                                     onClick = { menu = false; startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) })
                                 HorizontalDivider()

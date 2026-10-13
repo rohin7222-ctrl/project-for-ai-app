@@ -99,11 +99,24 @@ public class DeviceController {
         String digits = target.replaceAll("[\\s\\-()]", "");
         if (digits.matches("\\+?\\d{3,15}")) return digits;
         if (!has(Manifest.permission.READ_CONTACTS)) return null;
+        // Speech recognition often adds extra words ("abhi night"): if nothing matches, drop trailing words and retry.
+        String name = target.trim();
+        while (!name.isEmpty()) {
+            String num = lookup(name);
+            if (num != null) return num;
+            int sp = name.lastIndexOf(' ');
+            if (sp < 0) break;
+            name = name.substring(0, sp).trim();
+        }
+        return null;
+    }
+
+    private String lookup(String name) {
         try (Cursor c = ctx.getContentResolver().query(
                 ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
                 new String[]{ContactsContract.CommonDataKinds.Phone.NUMBER},
                 ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ?",
-                new String[]{"%" + target.trim() + "%"},
+                new String[]{"%" + name + "%"},
                 ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC LIMIT 1")) {
             if (c != null && c.moveToFirst()) return c.getString(0);
         }

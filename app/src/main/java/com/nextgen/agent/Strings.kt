@@ -28,6 +28,7 @@ object S {
         "female" to listOf("பெண் குரல்", "Female voice", "女性の声"),
         "male" to listOf("ஆண் குரல்", "Male voice", "男性の声"),
         "app_lang" to listOf("செயலி மொழி", "App language", "アプリの言語"),
+        "ai_model" to listOf("AI மாடலை மாற்று", "Change AI model", "AIモデルを変更"),
         "logout" to listOf("வெளியேறு", "Logout", "ログアウト"),
         "sys_control" to listOf("System control இயக்கு", "Enable system control", "システム制御を有効化"),
         "confirm_title" to listOf("உறுதி செய்யவும்", "Please confirm", "確認してください"),
