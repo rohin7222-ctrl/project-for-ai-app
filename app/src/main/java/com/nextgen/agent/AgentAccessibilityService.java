@@ -15,6 +15,11 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
+import android.content.Context;
+import android.provider.Settings;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+
 /**
  * System buttons (Home/Back/...) + "inside any app" control: read the screen, search, open the Nth item,
  * click by text, type, scroll. Every ui* method BLOCKS (polls up to a few seconds) - call from a background thread.
@@ -27,12 +32,57 @@ public class AgentAccessibilityService extends AccessibilityService {
     @Override public void onAccessibilityEvent(AccessibilityEvent event) { }
     @Override public void onInterrupt() { }
 
+    public static boolean isEnabled(Context ctx) {
+        if (instance != null) return true;
+        try {
+            android.content.ContentResolver cr = ctx.getContentResolver();
+            int enabled = Settings.Secure.getInt(cr, Settings.Secure.ACCESSIBILITY_ENABLED, 0);
+            if (enabled != 1) return false;
+            String services = Settings.Secure.getString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            if (services != null) {
+                String target = ctx.getPackageName() + "/" + AgentAccessibilityService.class.getName();
+                String targetShort = ctx.getPackageName() + "/." + AgentAccessibilityService.class.getSimpleName();
+                return services.contains(target) || services.contains(targetShort);
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    public static boolean autoEnable(Context ctx) {
+        if (isEnabled(ctx)) return true;
+        String serviceName = ctx.getPackageName() + "/" + AgentAccessibilityService.class.getName();
+        try {
+            android.content.ContentResolver cr = ctx.getContentResolver();
+            String current = Settings.Secure.getString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            String updated = (current == null || current.isEmpty()) ? serviceName : (current + ":" + serviceName);
+            Settings.Secure.putString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, updated);
+            Settings.Secure.putInt(cr, Settings.Secure.ACCESSIBILITY_ENABLED, 1);
+            if (isEnabled(ctx)) return true;
+        } catch (Exception ignored) {}
+
+        try {
+            Process p = Runtime.getRuntime().exec("su");
+            OutputStream os = p.getOutputStream();
+            String cmd = "settings put secure enabled_accessibility_services " + serviceName +
+                    " && settings put secure accessibility_enabled 1\nexit\n";
+            os.write(cmd.getBytes(StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+            p.waitFor();
+            if (p.exitValue() == 0) {
+                return isEnabled(ctx);
+            }
+        } catch (Exception ignored) {}
+
+        return isEnabled(ctx);
+    }
+
     public static boolean perform(int globalAction) {
         return instance != null && instance.performGlobalAction(globalAction);
     }
 
     // ------------------------------------------------------------------ public UI actions (return "OK" / "ERR:...")
-    private static final String[] SEARCH_WORDS = {"search", "find", "தேடு", "தேடல்", "検索"};
+    private static final String[] SEARCH_WORDS = {"search", "find", "thedu", "theduga", "தேடு", "தேடல்", "தேடுங்கள்", "தேடுதல்", "検索", "query"};
 
     public String uiSearch(String query, boolean submit) {
         AccessibilityNodeInfo root = waitRoot(3000);

@@ -1,10 +1,14 @@
 package com.nextgen.agent
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
@@ -23,6 +27,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,20 +46,25 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
@@ -61,6 +72,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -74,12 +87,23 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 enum class Screen { LANG, NAME, BRAIN, MAIN }
-data class Msg(val mine: Boolean, val text: String)
+data class Msg(
+    val mine: Boolean,
+    val text: String,
+    val time: String = "",
+    val actions: List<String> = emptyList(),
+    val isError: Boolean = false
+)
 
 private val Indigo = Color(0xFF6366F1)
 private val Violet = Color(0xFF8B5CF6)
+private val Cyan = Color(0xFF06B6D4)
+private val Amber = Color(0xFFF59E0B)
 private val PROVIDERS = listOf(
     "gemini" to "Google Gemini", "groq" to "Groq", "openai" to "OpenAI", "anthropic" to "Claude",
     "openrouter" to "OpenRouter", "mistral" to "Mistral", "deepseek" to "DeepSeek"
@@ -96,6 +120,7 @@ class MainActivity : FragmentActivity() {
     private var listening by mutableStateOf(false)
     private var thinking by mutableStateOf(false)
     private var unlocked by mutableStateOf(true)
+    private var executingAction by mutableStateOf("")
     private var pending by mutableStateOf<List<JSONObject>>(emptyList())
     private val chat = mutableStateListOf<Msg>()
 
@@ -109,7 +134,26 @@ class MainActivity : FragmentActivity() {
 
     private fun has(p: String) = ContextCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED
     private fun tr(k: String) = S.t(cfg.lang, k)
-    private fun upd(b: (Config) -> Config) { cfg = b(cfg); store.save(cfg) }
+    private fun upd(b: (Config) -> Config) {
+        cfg = b(cfg)
+        store.save(cfg)
+        syncVoiceConfig()
+    }
+
+    private fun syncVoiceConfig() {
+        voice.lang = cfg.lang
+        voice.female = cfg.female
+        voice.commandingWord = cfg.commandingWord
+        voice.autoWakeEnabled = cfg.autoWakeEnabled
+        voice.voiceMatchEnabled = cfg.voiceMatchEnabled
+        voice.voiceProfile = VoiceProfile(cfg.voicePitchMean, cfg.voicePitchStd, cfg.voiceEnrolled)
+    }
+
+    private fun nowTime(): String = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+    private fun copyToClipboard(text: String) {
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        cm?.setPrimaryClip(ClipData.newPlainText("AI Text", text))
+    }
 
     // ------------------------------------------------------------------ lifecycle
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -118,7 +162,25 @@ class MainActivity : FragmentActivity() {
         device = DeviceController(this)
         cfg = store.load()
         voice = Voice(this, onText = { handleUser(it) }, onState = { listening = it })
-        voice.lang = cfg.lang; voice.female = cfg.female
+        syncVoiceConfig()
+        voice.onWakeWordTriggered = { cmd ->
+            if (!cmd.isNullOrBlank()) {
+                handleUser(cmd)
+            } else {
+                val ack = when (cfg.lang) {
+                    "ta-IN" -> "சொல்லுங்க"
+                    "ja-JP" -> "はい、聞いています"
+                    else -> "Yes, I'm listening"
+                }
+                voice.speak(ack)
+            }
+        }
+        voice.onVoiceRejected = {
+            Toast.makeText(this@MainActivity, tr("voice_rejected"), Toast.LENGTH_SHORT).show()
+        }
+        // Attempt automatic accessibility configuration silently
+        AgentAccessibilityService.autoEnable(this)
+
         if (store.isReady()) { screen = Screen.MAIN; unlocked = false; authenticate() }
         setContent { App() }
     }
@@ -140,41 +202,57 @@ class MainActivity : FragmentActivity() {
 
     // ------------------------------------------------------------------ assistant logic
     private fun toggle() {
-        if (voice.active) { voice.stop(); return }
+        if (voice.active) {
+            voice.stop()
+            return
+        }
         val missing = perms.filter { !has(it) }
         if (missing.isEmpty()) startVoice() else permLauncher.launch(missing.toTypedArray())
     }
 
-    private fun startVoice() { voice.lang = cfg.lang; voice.female = cfg.female; voice.start() }
+    private fun startVoice() {
+        syncVoiceConfig()
+        voice.start()
+    }
 
     private fun handleUser(text: String) {
-        chat.add(Msg(true, text)); thinking = true
+        val t = text.trim()
+        if (t.isBlank()) return
+        chat.add(Msg(mine = true, text = t, time = nowTime()))
+        thinking = true
         lifecycleScope.launch {
-            val r = withContext(Dispatchers.IO) { Brain.chat(cfg, text) }
+            val r = withContext(Dispatchers.IO) { Brain.chat(cfg, t) }
             thinking = false
             if (r.ok) {
-                chat.add(Msg(false, r.speech)); voice.speak(r.speech)
+                val actionDescs = r.actions.mapNotNull { it.optString("desc").takeIf { s -> s.isNotBlank() } }
+                chat.add(Msg(mine = false, text = r.speech, time = nowTime(), actions = actionDescs))
+                voice.speak(r.speech)
                 val (sens, safe) = r.actions.partition { DeviceController.isSensitive(it.optString("type")) }
                 delay(1200)                       // let the voice reply start before apps open
                 runList(safe)
                 if (sens.isNotEmpty()) pending = sens   // calls / SMS need an explicit tap
             } else {
-                val m = tr("error"); chat.add(Msg(false, "$m\n${r.error}")); voice.speak(m)
+                val m = tr("error")
+                chat.add(Msg(mine = false, text = "$m\n${r.error}", time = nowTime(), isError = true))
+                voice.speak(m)
             }
         }
     }
 
     private suspend fun runList(list: List<JSONObject>) {
         for (a in list) {
+            val d = a.optString("desc")
+            if (d.isNotBlank()) executingAction = d
             val r = withContext(Dispatchers.IO) { device.execute(a) }   // ui_* actions block while they wait for the screen
             if (a.optString("type") == "open_app") delay(2500)          // let the app finish opening before the next step
             else if (a.optString("type").startsWith("ui_")) delay(600)
+            executingAction = ""
             when {
                 r == "NEED_ACCESSIBILITY" -> {
-                    chat.add(Msg(false, tr("need_a11y")))
+                    chat.add(Msg(mine = false, text = tr("need_a11y"), time = nowTime(), isError = true))
                     startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 }
-                r.startsWith("ERR") -> chat.add(Msg(false, "⚠ " + r.removePrefix("ERR:")))
+                r.startsWith("ERR") -> chat.add(Msg(mine = false, text = "⚠ " + r.removePrefix("ERR:"), time = nowTime(), isError = true))
             }
         }
     }
@@ -186,8 +264,14 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun logout() {
-        voice.stop(); store.logout(); Brain.reset(); chat.clear()
-        cfg = store.load(); screen = Screen.LANG
+        voice.stopStandby()
+        voice.stop()
+        store.logout()
+        Brain.reset()
+        chat.clear()
+        cfg = store.load()
+        syncVoiceConfig()
+        screen = Screen.LANG
     }
 
     // ------------------------------------------------------------------ UI
@@ -306,9 +390,19 @@ class MainActivity : FragmentActivity() {
             Box(Modifier.align(Alignment.TopStart)) { BackButton { screen = Screen.LANG } }
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 GlassCard {
-                    Box(Modifier.size(72.dp).clip(RoundedCornerShape(24.dp))
-                        .background(Brush.linearGradient(listOf(Indigo, Violet))), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.SmartToy, null, Modifier.size(38.dp), tint = Color.White)
+                    Surface(
+                        modifier = Modifier.size(80.dp),
+                        shape = RoundedCornerShape(26.dp),
+                        shadowElevation = 8.dp,
+                        border = BorderStroke(2.dp, Brush.linearGradient(listOf(Indigo, Violet, Cyan))),
+                        color = MaterialTheme.colorScheme.surface
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.app_logo),
+                            contentDescription = "NextGen AI Logo",
+                            modifier = Modifier.fillMaxSize().padding(6.dp),
+                            contentScale = ContentScale.Fit
+                        )
                     }
                     Text(tr("name_title"), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
                     Text(tr("name_sub"), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f))
@@ -423,108 +517,1033 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    // ---- Helpers & Visualizers
+    @Composable
+    private fun BouncingDots() {
+        val inf = rememberInfiniteTransition(label = "dots")
+        val d1 by inf.animateFloat(0f, -6f, infiniteRepeatable(tween(450, 0, FastOutSlowInEasing), RepeatMode.Reverse), label = "d1")
+        val d2 by inf.animateFloat(0f, -6f, infiniteRepeatable(tween(450, 150, FastOutSlowInEasing), RepeatMode.Reverse), label = "d2")
+        val d3 by inf.animateFloat(0f, -6f, infiniteRepeatable(tween(450, 300, FastOutSlowInEasing), RepeatMode.Reverse), label = "d3")
+
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.offset(y = d1.dp).size(6.dp).clip(CircleShape).background(Indigo))
+            Box(Modifier.offset(y = d2.dp).size(6.dp).clip(CircleShape).background(Violet))
+            Box(Modifier.offset(y = d3.dp).size(6.dp).clip(CircleShape).background(Cyan))
+        }
+    }
+
+    @Composable
+    private fun EqualizerWave() {
+        val inf = rememberInfiniteTransition(label = "wave")
+        val h1 by inf.animateFloat(4f, 20f, infiniteRepeatable(tween(320, 0, FastOutSlowInEasing), RepeatMode.Reverse), label = "w1")
+        val h2 by inf.animateFloat(6f, 26f, infiniteRepeatable(tween(280, 80, FastOutSlowInEasing), RepeatMode.Reverse), label = "w2")
+        val h3 by inf.animateFloat(8f, 30f, infiniteRepeatable(tween(350, 160, FastOutSlowInEasing), RepeatMode.Reverse), label = "w3")
+        val h4 by inf.animateFloat(5f, 24f, infiniteRepeatable(tween(300, 120, FastOutSlowInEasing), RepeatMode.Reverse), label = "w4")
+        val h5 by inf.animateFloat(4f, 16f, infiniteRepeatable(tween(340, 40, FastOutSlowInEasing), RepeatMode.Reverse), label = "w5")
+
+        Row(
+            modifier = Modifier.height(30.dp).padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            listOf(h1, h2, h3, h4, h5).forEach { h ->
+                Box(
+                    Modifier
+                        .width(3.dp)
+                        .height(h.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Brush.verticalGradient(listOf(Cyan, Indigo)))
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun SettingsDialog(onDismiss: () -> Unit) {
+        var isTraining by remember { mutableStateOf(false) }
+        var trainProgress by remember { mutableStateOf(0f) }
+        var trainSecondsLeft by remember { mutableStateOf(10) }
+        var a11yActive by remember { mutableStateOf(AgentAccessibilityService.isEnabled(this@MainActivity)) }
+
+        Dialog(
+            onDismissRequest = { if (!isTraining) onDismiss() },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.94f)
+                    .fillMaxHeight(0.90f)
+                    .clip(RoundedCornerShape(28.dp)),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp,
+                shadowElevation = 24.dp
+            ) {
+                Column(Modifier.fillMaxSize()) {
+                    // Header
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Indigo.copy(alpha = 0.15f),
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.Tune, null, tint = Indigo, modifier = Modifier.size(22.dp))
+                                }
+                            }
+                            Text(
+                                text = tr("settings_title"),
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        IconButton(
+                            onClick = onDismiss,
+                            enabled = !isTraining
+                        ) {
+                            Icon(Icons.Default.Close, "Close", tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+                    // Scrollable content
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 20.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
+                        // Section 1: Wake Word & Auto Wake
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Bolt, null, tint = Indigo, modifier = Modifier.size(18.dp))
+                                    Text(
+                                        text = tr("cmd_word"),
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                Text(
+                                    text = tr("cmd_word_sub"),
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                )
+
+                                OutlinedTextField(
+                                    value = cfg.commandingWord,
+                                    onValueChange = { word -> upd { it.copy(commandingWord = word) } },
+                                    singleLine = true,
+                                    placeholder = { Text(tr("cmd_word_hint")) },
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Indigo,
+                                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                    )
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(tr("auto_wake"), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                        Text(tr("auto_wake_sub"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                    }
+                                    Switch(
+                                        checked = cfg.autoWakeEnabled,
+                                        onCheckedChange = { checked ->
+                                            upd { it.copy(autoWakeEnabled = checked) }
+                                            if (checked) voice.startStandby() else voice.stopStandby()
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Section 2: 10-Second Voice Biometrics Enrollment
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Default.RecordVoiceOver, null, tint = Violet, modifier = Modifier.size(18.dp))
+                                    Text(
+                                        text = tr("train_voice"),
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                Text(
+                                    text = tr("train_voice_sub"),
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                )
+
+                                // Enrollment status card
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (cfg.voiceEnrolled) Color(0xFF10B981).copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
+                                    border = BorderStroke(1.dp, if (cfg.voiceEnrolled) Color(0xFF10B981).copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            if (cfg.voiceEnrolled) Icons.Default.CheckCircle else Icons.Default.Mic,
+                                            null,
+                                            tint = if (cfg.voiceEnrolled) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            text = if (cfg.voiceEnrolled)
+                                                String.format(Locale.getDefault(), tr("enrolled_status"), cfg.voicePitchMean)
+                                            else
+                                                tr("not_enrolled"),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = if (cfg.voiceEnrolled) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                        )
+                                    }
+                                }
+
+                                if (isTraining) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        LinearProgressIndicator(
+                                            progress = { trainProgress },
+                                            modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                                            color = Indigo
+                                        )
+                                        Text(
+                                            text = String.format(Locale.getDefault(), tr("recording_progress"), trainSecondsLeft),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Indigo
+                                        )
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = {
+                                            if (!has(Manifest.permission.RECORD_AUDIO)) {
+                                                permLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
+                                                return@Button
+                                            }
+                                            isTraining = true
+                                            trainProgress = 0f
+                                            trainSecondsLeft = 10
+                                            lifecycleScope.launch {
+                                                voice.stop()
+                                                voice.stopStandby()
+                                                val res = VoiceProfiler.enrollUser { prog, sec ->
+                                                    trainProgress = prog
+                                                    trainSecondsLeft = sec
+                                                }
+                                                isTraining = false
+                                                if (res.isSuccess) {
+                                                    val prof = res.getOrThrow()
+                                                    upd {
+                                                        it.copy(
+                                                            voicePitchMean = prof.meanPitch,
+                                                            voicePitchStd = prof.stdPitch,
+                                                            voiceEnrolled = true,
+                                                            voiceMatchEnabled = true
+                                                        )
+                                                    }
+                                                    Toast.makeText(this@MainActivity, tr("train_success"), Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(this@MainActivity, tr("train_failed"), Toast.LENGTH_LONG).show()
+                                                }
+                                                if (cfg.autoWakeEnabled) voice.startStandby()
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Indigo),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Default.Mic, null, Modifier.size(18.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(tr("record_10s"), fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(tr("voice_match"), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                        Text(tr("voice_match_sub"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                    }
+                                    Switch(
+                                        checked = cfg.voiceMatchEnabled,
+                                        enabled = cfg.voiceEnrolled,
+                                        onCheckedChange = { checked ->
+                                            upd { it.copy(voiceMatchEnabled = checked) }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Section 3: Accessibility / System Control
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Default.AdminPanelSettings, null, tint = Cyan, modifier = Modifier.size(18.dp))
+                                    Text(
+                                        text = tr("sys_control"),
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (a11yActive) Color(0xFF10B981).copy(alpha = 0.12f) else Amber.copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, if (a11yActive) Color(0xFF10B981).copy(alpha = 0.4f) else Amber.copy(alpha = 0.4f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            if (a11yActive) Icons.Default.CheckCircle else Icons.Default.Settings,
+                                            null,
+                                            tint = if (a11yActive) Color(0xFF10B981) else Amber,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            text = if (a11yActive) tr("a11y_active") else tr("a11y_inactive"),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = if (a11yActive) Color(0xFF10B981) else Amber
+                                        )
+                                    }
+                                }
+
+                                Button(
+                                    onClick = {
+                                        val ok = AgentAccessibilityService.autoEnable(this@MainActivity)
+                                        a11yActive = AgentAccessibilityService.isEnabled(this@MainActivity)
+                                        if (ok || a11yActive) {
+                                            Toast.makeText(this@MainActivity, tr("a11y_active"), Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = if (a11yActive) Color(0xFF10B981) else Cyan),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.AdminPanelSettings, null, Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(if (a11yActive) tr("a11y_active") else tr("a11y_auto_btn"), fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        // Section 4: Voice Gender & Language
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text(tr("voice"), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf(true to tr("female"), false to tr("male")).forEach { (f, label) ->
+                                        OutlinedButton(
+                                            onClick = {
+                                                upd { it.copy(female = f) }
+                                                voice.speak(tr("hello").format(cfg.name))
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            border = BorderStroke(1.5.dp, if (cfg.female == f) Indigo else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                            colors = ButtonDefaults.outlinedButtonColors(
+                                                containerColor = if (cfg.female == f) Indigo.copy(alpha = 0.12f) else Color.Transparent
+                                            ),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(label, fontWeight = if (cfg.female == f) FontWeight.Bold else FontWeight.Normal, color = if (cfg.female == f) Indigo else MaterialTheme.colorScheme.onSurface)
+                                        }
+                                    }
+                                }
+
+                                Spacer(Modifier.height(4.dp))
+                                Text(tr("app_lang"), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf("ta-IN" to "தமிழ்", "en-US" to "English", "ja-JP" to "日本語").forEach { (code, label) ->
+                                        OutlinedButton(
+                                            onClick = { upd { it.copy(lang = code) } },
+                                            shape = RoundedCornerShape(12.dp),
+                                            border = BorderStroke(1.5.dp, if (cfg.lang == code) Indigo else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                            colors = ButtonDefaults.outlinedButtonColors(
+                                                containerColor = if (cfg.lang == code) Indigo.copy(alpha = 0.12f) else Color.Transparent
+                                            ),
+                                            modifier = Modifier.weight(1f),
+                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                                        ) {
+                                            Text(label, fontSize = 12.sp, fontWeight = if (cfg.lang == code) FontWeight.Bold else FontWeight.Normal, color = if (cfg.lang == code) Indigo else MaterialTheme.colorScheme.onSurface)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Section 5: AI Model & Logout
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = {
+                                    onDismiss()
+                                    changeModel = true
+                                    screen = Screen.BRAIN
+                                },
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.Settings, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(tr("ai_model"), fontSize = 13.sp)
+                            }
+
+                            Button(
+                                onClick = {
+                                    onDismiss()
+                                    logout()
+                                },
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.Logout, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(tr("logout"), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // ---- Main page
     @Composable
     private fun MainScreen() {
-        var menu by remember { mutableStateOf(false) }
-        var page by remember { mutableStateOf("root") }
+        var showSettingsModal by remember { mutableStateOf(false) }
         var input by remember { mutableStateOf("") }
+        var showClearDialog by remember { mutableStateOf(false) }
         val ls = rememberLazyListState()
         LaunchedEffect(chat.size) { if (chat.isNotEmpty()) ls.animateScrollToItem(chat.size - 1) }
 
+        // Start standby wake-word listening on main screen if autoWakeEnabled is active
+        LaunchedEffect(unlocked, cfg.autoWakeEnabled, voice.active) {
+            if (unlocked && cfg.autoWakeEnabled && !voice.active) {
+                if (has(Manifest.permission.RECORD_AUDIO)) {
+                    voice.startStandby()
+                }
+            } else if (!cfg.autoWakeEnabled) {
+                voice.stopStandby()
+            }
+        }
+
+        if (showSettingsModal) {
+            SettingsDialog(onDismiss = { showSettingsModal = false })
+        }
+
+        if (showClearDialog) {
+            AlertDialog(
+                onDismissRequest = { showClearDialog = false },
+                title = { Text(tr("clear_chat"), fontWeight = FontWeight.Bold) },
+                text = { Text(tr("clear_confirm")) },
+                confirmButton = {
+                    TextButton(onClick = { chat.clear(); showClearDialog = false }) {
+                        Text(tr("ok"), color = Color(0xFFE53935), fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearDialog = false }) {
+                        Text(tr("deny"))
+                    }
+                }
+            )
+        }
+
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(cfg.name, Modifier.weight(1f), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-                RoundIcon(if (cfg.dark) Icons.Default.LightMode else Icons.Default.DarkMode) { upd { it.copy(dark = !it.dark) } }
-                Spacer(Modifier.width(8.dp))
-                Box {
-                    RoundIcon(Icons.Default.Settings) { page = "root"; menu = true }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        when (page) {
-                            "root" -> {
-                                DropdownMenuItem(text = { Text(tr("voice")) }, leadingIcon = { Icon(Icons.Default.RecordVoiceOver, null) },
-                                    onClick = { page = "voice" })
-                                DropdownMenuItem(text = { Text(tr("app_lang")) }, leadingIcon = { Icon(Icons.Default.Language, null) },
-                                    onClick = { page = "lang" })
-                                DropdownMenuItem(text = { Text(tr("ai_model")) }, leadingIcon = { Icon(Icons.Default.Settings, null) },
-                                    onClick = { menu = false; changeModel = true; screen = Screen.BRAIN })
-                                DropdownMenuItem(text = { Text(tr("sys_control")) }, leadingIcon = { Icon(Icons.Default.AdminPanelSettings, null) },
-                                    onClick = { menu = false; startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) })
-                                HorizontalDivider()
-                                DropdownMenuItem(text = { Text(tr("logout"), color = Color(0xFFE53935)) },
-                                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Logout, null, tint = Color(0xFFE53935)) },
-                                    onClick = { menu = false; logout() })
-                            }
-                            "voice" -> listOf(true to tr("female"), false to tr("male")).forEach { (f, label) ->
-                                DropdownMenuItem(text = { Text(label) },
-                                    trailingIcon = { if (cfg.female == f) Icon(Icons.Default.Check, null, tint = Indigo) },
-                                    onClick = {
-                                        upd { it.copy(female = f) }; voice.female = f; menu = false
-                                        voice.speak(tr("hello").format(cfg.name))
-                                    })
-                            }
-                            else -> listOf("ta-IN" to "தமிழ்", "en-US" to "English", "ja-JP" to "日本語").forEach { (code, label) ->
-                                DropdownMenuItem(text = { Text(label) },
-                                    trailingIcon = { if (cfg.lang == code) Icon(Icons.Default.Check, null, tint = Indigo) },
-                                    onClick = { upd { it.copy(lang = code) }; voice.lang = code; menu = false })
-                            }
+            // Enhanced Top Bar Header
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                tonalElevation = 2.dp,
+                shadowElevation = 6.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // App Logo avatar with live status dot
+                    Box(contentAlignment = Alignment.BottomEnd) {
+                        Surface(
+                            modifier = Modifier.size(44.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.5.dp, Brush.linearGradient(listOf(Indigo, Violet, Cyan))),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Image(
+                                painter = painterResource(id = R.drawable.app_logo),
+                                contentDescription = "NextGen AI Logo",
+                                modifier = Modifier.fillMaxSize().padding(3.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                        val dotColor = when {
+                            executingAction.isNotBlank() -> Amber
+                            thinking -> Violet
+                            listening -> Cyan
+                            else -> Color(0xFF10B981)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(13.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(2.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape)
+                                    .background(dotColor)
+                            )
                         }
                     }
+
+                    Spacer(Modifier.width(12.dp))
+
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = cfg.name.ifBlank { "NextGen AI" },
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        val statusText = when {
+                            executingAction.isNotBlank() -> "${tr("executing")} $executingAction"
+                            thinking -> tr("thinking")
+                            listening -> tr("listening")
+                            else -> tr("ready")
+                        }
+                        Text(
+                            text = statusText,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (listening || thinking || executingAction.isNotBlank()) Indigo else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+
+                    if (chat.isNotEmpty()) {
+                        RoundIcon(Icons.Default.DeleteSweep) { showClearDialog = true }
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    RoundIcon(if (cfg.dark) Icons.Default.LightMode else Icons.Default.DarkMode) { upd { it.copy(dark = !it.dark) } }
+                    Spacer(Modifier.width(6.dp))
+                    RoundIcon(Icons.Default.Settings) { showSettingsModal = true }
                 }
             }
 
+            // Middle Content (Empty State vs Chat Feed)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (chat.isEmpty()) {
-                    Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Box(Modifier.size(96.dp).clip(RoundedCornerShape(32.dp))
-                            .background(Brush.linearGradient(listOf(Indigo, Violet))), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.SmartToy, null, Modifier.size(52.dp), tint = Color.White)
-                        }
-                        Text(tr("hello").format(cfg.name), fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
-                    }
-                }
-                LazyColumn(state = ls, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(chat) { m ->
-                        Box(Modifier.fillMaxWidth(), contentAlignment = if (m.mine) Alignment.CenterEnd else Alignment.CenterStart) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 24.dp, vertical = 20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        // App Logo hero with subtle pulse
+                        val logoPulse by rememberInfiniteTransition(label = "logoPulse").animateFloat(
+                            initialValue = 1f, targetValue = 1.05f,
+                            animationSpec = infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+                            label = "lp"
+                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            Box(
+                                Modifier
+                                    .size(132.dp)
+                                    .scale(logoPulse)
+                                    .clip(RoundedCornerShape(44.dp))
+                                    .background(Brush.radialGradient(listOf(Indigo.copy(alpha = 0.35f), Color.Transparent)))
+                            )
                             Surface(
-                                shape = RoundedCornerShape(20.dp, 20.dp, if (m.mine) 4.dp else 20.dp, if (m.mine) 20.dp else 4.dp),
-                                color = if (m.mine) Indigo else MaterialTheme.colorScheme.surface,
-                                shadowElevation = 2.dp, modifier = Modifier.widthIn(max = 300.dp)
+                                modifier = Modifier.size(110.dp),
+                                shape = RoundedCornerShape(36.dp),
+                                shadowElevation = 16.dp,
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(2.5.dp, Brush.linearGradient(listOf(Indigo, Violet, Cyan)))
                             ) {
-                                Text(m.text, Modifier.padding(14.dp), color = if (m.mine) Color.White else MaterialTheme.colorScheme.onSurface)
+                                Image(
+                                    painter = painterResource(id = R.drawable.app_logo),
+                                    contentDescription = "NextGen AI Agent Logo",
+                                    modifier = Modifier.fillMaxSize().padding(8.dp),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(18.dp))
+
+                        Text(
+                            text = tr("hello").format(cfg.name),
+                            fontSize = 25.sp,
+                            fontWeight = FontWeight.Black,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        Spacer(Modifier.height(8.dp))
+
+                        Text(
+                            text = tr("welcome_sub"),
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                            lineHeight = 19.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
+
+                        Spacer(Modifier.height(24.dp))
+
+                        // Quick Actions Container
+                        Surface(
+                            shape = RoundedCornerShape(22.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                            tonalElevation = 1.dp,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.surfaceVariant),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(Icons.Default.Bolt, null, Modifier.size(16.dp), tint = Indigo)
+                                    Text(
+                                        text = tr("quick_actions"),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Indigo
+                                    )
+                                }
+                                Spacer(Modifier.height(10.dp))
+
+                                val suggestions = listOf(
+                                    Triple(tr("chip_whatsapp"), "💬", "Open WhatsApp"),
+                                    Triple(tr("chip_call"), "📞", "Call Amma"),
+                                    Triple(tr("chip_yt"), "🔍", "Search YouTube for songs"),
+                                    Triple(tr("chip_alarm"), "⏰", "7 AM Alarm"),
+                                    Triple(tr("chip_torch"), "🔦", if (cfg.lang == "ta-IN") "டார்ச் ஆன் பண்ணு" else "Turn on torch"),
+                                    Triple(tr("chip_screenshot"), "📸", if (cfg.lang == "ta-IN") "ஸ்கிரீன்ஷாட் எடு" else "Take screenshot")
+                                )
+
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    suggestions.chunked(2).forEach { rowChips ->
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            rowChips.forEach { (label, emoji, cmd) ->
+                                                Surface(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .clip(RoundedCornerShape(14.dp))
+                                                        .clickable { handleUser(cmd) },
+                                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Text(emoji, fontSize = 14.sp)
+                                                        Text(
+                                                            text = label,
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            maxLines = 1
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            if (rowChips.size == 1) {
+                                                Spacer(Modifier.weight(1f))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        state = ls,
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(chat) { m ->
+                            if (m.mine) {
+                                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Surface(
+                                            shape = RoundedCornerShape(20.dp, 20.dp, 4.dp, 20.dp),
+                                            color = Indigo,
+                                            shadowElevation = 3.dp,
+                                            modifier = Modifier.widthIn(max = 300.dp)
+                                        ) {
+                                            Text(
+                                                text = m.text,
+                                                modifier = Modifier.padding(horizontal = 15.dp, vertical = 11.dp),
+                                                color = Color.White,
+                                                fontSize = 15.sp,
+                                                lineHeight = 21.sp
+                                            )
+                                        }
+                                        if (m.time.isNotBlank()) {
+                                            Text(
+                                                text = m.time,
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                                                modifier = Modifier.padding(top = 2.dp, end = 4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Start,
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .padding(top = 2.dp)
+                                            .size(30.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(1.5.dp, Indigo),
+                                        color = MaterialTheme.colorScheme.surfaceVariant
+                                    ) {
+                                        Image(
+                                            painter = painterResource(id = R.drawable.app_logo),
+                                            contentDescription = "AI",
+                                            modifier = Modifier.fillMaxSize().padding(2.dp),
+                                            contentScale = ContentScale.Fit
+                                        )
+                                    }
+
+                                    Spacer(Modifier.width(8.dp))
+
+                                    Column(modifier = Modifier.widthIn(max = 300.dp)) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp),
+                                            color = if (m.isError) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface,
+                                            tonalElevation = 2.dp,
+                                            shadowElevation = 2.dp,
+                                            border = BorderStroke(1.dp, if (m.isError) MaterialTheme.colorScheme.error.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                                        ) {
+                                            Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
+                                                Text(
+                                                    text = m.text,
+                                                    color = if (m.isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface,
+                                                    fontSize = 15.sp,
+                                                    lineHeight = 21.sp
+                                                )
+
+                                                if (m.actions.isNotEmpty()) {
+                                                    Spacer(Modifier.height(8.dp))
+                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                        m.actions.forEach { act ->
+                                                            Surface(
+                                                                shape = RoundedCornerShape(8.dp),
+                                                                color = Indigo.copy(alpha = 0.12f),
+                                                                border = BorderStroke(0.5.dp, Indigo.copy(alpha = 0.4f))
+                                                            ) {
+                                                                Row(
+                                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                                ) {
+                                                                    Icon(Icons.Default.Bolt, null, Modifier.size(13.dp), tint = Indigo)
+                                                                    Text(act, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Indigo)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.padding(top = 3.dp, start = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            if (m.time.isNotBlank()) {
+                                                Text(
+                                                    text = m.time,
+                                                    fontSize = 10.sp,
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                                                )
+                                            }
+                                            Icon(
+                                                imageVector = Icons.Default.ContentCopy,
+                                                contentDescription = "Copy message",
+                                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                                                modifier = Modifier
+                                                    .size(13.dp)
+                                                    .clickable {
+                                                        copyToClipboard(m.text)
+                                                        Toast.makeText(this@MainActivity, tr("copy_done"), Toast.LENGTH_SHORT).show()
+                                                    }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (thinking) {
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Start,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        modifier = Modifier.size(30.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(1.5.dp, Indigo),
+                                        color = MaterialTheme.colorScheme.surfaceVariant
+                                    ) {
+                                        Image(
+                                            painter = painterResource(id = R.drawable.app_logo),
+                                            contentDescription = "AI",
+                                            modifier = Modifier.fillMaxSize().padding(2.dp),
+                                            contentScale = ContentScale.Fit
+                                        )
+                                    }
+
+                                    Spacer(Modifier.width(8.dp))
+
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp),
+                                        color = MaterialTheme.colorScheme.surface,
+                                        tonalElevation = 2.dp,
+                                        shadowElevation = 2.dp,
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            BouncingDots()
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(tr("thinking"), fontSize = 12.sp, color = Indigo, fontWeight = FontWeight.SemiBold)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
 
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(if (thinking) tr("thinking") else if (listening) tr("listening") else " ", fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(value = input, onValueChange = { input = it }, singleLine = true,
-                        modifier = Modifier.weight(1f), shape = RoundedCornerShape(28.dp),
-                        placeholder = { Text(tr("type_here")) })
-                    IconButton(onClick = { if (input.isNotBlank()) { handleUser(input.trim()); input = "" } }) {
-                        Icon(Icons.AutoMirrored.Filled.Send, null, tint = Indigo)
+            // Upgraded Voice & Input Control Bar
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                tonalElevation = 4.dp,
+                shadowElevation = 14.dp,
+                shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    if (listening) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            EqualizerWave()
+                            Spacer(Modifier.width(8.dp))
+                            Text(tr("listening"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Indigo)
+                        }
+                        Spacer(Modifier.height(6.dp))
                     }
-                }
-                Spacer(Modifier.height(12.dp))
-                val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(
-                    initialValue = 1f, targetValue = 1.4f, label = "p",
-                    animationSpec = infiniteRepeatable(tween(1100, easing = FastOutSlowInEasing), RepeatMode.Reverse))
-                Box(contentAlignment = Alignment.Center) {
-                    if (listening) Box(Modifier.size(84.dp).scale(pulse).clip(CircleShape).background(Indigo.copy(alpha = .25f)))
-                    Box(Modifier.size(84.dp).shadow(16.dp, CircleShape).clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(Indigo, Violet))).clickable { toggle() },
-                        contentAlignment = Alignment.Center) {
-                        Icon(if (listening) Icons.Default.Stop else Icons.Default.Mic, null, Modifier.size(38.dp), tint = Color.White)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = input,
+                            onValueChange = { input = it },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(26.dp),
+                            placeholder = { Text(tr("type_here"), fontSize = 14.sp) },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Indigo,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                            ),
+                            trailingIcon = {
+                                if (input.isNotEmpty()) {
+                                    IconButton(onClick = { input = "" }) {
+                                        Icon(Icons.Default.Close, "Clear", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                                    }
+                                }
+                            }
+                        )
+
+                        Surface(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .clickable(enabled = input.isNotBlank()) {
+                                    val t = input.trim()
+                                    input = ""
+                                    handleUser(t)
+                                },
+                            shape = CircleShape,
+                            color = if (input.isNotBlank()) Indigo else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shadowElevation = if (input.isNotBlank()) 4.dp else 0.dp
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Send,
+                                    "Send",
+                                    Modifier.size(20.dp),
+                                    tint = if (input.isNotBlank()) Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                                )
+                            }
+                        }
                     }
+
+                    Spacer(Modifier.height(10.dp))
+
+                    val pulse1 by rememberInfiniteTransition(label = "p1").animateFloat(
+                        initialValue = 1f, targetValue = 1.35f,
+                        animationSpec = infiniteRepeatable(tween(1000, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+                        label = "pulse1"
+                    )
+                    val pulse2 by rememberInfiniteTransition(label = "p2").animateFloat(
+                        initialValue = 1f, targetValue = 1.6f,
+                        animationSpec = infiniteRepeatable(tween(1300, 200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+                        label = "pulse2"
+                    )
+
+                    Box(contentAlignment = Alignment.Center) {
+                        if (listening) {
+                            Box(Modifier.size(76.dp).scale(pulse2).clip(CircleShape).background(Indigo.copy(alpha = 0.12f)))
+                            Box(Modifier.size(76.dp).scale(pulse1).clip(CircleShape).background(Violet.copy(alpha = 0.22f)))
+                        }
+                        Surface(
+                            modifier = Modifier
+                                .size(72.dp)
+                                .shadow(12.dp, CircleShape)
+                                .clip(CircleShape)
+                                .clickable { toggle() },
+                            shape = CircleShape,
+                            color = Color.Transparent
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        if (listening) Brush.linearGradient(listOf(Color(0xFFEF4444), Color(0xFFF43F5E)))
+                                        else Brush.linearGradient(listOf(Indigo, Violet))
+                                    ),
+                                alignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    if (listening) Icons.Default.Stop else Icons.Default.Mic,
+                                    contentDescription = "Voice",
+                                    Modifier.size(34.dp),
+                                    tint = Color.White
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = if (listening) tr("stop") else tr("start"),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (listening) Color(0xFFEF4444) else Indigo
+                    )
                 }
-                Spacer(Modifier.height(6.dp))
-                Text(if (listening) tr("stop") else tr("start"), fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(10.dp))
             }
         }
     }

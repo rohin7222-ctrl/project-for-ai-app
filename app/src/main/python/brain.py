@@ -23,9 +23,11 @@ LANGS = {"ta-IN": "Tamil", "en-US": "English", "ja-JP": "Japanese"}
 
 _history = []
 
-SYSTEM = """You are "__NAME__", a friendly voice assistant inside the user's Android phone.
-Always answer in __LANG__. Your answer is read aloud: 1-3 short, natural sentences, plain text only - no markdown, no emojis, no lists, no JSON.
-You are used only for normal conversation and questions. Phone commands (open apps, calls, search inside apps, volume, torch ...) are handled by the app itself, so never claim to perform them; if the user asks for one you did not understand, ask them to say it again in a simpler way, e.g. "open WhatsApp" or "call Amma"."""
+SYSTEM = """You are "__NAME__", a highly capable, friendly personal AI voice assistant on the user's Android phone.
+Current local date and time: __DATETIME__.
+Always reply naturally in __LANG__.
+Your response will be spoken aloud to the user: provide 1-3 concise, helpful, conversational sentences in plain text only. Do not use asterisks, markdown, emojis, or bullet points.
+You handle general knowledge, conversation, reasoning, and questions. On-device hardware control actions (launching apps, calls, in-app searches, volume, flashlight, alarms) are handled natively by the local agent engine."""
 
 
 class ApiError(Exception):
@@ -90,8 +92,12 @@ def list_models(provider, key, url=""):
         return json.dumps({"ok": False, "error": str(e)})
 
 
+_cache = {}
+
+
 def reset():
     del _history[:]
+    _cache.clear()
 
 
 def _complete(cfg, system, hist):
@@ -101,7 +107,7 @@ def _complete(cfg, system, hist):
             "systemInstruction": {"parts": [{"text": system}]},
             "contents": [{"role": "user" if m["role"] == "user" else "model",
                           "parts": [{"text": m["content"]}]} for m in hist],
-            "generationConfig": {"temperature": 0.6},
+            "generationConfig": {"temperature": 0.6, "maxOutputTokens": 200},
         }
         d = _http(GEMINI + "/models/" + model + ":generateContent", body,
                   {"x-goog-api-key": key})
@@ -109,7 +115,7 @@ def _complete(cfg, system, hist):
         return "".join(p.get("text", "") for p in parts if not p.get("thought"))
     if t == "api" and prov == "anthropic":
         d = _http(ANTHROPIC + "/messages",
-                  {"model": model, "max_tokens": 700, "system": system, "messages": hist},
+                  {"model": model, "max_tokens": 250, "system": system, "messages": hist},
                   {"x-api-key": key, "anthropic-version": "2023-06-01"})
         return "".join(b.get("text", "") for b in d["content"])
     msgs = [{"role": "system", "content": system}] + hist
@@ -123,7 +129,7 @@ def _complete(cfg, system, hist):
             return d["message"]["content"]
         headers = {}
     d = _http(base + "/chat/completions",
-              {"model": model, "messages": msgs, "temperature": 0.6}, headers, timeout=180)
+              {"model": model, "messages": msgs, "temperature": 0.6, "max_tokens": 200}, headers, timeout=180)
     return d["choices"][0]["message"]["content"]
 
 
@@ -206,12 +212,93 @@ def _clean(text):
     return text.strip()
 
 
+def _quick_local_answer(text, cfg):
+    """Answers common instant queries (greetings, identity, time, date, math) locally to save API tokens."""
+    t = text.strip().lower()
+    t_clean = re.sub(r"[?!.,]+", "", t).strip()
+    lang = cfg.get("lang", "en-US")
+    name = cfg.get("name") or "NextGen AI"
+
+    # 1. Identity / Name
+    if re.search(r"^(?:who are you|what is your name|your name|who made you|un per enna|unga peru enna|நீ யார்|உன் பெயர் என்ன|名前は何ですか|あなたは誰ですか)$", t_clean):
+        if lang == "ta-IN":
+            return "என் பெயர் %s. நான் உங்கள் தனிப்பட்ட AI உதவியாளர்." % name
+        elif lang == "ja-JP":
+            return "私は%sです。あなたのパーソナルAIアシスタントです。" % name
+        return "I am %s, your personal AI assistant." % name
+
+    # 2. Greetings
+    if re.search(r"^(?:hi|hello|hey|vanakkam|வணக்கம்|வணக்கங்க|good morning|good afternoon|good evening|こんにちは|おはよう)$", t_clean):
+        if lang == "ta-IN":
+            return "வணக்கம்! நான் உங்களுக்கு எப்படி உதவ வேண்டும்?"
+        elif lang == "ja-JP":
+            return "こんにちは！何かお手伝いできることはありますか？"
+        return "Hello! How can I help you today?"
+
+    # 3. How are you
+    if re.search(r"^(?:how are you|how are u|epdi iruka|eppadi irukkeenga|nalla irukiya|எப்படி இருக்கிறீர்கள்|எப்படி இருக்கீங்க|元気ですか|調子はどうですか)$", t_clean):
+        if lang == "ta-IN":
+            return "நான் நலமாக இருக்கிறேன்! உங்களுக்கு உதவ தயாராக உள்ளேன்."
+        elif lang == "ja-JP":
+            return "元気です！いつでもお手伝いできます。"
+        return "I'm doing great, ready to assist you!"
+
+    # 4. Time
+    if re.search(r"^(?:what is the time|time please|what time is it|now time|current time|neram enna|time enna|மணி என்ன|இப்போது நேரம் என்ன|何時ですか|今の時間は)$", t_clean):
+        now_time = time.strftime("%I:%M %p")
+        if lang == "ta-IN":
+            return "இப்போது நேரம்: %s" % now_time
+        elif lang == "ja-JP":
+            return "現在の時刻は %s です。" % now_time
+        return "The current time is %s." % now_time
+
+    # 5. Date
+    if re.search(r"^(?:what is the date|today date|what date is it|what is today's date|date enna|inniku date enna|தேதி என்ன|இன்றைய தேதி என்ன|今日の日付は|何日ですか)$", t_clean):
+        now_date = time.strftime("%A, %d %B %Y")
+        if lang == "ta-IN":
+            return "இன்றைய தேதி: %s" % now_date
+        elif lang == "ja-JP":
+            return "今日の日付は %s です。" % now_date
+        return "Today's date is %s." % now_date
+
+    # 6. Basic Math: e.g. "5 + 10", "calculate 25 * 4", "100 / 5", "50 - 20"
+    m_math = re.match(r"^(?:calculate|what is|கணக்கிடு|மதிப்பு)?\s*(\d+(?:\.\d+)?)\s*([\+\-\*\/xX÷])\s*(\d+(?:\.\d+)?)\s*(?:enna|என்ன|equal|is)?$", t_clean)
+    if m_math:
+        n1 = float(m_math.group(1))
+        op = m_math.group(2).lower()
+        n2 = float(m_math.group(3))
+        res = None
+        if op == "+": res = n1 + n2
+        elif op == "-": res = n1 - n2
+        elif op in ("*", "x"): res = n1 * n2
+        elif op in ("/", "÷"):
+            if n2 != 0: res = n1 / n2
+            else:
+                return "Zero-ஆல் வகுக்க முடியாது." if lang == "ta-IN" else "Cannot divide by zero."
+        if res is not None:
+            res_str = ("%d" % int(res)) if res.is_integer() else ("%.2f" % res)
+            if lang == "ta-IN":
+                return "விடை: %s" % res_str
+            elif lang == "ja-JP":
+                return "計算結果は %s です。" % res_str
+            return "The result is %s." % res_str
+
+    return None
+
+
 def _chat_api(cfg, user_text):
     lang = cfg.get("lang", "en-US")
+    # Response cache check to prevent redundant API token burn
+    cache_key = (cfg.get("model", ""), lang, user_text.strip().lower())
+    if cache_key in _cache:
+        return {"ok": True, "speech": _cache[cache_key], "actions": []}
+
+    now_str = time.strftime("%A, %d %B %Y, %I:%M %p")
     system = SYSTEM.replace("__NAME__", cfg.get("name") or "AI") \
-                   .replace("__LANG__", LANGS.get(lang, "English"))
+                   .replace("__LANG__", LANGS.get(lang, "English")) \
+                   .replace("__DATETIME__", now_str)
     _history.append({"role": "user", "content": user_text})
-    del _history[:-12]
+    del _history[:-6]  # Optimize tokens: truncate history to last 3 conversation turns
     while _history and _history[0]["role"] != "user":
         _history.pop(0)
     try:
@@ -222,6 +309,9 @@ def _chat_api(cfg, user_text):
         return {"ok": True, "speech": _friendly(e, lang), "actions": [], "error": str(e)}
     speech = _clean(raw)
     _history.append({"role": "assistant", "content": speech})
+    if len(_cache) > 100:
+        _cache.clear()
+    _cache[cache_key] = speech
     return {"ok": True, "speech": speech, "actions": []}
 
 
@@ -242,22 +332,22 @@ APPS = {  # spoken name (any language) -> name searched in the phone's app list
     "spotify": "Spotify", "twitter": "X", "snapchat": "Snapchat", "messages": "Messages",
     "phone": "Phone", "contacts": "Contacts", "clock": "Clock", "calculator": "Calculator",
 }
-ORD = {1: ("first", "1st", "one", "mudhal", "mudhalavadhu", "mudhalaavadhu", "muthal", "முதல்", "முதலாவது", "最初", "1番目"),
-       2: ("second", "2nd", "two", "rendavadhu", "irandavadhu", "randavadhu", "இரண்டாவது", "2番目"),
-       3: ("third", "3rd", "three", "moonravadhu", "moondravadhu", "munravadhu", "மூன்றாவது", "3番目"),
-       4: ("fourth", "4th", "four", "naangavadhu", "nalavadhu", "நான்காவது", "4番目"),
-       5: ("fifth", "5th", "five", "ainthavadhu", "anjavadhu", "ஐந்தாவது", "5番目")}
+ORD = {1: ("first", "1st", "one", "mudhal", "mudhalavadhu", "mudhalaavadhu", "muthal", "முதல்", "முதலாவது", "1வது", "ஒன்று", "最初", "1番目"),
+       2: ("second", "2nd", "two", "rendavadhu", "irandavadhu", "randavadhu", "இரண்டாவது", "2வது", "ரெண்டு", "2番目"),
+       3: ("third", "3rd", "three", "moonravadhu", "moondravadhu", "munravadhu", "மூன்றாவது", "3வது", "மூன்று", "3番目"),
+       4: ("fourth", "4th", "four", "naangavadhu", "nalavadhu", "நான்காவது", "4வது", "நான்கு", "4番目"),
+       5: ("fifth", "5th", "five", "ainthavadhu", "anjavadhu", "ஐந்தாவது", "5வது", "ஐந்து", "5番目")}
 NOUNS = ("chat", "video", "result", "item", "contact", "post", "song", "channel", "conversation", "one",
-         "message", "reel", "story", "photo", "link", "சாட்", "வீடியோ", "பாடல்")
-FILLER = r"\b(please|plz|pls|pannunga|pannu|panunga|panni|pannidu|seiyunga|seiyu|podunga|podu|kodunga|sollu)\b"
-SPLIT = re.compile(r"\s*(?:,|;|\.|\bthen\b|\band\b|\bappuram\b|\bapram\b|\baprom\b|\bpinnadi\b|பிறகு|அப்புறம்|その後|、)\s*", re.I)
-PART = r"(?:ah|a|ai|ku|kku|la|le|ல|இல்|ஐ|க்கு|を|に|で)"
+         "message", "reel", "story", "photo", "link", "சாட்", "வீடியோ", "பாடல்", "பதிவு", "தொடர்பு")
+FILLER = r"\b(please|plz|pls|pannunga|pannu|panunga|panni|pannidu|seiyunga|seiyu|podunga|podu|kodunga|sollu|appa|pa)\b"
+SPLIT = re.compile(r"\s*(?:,|;|\.|\bthen\b|\band\b|\bappuram\b|\bapram\b|\baprom\b|\bpinnadi\b|பிறகு|அப்புறம்|பின்னர்|その後|、)\s*", re.I)
+PART = r"(?:ah|a|ai|ku|kku|la|le|ல|இல்|ஐ|க்கு|க்|கு|வ|வை|ஐயும்|வும்|を|に|で)"
 
 
 def _app_name(raw):
     t = raw.strip().lower()
     t = re.sub(r"^(?:the|my|a)\s+", "", t)
-    t = re.sub(r"\s+(app|application|ஆப்|アプリ)$", "", t).strip()
+    t = re.sub(r"\s+(app|application|ஆப்|செயலி|アプリ)$", "", t).strip()
     for k in sorted(APPS, key=len, reverse=True):
         if t == k or t.startswith(k + " ") or t.endswith(" " + k):
             return APPS[k]
@@ -272,9 +362,11 @@ def _digits(t):
 def _ordinal(t):
     for n, words in ORD.items():
         for w in words:
-            if re.search(r"(?<![\w])" + re.escape(w) + r"(?![\w])", t):
+            if w in t:
                 return n
-    m = re.search(r"\b(\d{1,2})(?:st|nd|rd|th)\b", t) or re.search(r"\b(?:chat|video|result|item)\s+(\d{1,2})\b", t)
+    m = re.search(r"(\d{1,2})(?:st|nd|rd|th|வது|vathu|vadhu)?\s*(?:chat|video|result|item|post|சாட்|வீடியோ)", t) or \
+        re.search(r"(?:chat|video|result|item)\s+(\d{1,2})", t) or \
+        re.search(r"\b(\d{1,2})(?:st|nd|rd|th)\b", t)
     return int(m.group(1)) if m else None
 
 
@@ -287,7 +379,7 @@ _assistant = {"name": ""}
 
 def _norm(p):
     p = p.strip().lower()
-    nm = _assistant["name"]
+    nm = _assistant.get("name", "")
     if nm:
         p = re.sub(r"^" + re.escape(nm) + r"[\s,]+|[\s,]+" + re.escape(nm) + r"$", "", p)
     p = re.sub(r"[?!]+", " ", p).strip()
@@ -302,76 +394,128 @@ def _norm(p):
 
 
 def _parse_one(p, last_app):
-    """One clause -> (list_of_actions, kind) or None. last_app = app mentioned earlier in the sentence."""
+    """One clause -> (list_of_actions, kind) or None."""
     t = _norm(p)
     if not t:
         return None
 
-    # --- system buttons (whole-sentence only, so "bring back music" never presses Back)
-    sysmap = {"go home": "home", "home": "home", "home screen": "home", "back": "back", "go back": "back",
-              "thirumba po": "back", "pinnadi po": "back", "recents": "recents", "recent apps": "recents",
-              "screenshot": "screenshot", "take screenshot": "screenshot", "screen shot": "screenshot",
-              "lock": "lock", "lock screen": "lock", "lock phone": "lock", "notifications": "notifications",
-              "show notifications": "notifications", "notification": "notifications", "quick settings": "quick_settings"}
-    if t in sysmap:
-        return [{"type": "system", "name": sysmap[t]}], "ok"
+    # --- system buttons
+    sys_home = ("go home", "home", "home screen", "ஹோம் போ", "ஹோம்", "முகப்புக்கு போ", "முகப்பு", "ホーム")
+    if t in sys_home or re.match(r"^(?:go\s+to\s+)?home(?:\s+screen)?$", t):
+        return [{"type": "system", "name": "home", "desc": "Go Home"}], "ok"
 
-    # --- torch / volume
-    if re.search(r"\b(torch|flash ?light|tochu|டார்ச்|ライト)\b", t):
-        return [{"type": "flashlight", "on": not re.search(r"\b(off|aff|நிறுத்து|消)\b", t)}], "ok"
-    if re.fullmatch(r".*\bvolume\b.*|.*\b(mute|silent)\b.*", t):
-        d = "mute" if re.search(r"mute|silent", t) else "down" if re.search(r"down|kuraa?i?|less|decrease|low", t) else "up"
-        return [{"type": "volume", "dir": d}], "ok"
+    sys_back = ("back", "go back", "thirumba po", "pinnadi po", "பின்னாடி போ", "பின்னே போ", "பேக் போ", "戻る")
+    if t in sys_back or re.match(r"^(?:go\s+)?back$", t):
+        return [{"type": "system", "name": "back", "desc": "Go Back"}], "ok"
+
+    sys_rec = ("recents", "recent apps", "ரெசென்ட்ஸ்", "ரீசென்ட்ஸ்", "சமீபத்திய செயலிகள்")
+    if t in sys_rec or "recents" in t or "recent apps" in t:
+        return [{"type": "system", "name": "recents", "desc": "Recent Apps"}], "ok"
+
+    if any(k in t for k in ("screenshot", "screen shot", "ஸ்கிரீன்ஷாட்", "ஸ்கிரீன் ஷாட்", "ஸ்கிரீன்சாட்", "スクリーンショット")):
+        return [{"type": "system", "name": "screenshot", "desc": "Take Screenshot"}], "screenshot"
+
+    if any(k in t for k in ("lock phone", "lock screen", "lock", "லாக் பண்ணு", "போன் லாக்", "திரை பூட்டு")):
+        return [{"type": "system", "name": "lock", "desc": "Lock Screen"}], "ok"
+
+    if any(k in t for k in ("notifications", "notification", "நோட்டிபிகேஷன்", "அறிவிப்புகள்")):
+        return [{"type": "system", "name": "notifications", "desc": "Notifications"}], "ok"
+
+    if "quick settings" in t:
+        return [{"type": "system", "name": "quick_settings", "desc": "Quick Settings"}], "ok"
+
+    # --- torch / flashlight
+    torch_words = ("torch", "flashlight", "flash light", "tochu", "டார்ச்", "விளக்கு", "லைட்", "ライト")
+    if any(w in t for w in torch_words):
+        is_off = any(w in t for w in ("off", "aff", "நிறுத்து", "அணை", "ஆஃப்", "ஆப்", "மூடு", "消"))
+        return [{"type": "flashlight", "on": not is_off, "desc": "Torch Off" if is_off else "Torch On"}], "torch_off" if is_off else "torch_on"
+
+    # --- volume
+    if any(w in t for w in ("volume", "வால்யூம்", "சத்தம்", "ஒலி", "mute", "silent", "மியூட்", "சைலன்ட்")):
+        if any(w in t for w in ("mute", "silent", "மியூட்", "சைலன்ட்")):
+            d = "mute"
+        elif any(w in t for w in ("down", "kura", "kuraa", "kurai", "less", "decrease", "low", "குறை", "இறக்கு")):
+            d = "down"
+        else:
+            d = "up"
+        return [{"type": "volume", "dir": d, "desc": f"Volume {d}"}], "ok"
+
+    # --- media playback controls
+    if any(w in t for w in ("next song", "next track", "next paattu", "அடுத்த பாட்டு", "அடுத்த பாடல்")):
+        return [{"type": "media", "cmd": "next", "desc": "Next Song"}], "media"
+    if any(w in t for w in ("previous song", "prev song", "prev track", "முந்தைய பாட்டு", "முந்தைய பாடல்")):
+        return [{"type": "media", "cmd": "prev", "desc": "Previous Song"}], "media"
+    if any(w in t for w in ("pause music", "stop music", "pause song", "பாட்டை நிறுத்து", "இசையை நிறுத்து")):
+        return [{"type": "media", "cmd": "pause", "desc": "Pause Music"}], "media"
+    if any(w in t for w in ("play music", "resume music", "play song", "பாட்டை போடு", "பாடல் போடு", "இசையை இயக்கு")):
+        return [{"type": "media", "cmd": "play", "desc": "Play Music"}], "media"
 
     # --- calls
-    if re.search(r"\b(answer|pick up|attend)\b.*\bcall\b", t):
-        return [{"type": "answer_call"}], "ok"
-    if re.search(r"\b(end|cut|disconnect|hang ?up)\b.*\bcall\b|\bcall\b.*\b(end|cut)\b", t):
-        return [{"type": "end_call"}], "ok"
+    if re.search(r"\b(answer|pick up|attend)\b.*\bcall\b", t) or any(w in t for w in ("அழைப்பை எடு", "போன் எடு")):
+        return [{"type": "answer_call", "desc": "Answer Call"}], "ok"
+    if re.search(r"\b(end|cut|disconnect|hang ?up)\b.*\bcall\b|\bcall\b.*\b(end|cut)\b", t) or any(w in t for w in ("அழைப்பை முடி", "போன் வை", "கால் கட்")):
+        return [{"type": "end_call", "desc": "End Call"}], "ok"
     m = re.match(r"^(?:call|dial|phone)\s+(?P<t>.+)$", t) or \
-        re.match(r"^(?P<t>.+?)\s+" + PART + r"?\s*(?:call|phone|dial|போன்|கால்|電話)(?:\s+(?:vidu|panni vidu|pa|da))?$", t)
-    if m and not re.search(r"\b(search|thedu|open|in whatsapp)\b", t):
+        re.match(r"^(?P<t>.+?)\s+" + PART + r"?\s*(?:call|phone|dial|போன்|கால்|அழை)(?:\s+(?:vidu|panni vidu|pa|da|பண்ணு|செய்))?$", t)
+    if m and not any(w in t for w in ("search", "thedu", "open", "in whatsapp", "தேடு")):
         tgt = m.group("t").strip()
         tgt = re.sub(r"\s+" + PART + r"$", "", tgt).strip()
-        return [{"type": "call", "target": _digits(tgt) or tgt}], "call"
+        num = _digits(tgt) or tgt
+        return [{"type": "call", "target": num, "desc": f"Call {num}"}], "call"
 
     # --- alarm / timer
-    if re.search(r"alarm|அலாரம்|アラーム", t):
-        m = re.search(r"(\d{1,2})(?:[:.\s](\d{2}))?\s*(am|pm)?", re.sub(r"alarm|அலாரம்|アラーム", " ", t))
+    if any(w in t for w in ("alarm", "அலாரம்", "アラーム")):
+        m = re.search(r"(\d{1,2})(?:[:.\s](\d{2}))?\s*(am|pm|மணி|மணியளவில்)?", t)
         if m:
-            h, mi, ap = int(m.group(1)), int(m.group(2) or 0), m.group(3)
-            if ap == "pm" and h < 12: h += 12
-            if ap == "am" and h == 12: h = 0
-            return [{"type": "alarm", "hour": h % 24, "minute": mi % 60, "label": ""}], "ok"
+            h, mi = int(m.group(1)), int(m.group(2) or 0)
+            ap = (m.group(3) or "").lower()
+            if "pm" in ap and h < 12: h += 12
+            if "am" in ap and h == 12: h = 0
+            return [{"type": "alarm", "hour": h % 24, "minute": mi % 60, "label": "", "desc": f"Alarm {h%24}:{mi:02d}"}], "ok"
     m = re.search(r"timer.*?(\d+)\s*(second|sec|minute|min|nimisham|நிமிடம்)|(\d+)\s*(second|sec|minute|min|nimisham|நிமிடம்).*timer", t)
     if m:
         g = m.groups(); n = int(g[0] or g[2]); u = g[1] or g[3]
-        return [{"type": "timer", "seconds": n if u.startswith("s") else n * 60}], "ok"
+        secs = n if u.startswith("s") else n * 60
+        return [{"type": "timer", "seconds": secs, "desc": f"Timer {n}m"}], "ok"
+
+    # --- copy to clipboard
+    m = re.match(r"^(?:copy|காப்பி பண்ணு|நகலெடு)\s+(?P<x>.+)$", t)
+    if m:
+        txt = m.group("x").strip()
+        return [{"type": "clipboard", "text": txt, "desc": f"Copy '{txt[:20]}'"}], "clipboard"
+
+    # --- direct URL / website
+    m = re.match(r"^(?:open|go to|browse)\s+(?P<u>(?:https?://)?[\w\-]+(?:\.[\w\-]+)+(?:/\S*)?)$", t)
+    if m:
+        u = m.group("u").strip()
+        if not u.startswith("http"):
+            u = "https://" + u
+        return [{"type": "open_url", "url": u, "desc": f"Open {u}"}], "ok"
 
     # --- settings pages
     m = re.search(r"\b(wifi|wi-fi|bluetooth|display|sound|battery)\b.*\bsettings?\b|\bsettings?\b.*\b(wifi|bluetooth|display|sound|battery)\b", t)
     if m:
         pg = next(x for x in m.groups() if x).replace("wi-fi", "wifi")
-        return [{"type": "settings", "page": pg}], "ok"
+        return [{"type": "settings", "page": pg, "desc": f"Settings: {pg}"}], "ok"
 
     # --- navigate
-    m = re.match(r"^(?:navigate|directions?|route)(?:\s+to)?\s+(?P<q>.+)$", t)
+    m = re.match(r"^(?:navigate|directions?|route)(?:\s+to)?\s+(?P<q>.+)$", t) or \
+        re.match(r"^(?P<q>.+?)\s*(?:வழி காட்டு|ரூட் காட்டு)$", t)
     if m:
-        return [{"type": "navigate", "query": m.group("q")}], "ok"
+        return [{"type": "navigate", "query": m.group("q").strip(), "desc": f"Navigate to {m.group('q').strip()}"}], "ok"
 
     # --- scroll
-    m = re.search(r"\bscroll\b|\bkeela\b|\bmela\b|கீழே|மேலே", t)
-    if m and re.search(r"scroll|ஸ்க்ரோல்", t):
-        return [{"type": "ui_scroll", "dir": "up" if re.search(r"\bup\b|mela|மேலே", t) else "down"}], "ok"
+    if any(w in t for w in ("scroll", "ஸ்க்ரோல்", "keela", "mela", "கீழே", "மேலே")):
+        is_up = any(w in t for w in ("up", "mela", "மேலே"))
+        return [{"type": "ui_scroll", "dir": "up" if is_up else "down", "desc": "Scroll Up" if is_up else "Scroll Down"}], "ok"
 
-    # --- open Nth chat / video / result
+    # --- open Nth item
     n = _ordinal(t)
-    if n and (re.search(r"\b(open|click|tap|play|thira|thiranga|select)\b|" + "|".join(NOUNS), t)):
-        return [{"type": "ui_open_nth", "n": n}], "nth"
+    if n and (any(w in t for w in ("open", "click", "tap", "play", "thira", "thiranga", "select", "திற", "தொடு", "போடு")) or any(w in t for w in NOUNS)):
+        return [{"type": "ui_open_nth", "n": n, "desc": f"Open Item #{n}"}], "nth"
 
-    # --- search inside an app:  "search amma", "amma thedu", "whatsapp la amma thedu", "search amma in whatsapp"
-    app = None
-    q = None
+    # --- search inside an app / search
+    app, q = None, None
     m = re.match(r"^(?:search|find|look for)\s+(?:for\s+)?(?P<q>.+?)\s+(?:in|on|at)\s+(?P<a>.+)$", t)
     if m:
         q, app = m.group("q"), m.group("a")
@@ -381,7 +525,7 @@ def _parse_one(p, last_app):
             q, app = m.group("q"), m.group("a")
     if q is None:
         m = re.match(r"^(?:search|find|look for)\s+(?:for\s+)?(?P<q>.+)$", t) or \
-            re.match(r"^(?P<q>.+?)\s*(?:nu|ன்னு|னு|ஐ|ah|a)?\s*(?:search|thedu|thedunga|theduga|தேடு|தேடுங்க|検索)(?=\s|$).*$", t)
+            re.match(r"^(?P<q>.+?)\s*(?:nu|ன்னு|னு|ஐ|ah|a)?\s*(?:search|thedu|thedunga|theduga|தேடு|தேடுங்க|find|検索)(?=\s|$).*$", t)
         if m:
             q = m.group("q")
     if q:
@@ -390,41 +534,47 @@ def _parse_one(p, last_app):
         qd = _digits(q)
         q = qd or q
         acts = []
-        if appn == "YouTube":
-            return [{"type": "youtube", "query": q}], "search:" + appn
+        if appn == "YouTube" or "youtube" in (app or "").lower() or "யூடியூப்" in t:
+            return [{"type": "youtube", "query": q, "desc": f"YouTube: '{q}'"}], "search:" + (appn or "YouTube")
         if app:
-            acts.append({"type": "open_app", "name": appn})
-        acts.append({"type": "ui_search", "query": q, "submit": True})
+            acts.append({"type": "open_app", "name": appn, "desc": f"Open {appn}"})
+        acts.append({"type": "ui_search", "query": q, "submit": True, "desc": f"Search '{q}'"})
         return acts, "search:" + (appn or "")
 
     # --- type text / send / click
-    m = re.match(r"^(?:type|write|enter)\s+(?P<x>.+)$", t) or re.match(r"^(?P<x>.+?)\s*(?:nu|ன்னு)?\s*(?:type|write)(?=\s|$).*$", t)
+    m = re.match(r"^(?:type|write|enter)\s+(?P<x>.+)$", t) or re.match(r"^(?P<x>.+?)\s*(?:nu|ன்னு)?\s*(?:type|write|தட்டச்சு)(?=\s|$).*$", t)
     if m:
-        return [{"type": "ui_type", "text": m.group("x").strip(), "send": False}], "ok"
-    if re.fullmatch(r"(send|send it|anuppu|அனுப்பு|送信)", t):
-        return [{"type": "ui_click", "text": "send"}], "ok"
+        return [{"type": "ui_type", "text": m.group("x").strip(), "send": False, "desc": f"Type '{m.group('x').strip()}'"}], "ok"
+    if any(t == s for s in ("send", "send it", "anuppu", "அனுப்பு", "அனுப்பி விடு", "送信")):
+        return [{"type": "ui_click", "text": "send", "desc": "Send"}], "ok"
     m = re.match(r"^(?:click|tap|press|select)\s+(?:on\s+)?(?P<x>.+)$", t) or \
-        re.match(r"^(?P<x>.+?)\s+" + PART + r"?\s*(?:click|tap|press|thotta|thodu|தொடு|கிளிக்)(?=\s|$).*$", t)
+        re.match(r"^(?P<x>.+?)\s*" + PART + r"?\s*(?:click|tap|press|thotta|thodu|தொடு|கிளிக்|タップ|押).*$", t)
     if m:
-        return [{"type": "ui_click", "text": m.group("x").strip()}], "ok"
+        return [{"type": "ui_click", "text": m.group("x").strip(), "desc": f"Click '{m.group('x').strip()}'"}], "ok"
 
     # --- open app (last, most generic)
     m = re.match(r"^(?:open|launch|start|run)\s+(?P<a>.+)$", t) or \
-        re.match(r"^(?P<a>.+?)\s+" + PART + r"?\s*(?:open|thira|thiranga|thirakka|launch|start|திற|திறங்க|を開|開い)(?=\s|$).*$", t)
+        re.match(r"^(?P<a>.+?)\s*" + PART + r"?\s*(?:open|thira|thiranga|thirakka|launch|start|திற|திறங்க|திறக்க|を開|開い|開け).*$", t)
     if m:
         name = _app_name(m.group("a"))
         if name:
-            return [{"type": "open_app", "name": name}], "app:" + name
+            return [{"type": "open_app", "name": name, "desc": f"Open {name}"}], "app:" + name
     return None
 
 
 SAY = {  # spoken confirmation per language
     "ta-IN": {"app": "%s திறக்கிறேன்.", "search": "%s தேடுகிறேன்.", "call": "%s க்கு கால் செய்யவா? உறுதிப்படுத்துங்கள்.",
-              "nth": "%d-வது ஐ திறக்கிறேன்.", "ok": "சரி.", "yt": "YouTube-ல %s தேடுகிறேன்."},
+              "nth": "%d-வது ஐ திறக்கிறேன்.", "ok": "சரி.", "yt": "YouTube-ல %s தேடுகிறேன்.",
+              "torch_on": "டார்ச் ஆன் செய்துள்ளேன்.", "torch_off": "டார்ச் ஆஃப் செய்துள்ளேன்.",
+              "screenshot": "ஸ்கிரீன்ஷாட் எடுக்கப்பட்டது.", "media": "இசை மாற்றப்பட்டது.", "clipboard": "நகலெடுக்கப்பட்டது."},
     "en-US": {"app": "Opening %s.", "search": "Searching %s.", "call": "Calling %s. Please confirm.",
-              "nth": "Opening number %d.", "ok": "Okay.", "yt": "Searching %s on YouTube."},
+              "nth": "Opening number %d.", "ok": "Done.", "yt": "Searching %s on YouTube.",
+              "torch_on": "Flashlight turned on.", "torch_off": "Flashlight turned off.",
+              "screenshot": "Screenshot captured.", "media": "Media updated.", "clipboard": "Copied to clipboard."},
     "ja-JP": {"app": "%sを開きます。", "search": "%sを検索します。", "call": "%sに電話します。確認してください。",
-              "nth": "%d番目を開きます。", "ok": "はい。", "yt": "YouTubeで%sを検索します。"},
+              "nth": "%d番目を開きます。", "ok": "はい。", "yt": "YouTubeで%sを検索します。",
+              "torch_on": "ライトをつけました。", "torch_off": "ライトを消しました。",
+              "screenshot": "スクリーンショットを撮影しました。", "media": "メディアを更新しました。", "clipboard": "コピーしました。"},
 }
 
 
@@ -450,6 +600,11 @@ def local_command(text, lang="en-US"):
         elif kind == "nth": said.append(s["nth"] % acts[0]["n"])
         elif kind.startswith("search:") and acts[0]["type"] == "youtube": said.append(s["yt"] % acts[0]["query"])
         elif kind.startswith("search:"): said.append(s["search"] % acts[-1]["query"])
+        elif kind == "torch_on": said.append(s["torch_on"])
+        elif kind == "torch_off": said.append(s["torch_off"])
+        elif kind == "screenshot": said.append(s["screenshot"])
+        elif kind == "media": said.append(s["media"])
+        elif kind == "clipboard": said.append(s["clipboard"])
         else: said.append(s["ok"])
     return {"speech": " ".join(said), "actions": actions}
 
@@ -467,6 +622,9 @@ def chat(cfg_json, user_text):
         if cmd:
             cmd["ok"] = True
             return json.dumps(cmd)
+        quick = _quick_local_answer(user_text, cfg)
+        if quick:
+            return json.dumps({"ok": True, "speech": quick, "actions": []})
         return json.dumps(_chat_api(cfg, user_text))
     except Exception as e:
         return json.dumps({"ok": True, "speech": _friendly(e, lang), "actions": [], "error": str(e)})

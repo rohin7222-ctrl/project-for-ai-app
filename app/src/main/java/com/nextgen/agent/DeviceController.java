@@ -12,9 +12,13 @@ import android.media.AudioManager;
 import android.net.Uri;
 import android.provider.AlarmClock;
 import android.provider.ContactsContract;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.telecom.TelecomManager;
 import android.telephony.SmsManager;
+import android.view.KeyEvent;
 
 import androidx.core.content.ContextCompat;
 
@@ -64,6 +68,8 @@ public class DeviceController {
                 }
                 case "flashlight": return flashlight(a.optBoolean("on", true));
                 case "volume": return volume(a.optString("dir"));
+                case "media": return media(a.optString("cmd"));
+                case "clipboard": return clipboard(a.optString("text"));
                 case "system": return system(a.optString("name"));
                 case "settings": return settings(a.optString("page"));
                 case "answer_call": return telecom(true);
@@ -208,6 +214,13 @@ public class DeviceController {
     /** Inside-the-app control through the accessibility service. Blocks, so call from a background thread. */
     private String ui(int kind, JSONObject a) {
         AgentAccessibilityService s = AgentAccessibilityService.instance;
+        if (s == null) {
+            AgentAccessibilityService.autoEnable(ctx);
+            for (int i = 0; i < 5 && AgentAccessibilityService.instance == null; i++) {
+                SystemClock.sleep(200);
+            }
+            s = AgentAccessibilityService.instance;
+        }
         if (s == null) return "NEED_ACCESSIBILITY";
         switch (kind) {
             case 0: return s.uiSearch(a.optString("query"), a.optBoolean("submit", true));
@@ -216,6 +229,28 @@ public class DeviceController {
             case 3: return s.uiType(a.optString("text"), a.optBoolean("send", false));
             default: return s.uiScroll(!"up".equals(a.optString("dir")));
         }
+    }
+
+    private String media(String cmd) {
+        AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+        if (am == null) return "ERR:audio service unavailable";
+        int code;
+        if ("next".equals(cmd)) code = KeyEvent.KEYCODE_MEDIA_NEXT;
+        else if ("prev".equals(cmd) || "previous".equals(cmd)) code = KeyEvent.KEYCODE_MEDIA_PREVIOUS;
+        else if ("stop".equals(cmd)) code = KeyEvent.KEYCODE_MEDIA_STOP;
+        else code = KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE;
+        long eventTime = SystemClock.uptimeMillis();
+        am.dispatchMediaKeyEvent(new KeyEvent(eventTime, eventTime, KeyEvent.ACTION_DOWN, code, 0));
+        am.dispatchMediaKeyEvent(new KeyEvent(eventTime, eventTime, KeyEvent.ACTION_UP, code, 0));
+        return "OK";
+    }
+
+    private String clipboard(String text) {
+        ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+        if (cm == null) return "ERR:clipboard unavailable";
+        ClipData clip = ClipData.newPlainText("AI Copied Text", text);
+        cm.setPrimaryClip(clip);
+        return "OK";
     }
 
     private String telecom(boolean answer) {
