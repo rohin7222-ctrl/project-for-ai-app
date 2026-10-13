@@ -163,9 +163,11 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    private fun runList(list: List<JSONObject>) {
+    private suspend fun runList(list: List<JSONObject>) {
         for (a in list) {
-            val r = device.execute(a)
+            val r = withContext(Dispatchers.IO) { device.execute(a) }   // ui_* actions block while they wait for the screen
+            if (a.optString("type") == "open_app") delay(2500)          // let the app finish opening before the next step
+            else if (a.optString("type").startsWith("ui_")) delay(600)
             when {
                 r == "NEED_ACCESSIBILITY" -> {
                     chat.add(Msg(false, tr("need_a11y")))
@@ -224,7 +226,7 @@ class MainActivity : FragmentActivity() {
                     title = { Text(tr("confirm_title")) },
                     text = { Column { pending.forEach { Text("• " + describe(it)) } } },
                     confirmButton = {
-                        TextButton(onClick = { val l = pending; pending = emptyList(); runList(l) }) { Text(tr("allow")) }
+                        TextButton(onClick = { val l = pending; pending = emptyList(); lifecycleScope.launch { runList(l) } }) { Text(tr("allow")) }
                     },
                     dismissButton = { TextButton(onClick = { pending = emptyList() }) { Text(tr("deny")) } }
                 )

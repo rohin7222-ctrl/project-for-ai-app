@@ -68,6 +68,11 @@ public class DeviceController {
                 case "settings": return settings(a.optString("page"));
                 case "answer_call": return telecom(true);
                 case "end_call": return telecom(false);
+                case "ui_search": return ui(0, a);
+                case "ui_open_nth": return ui(1, a);
+                case "ui_click": return ui(2, a);
+                case "ui_type": return ui(3, a);
+                case "ui_scroll": return ui(4, a);
                 default: return "ERR:unknown action " + type;
             }
         } catch (Exception e) {
@@ -185,6 +190,19 @@ public class DeviceController {
             default: a = Settings.ACTION_SETTINGS;
         }
         return start(new Intent(a));
+    }
+
+    /** Inside-the-app control through the accessibility service. Blocks, so call from a background thread. */
+    private String ui(int kind, JSONObject a) {
+        AgentAccessibilityService s = AgentAccessibilityService.instance;
+        if (s == null) return "NEED_ACCESSIBILITY";
+        switch (kind) {
+            case 0: return s.uiSearch(a.optString("query"), a.optBoolean("submit", true));
+            case 1: return s.uiOpenNth(a.optInt("n", 1));
+            case 2: return s.uiClick(a.optString("text"));
+            case 3: return s.uiType(a.optString("text"), a.optBoolean("send", false));
+            default: return s.uiScroll(!"up".equals(a.optString("dir")));
+        }
     }
 
     private String telecom(boolean answer) {
