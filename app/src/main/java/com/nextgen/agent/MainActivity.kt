@@ -747,7 +747,7 @@ class MainActivity : FragmentActivity() {
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         LinearProgressIndicator(
-                                            progress = { trainProgress },
+                                            progress = trainProgress,
                                             modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
                                             color = Indigo
                                         )
@@ -1524,7 +1524,7 @@ class MainActivity : FragmentActivity() {
                                         if (listening) Brush.linearGradient(listOf(Color(0xFFEF4444), Color(0xFFF43F5E)))
                                         else Brush.linearGradient(listOf(Indigo, Violet))
                                     ),
-                                alignment = Alignment.Center
+                                    contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     if (listening) Icons.Default.Stop else Icons.Default.Mic,
