@@ -68,6 +68,7 @@ public class DeviceController {
                 case "call": return call(a.optString("target"));
                 case "sms": return sms(a.optString("target"), a.optString("text"));
                 case "open_app": return openApp(a.optString("name"));
+                case "google_search":
                 case "web_search": return view("https://www.google.com/search?q=" + Uri.encode(a.optString("query")));
                 case "youtube": return view("https://www.youtube.com/results?search_query=" + Uri.encode(a.optString("query")));
                 case "navigate": return view("geo:0,0?q=" + Uri.encode(a.optString("query")));
@@ -106,6 +107,7 @@ public class DeviceController {
                 case "ui_type": return ui(3, a);
                 case "ui_scroll": return ui(4, a);
                 case "ui_clear_text": return ui(5, a);
+                case "ui_open_last_file": return ui(6, a);
                 default: return "ERR:unknown action " + type;
             }
         } catch (Exception e) {
@@ -459,6 +461,7 @@ public class DeviceController {
             case 3: return s.uiType(a.optString("text"), a.optBoolean("send", false));
             case 4: return s.uiScroll(!"up".equals(a.optString("dir")));
             case 5: return s.uiClearText();
+            case 6: return s.uiOpenLastFile();
             default: return "ERR:unknown ui action " + kind;
         }
     }

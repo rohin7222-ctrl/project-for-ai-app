@@ -353,6 +353,7 @@ APPS = {  # spoken name (any language) -> name searched in the phone's app list
     "whatsapp": "WhatsApp", "whats app": "WhatsApp", "வாட்ஸ்அப்": "WhatsApp", "வாட்ஸ்ஆப்": "WhatsApp",
     "வாட்சப்": "WhatsApp", "ワッツアップ": "WhatsApp", "ウォッツアップ": "WhatsApp",
     "youtube": "YouTube", "you tube": "YouTube", "யூடியூப்": "YouTube", "யூட்யூப்": "YouTube", "ユーチューブ": "YouTube",
+    "google": "Google", "கூகுள்": "Google", "கூகிள்": "Google", "グーグル": "Google",
     "facebook": "Facebook", "face book": "Facebook", "ஃபேஸ்புக்": "Facebook", "பேஸ்புக்": "Facebook",
     "முகநூல்": "Facebook", "フェイスブック": "Facebook",
     "instagram": "Instagram", "insta": "Instagram", "இன்ஸ்டாகிராம்": "Instagram", "インスタ": "Instagram",
@@ -369,8 +370,9 @@ ORD = {1: ("first", "1st", "one", "mudhal", "mudhalavadhu", "mudhalavathu", "mud
        4: ("fourth", "4th", "four", "naangavathu", "nalavathu", "naangavadhu", "nalavadhu", "நான்காவது", "நான்காம்", "4வது", "நான்கு", "4番目"),
        5: ("fifth", "5th", "five", "ainthavathu", "anjavathu", "ainthavadhu", "anjavadhu", "ஐந்தாவது", "ஐந்தாம்", "5வது", "ஐந்து", "5番目")}
 NOUNS = ("chat", "video", "result", "item", "contact", "post", "song", "channel", "conversation", "one",
-         "message", "reel", "story", "photo", "link", "சாட்", "வீடியோ", "பாடல்", "பதிவு", "தொடர்பு")
-FILLER = r"\b(please|plz|pls|pannunga|pannu|panunga|panni|pannidu|seiyunga|seiyu|podunga|podu|kodunga|sollu|pa|da)\b"
+         "message", "reel", "story", "photo", "link", "web", "website", "site", "page",
+         "சாட்", "வீடியோ", "பாடல்", "பதிவு", "தொடர்பு", "வலைதளம்", "இணைப்பு")
+FILLER = r"\b(please|plz|pls|pannanum|pananum|pannunga|pannu|panunga|panni|pannidu|seiyunga|seiyu|podunga|podu|kodunga|sollu|pa|da)\b"
 SPLIT = re.compile(r"\s*(?:,|;|\.|\bthen\b|\band\b|\bappuram\b|\bapram\b|\baprom\b|\bpinnadi\b|பிறகு|அப்புறம்|பின்னர்|その後|、)\s*", re.I)
 PART = r"(?:ah|a|ai|ku|kku|la|le|ல|இல்|ஐ|க்கு|க்|கு|வ|வை|ஐயும்|வும்|を|に|で)"
 
@@ -606,13 +608,37 @@ def _parse_one(p, last_app):
                 app_target = cand
                 t_core = re.sub(r"\b(?:in|on|inside)\s+" + re.escape(m_app_in.group("a")) + r"$", "", t).strip()
 
+    # --- open last received file in chat (WhatsApp, Telegram, etc.)
+    # "whatsapp la chat la last ah vantha files ah open pannanum", "open last file in whatsapp", "last file ah open pannu"
+    m_last_file = re.search(r"\b(?:last|latest|kadasi|kadaisi|கடைசி|கடைசியாக)\b.*?\b(?:file|files|document|doc|pdf|media|photo|video|கோப்பு|கோப்பை|ஃபைல்|பைல்)\b", t) or \
+                  re.search(r"\b(?:file|files|document|doc|pdf|media|கோப்பு|ஃபைல்)\b.*?\b(?:last|latest|kadasi|kadaisi|கடைசி)\b", t)
+    if m_last_file and (any(w in t for w in ("open", "thira", "thiranga", "click", "திற", "பாரு", "பார்", "pannanum", "pananum", "பண்ணனும்")) or any(w in t for w in ("vantha", "வந்த", "chat", "சாட்"))):
+        acts = []
+        if app_target and app_target in ("WhatsApp", "Telegram"):
+            acts.append({"type": "open_app", "name": app_target, "desc": f"Open {app_target}"})
+        acts.append({"type": "ui_open_last_file", "desc": "Open Last File"})
+        return acts, "last_file"
+
     n = _ordinal(t_core)
-    if n and (any(w in t_core for w in ("open", "click", "tap", "play", "thira", "thiranga", "select", "திற", "தொடு", "போடு", "itha", "ithai", "இதை")) or any(w in t_core for w in NOUNS) or re.search(r"\b\d+(?:st|nd|rd|th)?\s*(?:video|chat|item|post|song|one)\b", t_core)):
+    if n and (any(w in t_core for w in ("open", "click", "tap", "play", "thira", "thiranga", "select", "திற", "தொடு", "போடு", "itha", "ithai", "இதை")) or any(w in t_core for w in NOUNS) or re.search(r"\b\d+(?:st|nd|rd|th)?\s*(?:video|chat|item|post|song|one|web)\b", t_core)):
         acts = []
         if app_target:
             acts.append({"type": "open_app", "name": app_target, "desc": f"Open {app_target}"})
         acts.append({"type": "ui_open_nth", "n": n, "desc": f"Open Item #{n}"})
         return acts, "nth"
+
+    # --- direct Google Search (e.g. "google search python", "google la search python", "search python on google", "google la search")
+    m_g = re.match(r"^(?:google|கூகுள்|கூகிள்)\s+(?:la|le|ல|இல்)?\s*(?:search|thedu|தேடு)(?:\s+(?P<q>.+))?$", t) or \
+          re.match(r"^(?:search|thedu|தேடு)\s+(?:in\s+|on\s+)?(?:google|கூகுள்|கூகிள்)(?:\s+(?:for\s+)?(?P<q>.+))?$", t) or \
+          re.match(r"^(?:search|thedu|தேடு)\s+(?P<q>.+?)\s+(?:in|on)\s+(?:google|கூகுள்|கூகிள்)$", t)
+    if m_g:
+        q = m_g.group("q")
+        if q:
+            q = re.sub(r"\s*(?:nu|ன்னு|னு)$", "", q.strip()).strip()
+        if q:
+            return [{"type": "web_search", "query": q, "desc": f"Google Search: '{q}'"}], "google:" + q
+        else:
+            return [{"type": "open_url", "url": "https://www.google.com", "desc": "Open Google"}], "google_page"
 
     # --- search inside an app / search
     app, q = None, None
@@ -636,6 +662,8 @@ def _parse_one(p, last_app):
         acts = []
         if appn == "YouTube" or "youtube" in (app or "").lower() or "யூடியூப்" in t:
             return [{"type": "youtube", "query": q, "desc": f"YouTube: '{q}'"}], "search:" + (appn or "YouTube")
+        if appn == "Google" or "google" in (app or "").lower() or "கூகுள்" in (app or "").lower() or "கூகிள்" in (app or "").lower():
+            return [{"type": "web_search", "query": q, "desc": f"Google Search: '{q}'"}], "google:" + q
         if app:
             acts.append({"type": "open_app", "name": appn, "desc": f"Open {appn}"})
         acts.append({"type": "ui_search", "query": q, "submit": True, "desc": f"Search '{q}'"})
@@ -680,6 +708,8 @@ def _parse_one(p, last_app):
 SAY = {  # spoken confirmation per language
     "ta-IN": {"app": "%s திறக்கிறேன்.", "search": "%s தேடுகிறேன்.", "call": "%s-க்கு இப்போது அழைக்கிறேன்.",
               "nth": "%d-வது ஐ திறக்கிறேன்.", "ok": "சரி.", "yt": "YouTube-ல %s தேடுகிறேன்.",
+              "google": "Google-ல %s தேடுகிறேன்.", "google_page": "Google-ஐ திறக்கிறேன்.",
+              "last_file": "கடைசியாக வந்த கோப்பைத் திறக்கிறேன்.",
               "torch_on": "டார்ச் ஆன் செய்துள்ளேன்.", "torch_off": "டார்ச் ஆஃப் செய்துள்ளேன்.",
               "wifi_on": "வைஃபை ஆன் செய்கிறேன்.", "wifi_off": "வைஃபை ஆஃப் செய்கிறேன்.",
               "bt_on": "ப்ளூடூத் ஆன் செய்கிறேன்.", "bt_off": "ப்ளூடூத் ஆஃப் செய்கிறேன்.",
@@ -690,6 +720,8 @@ SAY = {  # spoken confirmation per language
               "sent": "செய்தி அனுப்பப்பட்டது."},
     "en-US": {"app": "Opening %s.", "search": "Searching %s.", "call": "Calling %s right now.",
               "nth": "Opening number %d.", "ok": "Done.", "yt": "Searching %s on YouTube.",
+              "google": "Searching %s on Google.", "google_page": "Opening Google.",
+              "last_file": "Opening the last received file.",
               "torch_on": "Flashlight turned on.", "torch_off": "Flashlight turned off.",
               "wifi_on": "Turning on Wi-Fi.", "wifi_off": "Turning off Wi-Fi.",
               "bt_on": "Turning on Bluetooth.", "bt_off": "Turning off Bluetooth.",
@@ -700,6 +732,8 @@ SAY = {  # spoken confirmation per language
               "sent": "Message sent."},
     "ja-JP": {"app": "%sを開きます。", "search": "%sを検索します。", "call": "%sに電話をかけています。",
               "nth": "%d番目を開きます。", "ok": "はい。", "yt": "YouTubeで%sを検索します。",
+              "google": "Googleで%sを検索します。", "google_page": "Googleを開きます。",
+              "last_file": "最後に受信したファイルを開きます。",
               "torch_on": "ライトをつけました。", "torch_off": "ライトを消しました。",
               "wifi_on": "Wi-Fiをオンにします。", "wifi_off": "Wi-Fiをオフにします。",
               "bt_on": "Bluetoothをオンにします。", "bt_off": "Bluetoothをオフにします。",
@@ -731,6 +765,9 @@ def local_command(text, lang="en-US"):
         if kind.startswith("app:"): said.append(s["app"] % kind[4:])
         elif kind == "call": said.append(s["call"] % acts[0]["target"])
         elif kind == "nth": said.append(s["nth"] % acts[-1]["n"])
+        elif kind.startswith("google:"): said.append(s.get("google", "Searching %s on Google.") % kind[7:])
+        elif kind == "google_page": said.append(s.get("google_page", "Opening Google."))
+        elif kind == "last_file": said.append(s.get("last_file", "Opening the last received file."))
         elif kind.startswith("search:") and acts[0]["type"] == "youtube": said.append(s["yt"] % acts[0]["query"])
         elif kind.startswith("search:"): said.append(s["search"] % acts[-1]["query"])
         elif kind.startswith("type:"): said.append(s.get("type", "Typed '%s'.") % kind[5:])

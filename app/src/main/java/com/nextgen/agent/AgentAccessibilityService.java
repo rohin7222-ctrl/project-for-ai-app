@@ -246,6 +246,88 @@ public class AgentAccessibilityService extends AccessibilityService {
         return "ERR:no active text field to clear";
     }
 
+    public String uiOpenLastFile() {
+        for (int i = 0; i < 20; i++) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null && !isOwnApp(root)) {
+                List<AccessibilityNodeInfo> fileNodes = new ArrayList<>();
+
+                // 1. WhatsApp specific document & file holder IDs
+                String[] fileIds = {
+                    "com.whatsapp:id/document_holder",
+                    "com.whatsapp:id/document_title",
+                    "com.whatsapp:id/document_thumbnail",
+                    "com.whatsapp:id/document_file_name",
+                    "com.whatsapp:id/image_holder",
+                    "com.whatsapp:id/thumb",
+                    "com.whatsapp:id/video_thumb",
+                    "com.whatsapp:id/media_container",
+                    "com.whatsapp:id/audio_holder",
+                    "com.whatsapp:id/play_pause_button",
+                    "com.whatsapp:id/icon_action"
+                };
+
+                for (String fId : fileIds) {
+                    List<AccessibilityNodeInfo> found = root.findAccessibilityNodeInfosByViewId(fId);
+                    if (found != null && !found.isEmpty()) {
+                        for (AccessibilityNodeInfo n : found) {
+                            if (n != null && n.isVisibleToUser()) {
+                                AccessibilityNodeInfo target = clickableSelfOrParent(n);
+                                if (target != null && !fileNodes.contains(target)) {
+                                    fileNodes.add(target);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. Scan all nodes for file extensions or file descriptions
+                List<AccessibilityNodeInfo> allNodes = all(root);
+                for (AccessibilityNodeInfo n : allNodes) {
+                    if (n == null || !n.isVisibleToUser()) continue;
+                    if (n.isEditable() || isExcludedHeaderOrNav(n)) continue;
+
+                    String txt = ownText(n);
+                    String l = label(n);
+                    boolean isFile = false;
+
+                    if (txt.contains(".pdf") || txt.contains(".doc") || txt.contains(".docx") ||
+                        txt.contains(".xls") || txt.contains(".xlsx") || txt.contains(".zip") ||
+                        txt.contains(".rar") || txt.contains(".apk") || txt.contains(".txt") ||
+                        txt.contains(".mp4") || txt.contains(".mp3") || txt.contains(".jpg") || txt.contains(".png")) {
+                        isFile = true;
+                    }
+
+                    if (l.contains("pdf") || l.contains("document") || l.contains("file") ||
+                        l.contains("photo") || l.contains("video") || l.contains("audio message") ||
+                        l.contains("voice message")) {
+                        if (!l.contains("camera") && !l.contains("attach") && !l.contains("send") && !l.contains("emoji")) {
+                            isFile = true;
+                        }
+                    }
+
+                    if (isFile) {
+                        AccessibilityNodeInfo target = clickableSelfOrParent(n);
+                        if (target != null && !fileNodes.contains(target)) {
+                            fileNodes.add(target);
+                        }
+                    }
+                }
+
+                if (!fileNodes.isEmpty()) {
+                    sortItems(fileNodes);
+                    // The LAST received file in chat is at the bottom of the list
+                    AccessibilityNodeInfo lastFile = fileNodes.get(fileNodes.size() - 1);
+                    if (click(lastFile)) {
+                        return "OK";
+                    }
+                }
+            }
+            sleep(150);
+        }
+        return "ERR:no file found in chat";
+    }
+
     public String uiClick(String text) {
         String q = text == null ? "" : text.toLowerCase(Locale.ROOT).trim();
         if (q.isEmpty()) return "ERR:nothing to click";
@@ -588,6 +670,52 @@ public class AgentAccessibilityService extends AccessibilityService {
                     sortItems(visibleIg);
                     return visibleIg;
                 }
+            }
+        }
+
+        // 3. Chrome / Browser / Google Search Fast Path: detect actual website search results
+        if (rootPkg.contains("chrome") || rootPkg.contains("browser") || rootPkg.contains("googlequicksearchbox")) {
+            List<AccessibilityNodeInfo> webResults = new ArrayList<>();
+            List<AccessibilityNodeInfo> allNodes = all(root);
+            Rect scr = new Rect();
+            for (AccessibilityNodeInfo n : allNodes) {
+                if (n == null || !n.isVisibleToUser() || n.isEditable() || isExcludedHeaderOrNav(n)) continue;
+                n.getBoundsInScreen(scr);
+                // In Chrome / Google Search results, top < 260px contains URL bar, search input, and category tabs (All, Images, etc.)
+                if (scr.top < 260 || scr.height() < 35 || scr.width() < 140) continue;
+                String txt = ownText(n);
+                if (txt.isEmpty() || txt.length() < 3) continue;
+                String lower = txt.toLowerCase(Locale.ROOT);
+                if (lower.equals("all") || lower.equals("images") || lower.equals("news") || lower.equals("videos") ||
+                    lower.equals("maps") || lower.equals("shopping") || lower.equals("search") || lower.equals("google")) continue;
+                AccessibilityNodeInfo target = clickableSelfOrParent(n);
+                if (target != null && !webResults.contains(target)) {
+                    webResults.add(target);
+                }
+            }
+            if (!webResults.isEmpty()) {
+                sortItems(webResults);
+                List<AccessibilityNodeInfo> distinctResults = new ArrayList<>();
+                for (AccessibilityNodeInfo cand : webResults) {
+                    Rect r = new Rect();
+                    cand.getBoundsInScreen(r);
+                    boolean overlap = false;
+                    for (AccessibilityNodeInfo kept : distinctResults) {
+                        Rect kr = new Rect();
+                        kept.getBoundsInScreen(kr);
+                        if (Math.abs(r.top - kr.top) < 25) {
+                            overlap = true;
+                            break;
+                        }
+                    }
+                    if (!overlap) {
+                        distinctResults.add(cand);
+                    }
+                }
+                if (!distinctResults.isEmpty()) {
+                    return distinctResults;
+                }
+                return webResults;
             }
         }
 
