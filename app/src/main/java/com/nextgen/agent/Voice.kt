@@ -36,7 +36,8 @@ class Voice(
     private var sr: SpeechRecognizer? = null
     private val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
 
-    @Volatile private var holding = false     // true while thinking / speaking
+    @Volatile var holding = false     // true while thinking / speaking
+        private set
     var active = false; private set
     var standby = false; private set
 
