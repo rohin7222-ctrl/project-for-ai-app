@@ -251,10 +251,21 @@ public class AgentAccessibilityService extends AccessibilityService {
         long bestArea = -1;
         Rect r = new Rect();
         for (AccessibilityNodeInfo n : all(root)) {
-            if (!n.isScrollable() || !n.isVisibleToUser()) continue;
+            if (!n.isVisibleToUser()) continue;
+            boolean isScroll = n.isScrollable();
+            CharSequence cn = n.getClassName();
+            String className = cn == null ? "" : cn.toString().toLowerCase(Locale.ROOT);
+            boolean isListClass = className.contains("recycler") || className.contains("listview") ||
+                    className.contains("scrollview") || className.contains("gridview") ||
+                    className.contains("viewpager");
+            if (!isScroll && !isListClass) continue;
+
             n.getBoundsInScreen(r);
             long area = (long) r.width() * r.height();
-            if (area > bestArea) { bestArea = area; best = n; }
+            if (area > bestArea && r.height() > 150) {
+                bestArea = area;
+                best = n;
+            }
         }
         return best;
     }
@@ -268,33 +279,109 @@ public class AgentAccessibilityService extends AccessibilityService {
         return null;
     }
 
+    private static AccessibilityNodeInfo findClickableChild(AccessibilityNodeInfo n) {
+        if (n == null) return null;
+        for (AccessibilityNodeInfo ch : all(n)) {
+            if (ch != n && ch.isClickable() && ch.isVisibleToUser()) {
+                return ch;
+            }
+        }
+        return null;
+    }
+
     private static boolean hasClickable(AccessibilityNodeInfo n) {
         for (AccessibilityNodeInfo x : all(n)) if (x.isClickable()) return true;
         return false;
     }
 
-    /** The visible, tappable rows of the main list on screen (chats, search results, videos...), top to bottom. */
+    /** The visible, tappable rows/cards of the main list on screen (chats, search results, videos, shelves...), top to bottom. */
     private List<AccessibilityNodeInfo> listItems(AccessibilityNodeInfo root) {
-        AccessibilityNodeInfo container = biggestScrollable(root);
         List<AccessibilityNodeInfo> items = new ArrayList<>();
-        if (container == null) return items;
-        for (int i = 0; i < container.getChildCount(); i++) {
-            AccessibilityNodeInfo ch = container.getChild(i);
-            if (ch == null || !ch.isVisibleToUser()) continue;
-            if (findEditable(ch) != null) continue;                // skip the search bar row
-            if (!ch.isClickable() && !hasClickable(ch)) continue;   // skip section headers ("Chats", ...)
-            Rect b = new Rect();
-            ch.getBoundsInScreen(b);
-            if (b.height() < 40) continue;
-            items.add(ch);
+        AccessibilityNodeInfo container = biggestScrollable(root);
+        Rect bounds = new Rect();
+
+        if (container != null && container.getChildCount() > 0) {
+            for (int i = 0; i < container.getChildCount(); i++) {
+                AccessibilityNodeInfo ch = container.getChild(i);
+                if (ch == null || !ch.isVisibleToUser()) continue;
+                if (findEditable(ch) != null) continue; // skip search bar row
+
+                // Check if this child is a horizontal shelf / collection (e.g. YouTube video shelf, carousel)
+                CharSequence chClass = ch.getClassName();
+                String chClassName = chClass == null ? "" : chClass.toString().toLowerCase(Locale.ROOT);
+                boolean isShelf = ch.isScrollable() || chClassName.contains("recycler") || chClassName.contains("scroll");
+
+                int subCount = ch.getChildCount();
+                if ((isShelf || subCount >= 2) && subCount > 0) {
+                    List<AccessibilityNodeInfo> subItems = new ArrayList<>();
+                    for (int j = 0; j < subCount; j++) {
+                        AccessibilityNodeInfo sub = ch.getChild(j);
+                        if (sub != null && sub.isVisibleToUser()) {
+                            sub.getBoundsInScreen(bounds);
+                            if (bounds.height() >= 40 && bounds.width() >= 60 && (sub.isClickable() || hasClickable(sub))) {
+                                subItems.add(sub);
+                            }
+                        }
+                    }
+                    if (subItems.size() >= 2) {
+                        items.addAll(subItems);
+                        continue;
+                    }
+                }
+
+                if (!ch.isClickable() && !hasClickable(ch)) continue; // skip decorative dividers
+                ch.getBoundsInScreen(bounds);
+                if (bounds.height() < 40) continue;
+                items.add(ch);
+            }
         }
+
+        // FALLBACK: If container has fewer than 2 items (e.g. WhatsApp search results or custom layouts)
+        if (items.size() < 2) {
+            List<AccessibilityNodeInfo> allNodes = all(root);
+            Rect scrBounds = new Rect();
+            for (AccessibilityNodeInfo n : allNodes) {
+                if (!n.isVisibleToUser()) continue;
+                if (n.isEditable() || findEditable(n) != null) continue;
+                n.getBoundsInScreen(scrBounds);
+                // Exclude status bar and header (top < 100px)
+                if (scrBounds.top < 100 || scrBounds.height() < 45 || scrBounds.width() < 120) continue;
+
+                // Must be clickable or contain clickable element
+                if (!n.isClickable() && !hasClickable(n)) continue;
+
+                // Must have text, contentDescription, or substantial card area
+                String txt = ownText(n);
+                if (txt.isEmpty() && n.getChildCount() == 0) continue;
+
+                // Check if this node is an ancestor or descendant of already collected item to avoid duplicates
+                boolean duplicate = false;
+                for (AccessibilityNodeInfo existing : items) {
+                    Rect exRect = new Rect();
+                    existing.getBoundsInScreen(exRect);
+                    if (Math.abs(scrBounds.top - exRect.top) < 15 && Math.abs(scrBounds.bottom - exRect.bottom) < 15) {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (!duplicate) {
+                    items.add(n);
+                }
+            }
+        }
+
+        // Sort items in natural visual reading order: top to bottom, then left to right
         Collections.sort(items, new Comparator<AccessibilityNodeInfo>() {
             @Override public int compare(AccessibilityNodeInfo a, AccessibilityNodeInfo b) {
                 Rect ra = new Rect(), rb = new Rect();
                 a.getBoundsInScreen(ra); b.getBoundsInScreen(rb);
-                return Integer.compare(ra.top, rb.top);
+                if (Math.abs(ra.top - rb.top) > 30) {
+                    return Integer.compare(ra.top, rb.top);
+                }
+                return Integer.compare(ra.left, rb.left);
             }
         });
+
         return items;
     }
 
@@ -306,15 +393,23 @@ public class AgentAccessibilityService extends AccessibilityService {
 
     /** Click via the accessibility action; if the app ignores it, tap the centre of the item with a gesture. */
     private boolean click(AccessibilityNodeInfo n) {
+        if (n == null) return false;
+        // 1. Try clickable self or parent
         AccessibilityNodeInfo c = clickableSelfOrParent(n);
         if (c != null && c.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true;
+
+        // 2. Try clickable child inside n (e.g. video title, thumbnail, card root)
+        AccessibilityNodeInfo child = findClickableChild(n);
+        if (child != null && child.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true;
+
+        // 3. Physical gesture tap at the center of the item (reliable fallback for custom views)
         Rect r = new Rect();
         n.getBoundsInScreen(r);
         if (r.isEmpty()) return false;
         Path p = new Path();
         p.moveTo(r.centerX(), r.centerY());
         GestureDescription g = new GestureDescription.Builder()
-                .addStroke(new GestureDescription.StrokeDescription(p, 0, 60)).build();
+                .addStroke(new GestureDescription.StrokeDescription(p, 0, 50)).build();
         return dispatchGesture(g, null, null);
     }
 }

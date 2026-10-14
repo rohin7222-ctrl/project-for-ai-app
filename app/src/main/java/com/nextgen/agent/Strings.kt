@@ -90,7 +90,11 @@ object S {
         "standby_badge_desc" to listOf("குரல் மூலம் அழைக்கலாம்", "Voice activation active", "音声起動が有効"),
         "calling_direct" to listOf("அழைக்கப்படுகிறது…", "Dialing…", "発信中…"),
         "chip_call_appa" to listOf("அப்பாவுக்கு கால்", "Call Appa", "お父さんに電話"),
-        "call_in_progress" to listOf("போன் அழைப்பில் உள்ளது (குரல் நிறுத்தி வைக்கப்பட்டுள்ளது)", "In call (Voice suspended)", "通話中 (音声一時停止)")
+        "call_in_progress" to listOf("போன் அழைப்பில் உள்ளது (குரல் நிறுத்தி வைக்கப்பட்டுள்ளது)", "In call (Voice suspended)", "通話中 (音声一時停止)"),
+        "media_playing" to listOf("வீடியோ இயங்குகிறது (குரல் இடைநிறுத்தம்)", "Media playing (Voice paused)", "動画再生中 (音声一時停止)"),
+        "tab_voice" to listOf("குரல் & கட்டளை", "Voice & Wake", "音声と起動"),
+        "tab_system" to listOf("AI & கணினி", "AI & System", "AIとシステム"),
+        "tab_security" to listOf("உயிரியளவியல்", "Biometrics", "生体認証")
     )
 
     fun t(lang: String, k: String): String {

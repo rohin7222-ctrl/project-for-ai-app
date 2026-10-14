@@ -19,11 +19,12 @@ import java.util.Locale
 /**
  * Speech Recognition Engine with:
  * 1. Continuous Listen -> Think -> Speak -> Listen loop (Active voice mode).
- * 2. Responsive online recognition with graceful offline fallback when internet is disabled.
- * 3. Safe muting of system recognizer chime without muting media/TTS audio stream.
- * 4. Stop voice command detection (configurable word + universal stop phrases in Tamil/English/Japanese).
- * 5. Automatic suspension and resumption during active phone calls.
- * 6. Quiet Standby Wake-Word Detector with voice profile biometric verification.
+ * 2. High-accuracy bilingual recognition (Tamil & English code-switching).
+ * 3. Responsive online recognition with graceful offline fallback when internet is disabled.
+ * 4. Safe muting of system recognizer chime without muting media/TTS audio stream.
+ * 5. Stop voice command detection (configurable word + universal stop phrases in Tamil/English/Japanese).
+ * 6. Automatic suspension and resumption during active phone calls and video/media playback.
+ * 7. Quiet Standby Wake-Word Detector with voice profile biometric verification.
  */
 class Voice(
     private val ctx: Context,
@@ -58,8 +59,10 @@ class Voice(
     var onStopCommandTriggered: (() -> Unit)? = null
     var onVoiceRejected: (() -> Unit)? = null
 
-    // Phone call pause state
+    // Phone call & media playback pause states
     @Volatile var pausedForCall = false
+        private set
+    @Volatile var pausedForMedia = false
         private set
 
     private val pitchSamples = mutableListOf<Float>()
@@ -121,6 +124,13 @@ class Voice(
                mode == AudioManager.MODE_RINGTONE
     }
 
+    /** Returns true if third-party media or video is currently playing audio */
+    fun isMediaPlaying(): Boolean {
+        if (holding) return false // Assistant's own speech should not count as external media
+        val am = audioManager ?: return false
+        return am.isMusicActive
+    }
+
     /** Pause voice engine during a phone call */
     fun pauseForCall() {
         pausedForCall = true
@@ -142,9 +152,30 @@ class Voice(
         }
     }
 
+    /** Pause voice engine when a video/media starts playing */
+    fun pauseForMedia() {
+        pausedForMedia = true
+        restoreBeep()
+        main.post {
+            try { sr?.destroy() } catch (ignored: Exception) {}
+            sr = null
+        }
+    }
+
+    /** Resume voice engine when a video/media finishes or pauses */
+    fun resumeAfterMedia(wasActive: Boolean, wasStandby: Boolean) {
+        pausedForMedia = false
+        if (pausedForCall || isPhoneCallActive()) return
+        if (wasActive) {
+            start()
+        } else if (wasStandby && autoWakeEnabled) {
+            startStandby()
+        }
+    }
+
     private fun release() {
         holding = false
-        if (pausedForCall || isPhoneCallActive()) return
+        if (pausedForCall || isPhoneCallActive() || pausedForMedia || isMediaPlaying()) return
         if (active) {
             listen()
         } else if (standby && autoWakeEnabled) {
@@ -155,6 +186,7 @@ class Voice(
     /** Explicitly starts active continuous voice mode */
     fun start() {
         if (pausedForCall || isPhoneCallActive()) return
+        pausedForMedia = false
         active = true
         standby = false
         holding = false
@@ -175,14 +207,14 @@ class Voice(
         }
         tts?.stop()
         onState(false)
-        if (autoWakeEnabled && !pausedForCall && !isPhoneCallActive()) {
+        if (autoWakeEnabled && !pausedForCall && !isPhoneCallActive() && !pausedForMedia && !isMediaPlaying()) {
             startStandby()
         }
     }
 
     /** Enables low-power standby wake-word listening when not actively conversing */
     fun startStandby() {
-        if (active || pausedForCall || isPhoneCallActive()) return
+        if (active || pausedForCall || isPhoneCallActive() || pausedForMedia || isMediaPlaying()) return
         standby = true
         holding = false
         listenStandby()
@@ -210,7 +242,7 @@ class Voice(
             try {
                 sr?.destroy()
             } catch (ignored: Exception) {}
-                sr = null
+            sr = null
         }
         tts?.shutdown()
     }
@@ -274,19 +306,24 @@ class Voice(
         }
     }
 
-    /** Active recognition intent with fast responsive thresholds */
+    /** Active recognition intent with fast responsive thresholds and bilingual support */
     private fun buildRecognizerIntent(): Intent {
         return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, lang)
+            // Enable additional English language recognition so English/Tamil mixed speech works accurately
+            if (lang == "ta-IN") {
+                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-IN", "en-US"))
+            } else if (lang != "en-US") {
+                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-US"))
+            }
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1000L)
-            // Only request offline recognition if device has no network at all
             if (!isOnline()) {
                 putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             }
@@ -299,9 +336,14 @@ class Voice(
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, lang)
+            if (lang == "ta-IN") {
+                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-IN", "en-US"))
+            } else if (lang != "en-US") {
+                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-US"))
+            }
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2200L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1600L)
@@ -344,9 +386,9 @@ class Voice(
 
     /** Active continuous listening loop */
     private fun listen() {
-        if (!active || holding || pausedForCall || isPhoneCallActive()) return
+        if (!active || holding || pausedForCall || isPhoneCallActive() || pausedForMedia || isMediaPlaying()) return
         main.post {
-            if (!active || holding || pausedForCall || isPhoneCallActive()) return@post
+            if (!active || holding || pausedForCall || isPhoneCallActive() || pausedForMedia || isMediaPlaying()) return@post
             try {
                 sr?.destroy()
             } catch (ignored: Exception) {}
@@ -356,9 +398,11 @@ class Voice(
                 setRecognitionListener(object : RecognitionListener {
                     override fun onResults(r: Bundle?) {
                         restoreBeep()
-                        if (!active || pausedForCall || isPhoneCallActive()) return
+                        if (!active || pausedForCall || isPhoneCallActive() || pausedForMedia) return
                         val results = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
-                        val text = results.firstOrNull { it.isNotBlank() }
+                        
+                        // Select best hypothesis: prioritize stop command or cleanest match
+                        val text = results.firstOrNull { isStopCommand(it) } ?: results.firstOrNull { it.isNotBlank() }
 
                         if (!text.isNullOrBlank()) {
                             // First check: Did the user say STOP?
@@ -390,7 +434,7 @@ class Voice(
                     }
 
                     override fun onPartialResults(p: Bundle?) {
-                        if (!active || pausedForCall || isPhoneCallActive()) return
+                        if (!active || pausedForCall || isPhoneCallActive() || pausedForMedia) return
                         val list = p?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
                         val partial = list.firstOrNull { it.isNotBlank() }
                         if (partial != null && isStopCommand(partial)) {
@@ -412,7 +456,7 @@ class Voice(
                             SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 250L
                             else -> 400L
                         }
-                        if (active && !holding && !pausedForCall && !isPhoneCallActive()) {
+                        if (active && !holding && !pausedForCall && !isPhoneCallActive() && !pausedForMedia && !isMediaPlaying()) {
                             main.postDelayed({ listen() }, retryDelay)
                         }
                     }
@@ -454,9 +498,9 @@ class Voice(
 
     /** Standby wake-word listening loop */
     private fun listenStandby() {
-        if (active || !standby || !autoWakeEnabled || holding || pausedForCall || isPhoneCallActive()) return
+        if (active || !standby || !autoWakeEnabled || holding || pausedForCall || isPhoneCallActive() || pausedForMedia || isMediaPlaying()) return
         main.post {
-            if (active || !standby || !autoWakeEnabled || holding || pausedForCall || isPhoneCallActive()) return@post
+            if (active || !standby || !autoWakeEnabled || holding || pausedForCall || isPhoneCallActive() || pausedForMedia || isMediaPlaying()) return@post
             try {
                 sr?.destroy()
             } catch (ignored: Exception) {}
@@ -505,16 +549,16 @@ class Voice(
 
                     override fun onResults(r: Bundle?) {
                         restoreBeep()
-                        if (active || pausedForCall || isPhoneCallActive()) return
+                        if (active || pausedForCall || isPhoneCallActive() || pausedForMedia) return
                         val list = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
                         checkWake(list)
-                        if (standby && !active && autoWakeEnabled && !pausedForCall && !isPhoneCallActive()) {
+                        if (standby && !active && autoWakeEnabled && !pausedForCall && !isPhoneCallActive() && !pausedForMedia && !isMediaPlaying()) {
                             main.postDelayed({ listenStandby() }, 1200)
                         }
                     }
 
                     override fun onPartialResults(p: Bundle?) {
-                        if (active || pausedForCall || isPhoneCallActive()) return
+                        if (active || pausedForCall || isPhoneCallActive() || pausedForMedia) return
                         val list = p?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
                         checkWake(list)
                     }
@@ -530,7 +574,7 @@ class Voice(
                             SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 800L
                             else -> 1000L
                         }
-                        if (standby && !active && autoWakeEnabled && !pausedForCall && !isPhoneCallActive()) {
+                        if (standby && !active && autoWakeEnabled && !pausedForCall && !isPhoneCallActive() && !pausedForMedia && !isMediaPlaying()) {
                             main.postDelayed({ listenStandby() }, retryDelay)
                         }
                     }

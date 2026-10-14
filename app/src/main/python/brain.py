@@ -393,12 +393,20 @@ def _digits(t):
 def _ordinal(t):
     for n, words in ORD.items():
         for w in words:
-            if w in t:
+            if re.search(r"(?:^|\s|\b)" + re.escape(w) + r"(?:\s|\b|$|[,\.!?])", t):
                 return n
-    m = re.search(r"(\d{1,2})(?:st|nd|rd|th|வது|vathu|vadhu)?\s*(?:chat|video|result|item|post|சாட்|வீடியோ)", t) or \
-        re.search(r"(?:chat|video|result|item)\s+(\d{1,2})", t) or \
-        re.search(r"\b(\d{1,2})(?:st|nd|rd|th)\b", t)
-    return int(m.group(1)) if m else None
+    m = re.search(r"(\d{1,2})\s*(?:st|nd|rd|th|வது|vathu|vadhu)?\s*(?:chat|video|result|item|post|one|பாடல்|சாட்|வீடியோ)", t) or \
+        re.search(r"(?:chat|video|result|item|open|play|போடு|திற)\s+(?:no\.?\s*)?(\d{1,2})\b", t) or \
+        re.search(r"\b(\d{1,2})(?:st|nd|rd|th)\b", t) or \
+        re.search(r"(?:^|\s)(\d{1,2})\s*(?:or|\/)\s*(\d{1,2})(?:st|nd|rd|th)?", t)
+    if m:
+        for g in m.groups():
+            if g and g.isdigit():
+                return int(g)
+    m_single = re.search(r"\b(?:open|play|thira|podu|select)\s+(\d{1,2})\b", t)
+    if m_single:
+        return int(m_single.group(1))
+    return None
 
 
 LEAD = re.compile(r"^(?:(?:hey|hi|hello|ok|okay|bro|da|dei|machi|sir|please|plz|pls|kindly|just|now|"
@@ -583,7 +591,7 @@ def _parse_one(p, last_app):
 
     # --- open Nth item
     n = _ordinal(t)
-    if n and (any(w in t for w in ("open", "click", "tap", "play", "thira", "thiranga", "select", "திற", "தொடு", "போடு")) or any(w in t for w in NOUNS)):
+    if n and (any(w in t for w in ("open", "click", "tap", "play", "thira", "thiranga", "select", "திற", "தொடு", "போடு", "itha", "ithai", "இதை")) or any(w in t for w in NOUNS) or re.search(r"\b\d+(?:st|nd|rd|th)?\s*(?:video|chat|item|post|song|one)\b", t)):
         return [{"type": "ui_open_nth", "n": n, "desc": f"Open Item #{n}"}], "nth"
 
     # --- search inside an app / search
