@@ -589,10 +589,30 @@ def _parse_one(p, last_app):
         is_up = any(w in t for w in ("up", "mela", "மேலே"))
         return [{"type": "ui_scroll", "dir": "up" if is_up else "down", "desc": "Scroll Up" if is_up else "Scroll Down"}], "ok"
 
-    # --- open Nth item
-    n = _ordinal(t)
-    if n and (any(w in t for w in ("open", "click", "tap", "play", "thira", "thiranga", "select", "திற", "தொடு", "போடு", "itha", "ithai", "இதை")) or any(w in t for w in NOUNS) or re.search(r"\b\d+(?:st|nd|rd|th)?\s*(?:video|chat|item|post|song|one)\b", t)):
-        return [{"type": "ui_open_nth", "n": n, "desc": f"Open Item #{n}"}], "nth"
+    # --- open Nth item (supports "whatsapp la open first chat", "open first chat in instagram", etc.)
+    app_target = None
+    t_core = t
+    m_app_ord = re.match(r"^(?P<a>[a-zA-Z\u0B80-\u0BFF\s]+?)\s+(?:la|le|ல|இல்|-la)\s+(?P<rest>.+)$", t)
+    if m_app_ord:
+        cand = _app_name(m_app_ord.group("a"))
+        if cand:
+            app_target = cand
+            t_core = m_app_ord.group("rest").strip()
+    else:
+        m_app_in = re.search(r"\b(?:in|on|inside)\s+(?P<a>[a-zA-Z\u0B80-\u0BFF\s]+)$", t)
+        if m_app_in:
+            cand = _app_name(m_app_in.group("a"))
+            if cand:
+                app_target = cand
+                t_core = re.sub(r"\b(?:in|on|inside)\s+" + re.escape(m_app_in.group("a")) + r"$", "", t).strip()
+
+    n = _ordinal(t_core)
+    if n and (any(w in t_core for w in ("open", "click", "tap", "play", "thira", "thiranga", "select", "திற", "தொடு", "போடு", "itha", "ithai", "இதை")) or any(w in t_core for w in NOUNS) or re.search(r"\b\d+(?:st|nd|rd|th)?\s*(?:video|chat|item|post|song|one)\b", t_core)):
+        acts = []
+        if app_target:
+            acts.append({"type": "open_app", "name": app_target, "desc": f"Open {app_target}"})
+        acts.append({"type": "ui_open_nth", "n": n, "desc": f"Open Item #{n}"})
+        return acts, "nth"
 
     # --- search inside an app / search
     app, q = None, None
@@ -621,12 +641,27 @@ def _parse_one(p, last_app):
         acts.append({"type": "ui_search", "query": q, "submit": True, "desc": f"Search '{q}'"})
         return acts, "search:" + (appn or "")
 
-    # --- type text / send / click
-    m = re.match(r"^(?:type|write|enter)\s+(?P<x>.+)$", t) or re.match(r"^(?P<x>.+?)\s*(?:nu|ன்னு)?\s*(?:type|write|தட்டச்சு)(?=\s|$).*$", t)
+    # --- cancel / erase typed message
+    cancel_words = ("cancel", "erase", "clear", "clear text", "delete message", "delete text",
+                    "ரத்து", "அழி", "வேண்டாம்", "நீக்கு", "cancel pannu", "cancel panu",
+                    "ali", "azhi", "erase pannu", "clear pannu", "erase msg", "cancel msg",
+                    "clear msg", "delete msg", "செய்தியை அழி", "டைப் பண்ணதை அழி", "அழித்து விடு", "キャンセル", "消去")
+    if t in cancel_words or re.match(r"^(?:cancel|erase|clear|delete\s+(?:message|text|msg)|ரத்து|அழி)(?:\s+(?:it|pannu|panu|seiyu|seiy|vidu|pa|da))?$", t):
+        return [{"type": "ui_clear_text", "desc": "Erase Message"}], "erased"
+
+    # --- send message (direct, no popup)
+    send_words = ("send", "send it", "anuppu", "அனுப்பு", "அனுப்பி விடு", "send pannu", "anuppidu", "anupunga", "சென்ட்", "சென்ட் பண்ணு", "送信")
+    if t in send_words or re.match(r"^(?:send|anuppu|அனுப்பு|அனுப்பி\s*விடு|சென்ட்)(?:\s+(?:it|pannu|panu|vidu|seiyu|pa|da))?$", t):
+        return [{"type": "ui_click", "text": "send", "desc": "Send Message"}], "sent"
+
+    # --- type text (without pressing send button)
+    m = re.match(r"^(?:type|write|enter|தட்டச்சு செய்|டைப் பண்ணு|டைப் செய்)\s+(?P<x>.+)$", t) or \
+        re.match(r"^(?P<x>.+?)\s*(?:nu|ன்னு|னு)?\s*(?:type|write|தட்டச்சு)(?=\s|$).*$", t)
     if m:
-        return [{"type": "ui_type", "text": m.group("x").strip(), "send": False, "desc": f"Type '{m.group('x').strip()}'"}], "ok"
-    if any(t == s for s in ("send", "send it", "anuppu", "அனுப்பு", "அனுப்பி விடு", "送信")):
-        return [{"type": "ui_click", "text": "send", "desc": "Send"}], "ok"
+        txt = m.group("x").strip()
+        txt = re.sub(r"^(?:message|msg|செய்தி)\s+", "", txt).strip()
+        return [{"type": "ui_type", "text": txt, "send": False, "desc": f"Type '{txt}'"}], "type:" + txt
+
     m = re.match(r"^(?:click|tap|press|select)\s+(?:on\s+)?(?P<x>.+)$", t) or \
         re.match(r"^(?P<x>.+?)\s*" + PART + r"?\s*(?:click|tap|press|thotta|thodu|தொடு|கிளிக்|タップ|押).*$", t)
     if m:
@@ -649,21 +684,30 @@ SAY = {  # spoken confirmation per language
               "wifi_on": "வைஃபை ஆன் செய்கிறேன்.", "wifi_off": "வைஃபை ஆஃப் செய்கிறேன்.",
               "bt_on": "ப்ளூடூத் ஆன் செய்கிறேன்.", "bt_off": "ப்ளூடூத் ஆஃப் செய்கிறேன்.",
               "screenshot": "ஸ்கிரீன்ஷாட் எடுக்கப்பட்டது.", "media": "இசை மாற்றப்பட்டது.", "clipboard": "நகலெடுக்கப்பட்டது.",
-              "stop": "சரி, நிறுத்துகிறேன்."},
+              "stop": "சரி, நிறுத்துகிறேன்.",
+              "type": "'%s' என தட்டச்சு செய்துள்ளேன். அனுப்ப 'send' அல்லது அழிக்க 'cancel' என சொல்லுங்கள்.",
+              "erased": "செய்தி அழிக்கப்பட்டது.",
+              "sent": "செய்தி அனுப்பப்பட்டது."},
     "en-US": {"app": "Opening %s.", "search": "Searching %s.", "call": "Calling %s right now.",
               "nth": "Opening number %d.", "ok": "Done.", "yt": "Searching %s on YouTube.",
               "torch_on": "Flashlight turned on.", "torch_off": "Flashlight turned off.",
               "wifi_on": "Turning on Wi-Fi.", "wifi_off": "Turning off Wi-Fi.",
               "bt_on": "Turning on Bluetooth.", "bt_off": "Turning off Bluetooth.",
               "screenshot": "Screenshot captured.", "media": "Media updated.", "clipboard": "Copied to clipboard.",
-              "stop": "Stopping assistant."},
+              "stop": "Stopping assistant.",
+              "type": "Typed '%s'. Say 'send' to send, or 'cancel' to erase.",
+              "erased": "Message erased.",
+              "sent": "Message sent."},
     "ja-JP": {"app": "%sを開きます。", "search": "%sを検索します。", "call": "%sに電話をかけています。",
               "nth": "%d番目を開きます。", "ok": "はい。", "yt": "YouTubeで%sを検索します。",
               "torch_on": "ライトをつけました。", "torch_off": "ライトを消しました。",
               "wifi_on": "Wi-Fiをオンにします。", "wifi_off": "Wi-Fiをオフにします。",
               "bt_on": "Bluetoothをオンにします。", "bt_off": "Bluetoothをオフにします。",
               "screenshot": "スクリーンショットを撮影しました。", "media": "メディアを更新しました。", "clipboard": "コピーしました。",
-              "stop": "わかりました。停止します。"},
+              "stop": "わかりました。停止します。",
+              "type": "'%s'と入力しました。送信するには'send'、消去するには'cancel'と言ってください。",
+              "erased": "メッセージを消去しました。",
+              "sent": "メッセージを送信しました."},
 }
 
 
@@ -686,9 +730,12 @@ def local_command(text, lang="en-US"):
         s = SAY.get(lang, SAY["en-US"])
         if kind.startswith("app:"): said.append(s["app"] % kind[4:])
         elif kind == "call": said.append(s["call"] % acts[0]["target"])
-        elif kind == "nth": said.append(s["nth"] % acts[0]["n"])
+        elif kind == "nth": said.append(s["nth"] % acts[-1]["n"])
         elif kind.startswith("search:") and acts[0]["type"] == "youtube": said.append(s["yt"] % acts[0]["query"])
         elif kind.startswith("search:"): said.append(s["search"] % acts[-1]["query"])
+        elif kind.startswith("type:"): said.append(s.get("type", "Typed '%s'.") % kind[5:])
+        elif kind == "erased": said.append(s.get("erased", "Message erased."))
+        elif kind == "sent": said.append(s.get("sent", "Message sent."))
         elif kind == "torch_on": said.append(s["torch_on"])
         elif kind == "torch_off": said.append(s["torch_off"])
         elif kind == "wifi_on": said.append(s["wifi_on"])

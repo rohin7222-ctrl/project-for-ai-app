@@ -227,9 +227,107 @@ public class AgentAccessibilityService extends AccessibilityService {
         return click(items.get(n - 1)) ? "OK" : "ERR:cannot open item " + n;
     }
 
+    public String uiClearText() {
+        for (int i = 0; i < 15; i++) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null && !isOwnApp(root)) {
+                AccessibilityNodeInfo edit = findEditable(root);
+                if (edit != null) {
+                    edit.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+                    Bundle args = new Bundle();
+                    args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "");
+                    if (edit.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                        return "OK";
+                    }
+                }
+            }
+            sleep(150);
+        }
+        return "ERR:no active text field to clear";
+    }
+
     public String uiClick(String text) {
         String q = text == null ? "" : text.toLowerCase(Locale.ROOT).trim();
         if (q.isEmpty()) return "ERR:nothing to click";
+
+        // Specialized robust Send button handler for WhatsApp, Instagram, Messages, Telegram
+        if ("send".equals(q) || "அனுப்பு".equals(q) || "அனுப்பி விடு".equals(q) || "anuppu".equals(q)) {
+            for (int i = 0; i < 20; i++) {
+                AccessibilityNodeInfo root = getRootInActiveWindow();
+                if (root != null && !isOwnApp(root)) {
+                    // 1. WhatsApp send button
+                    List<AccessibilityNodeInfo> waList = root.findAccessibilityNodeInfosByViewId("com.whatsapp:id/send");
+                    if (waList != null && !waList.isEmpty()) {
+                        for (AccessibilityNodeInfo b : waList) {
+                            if (b != null && b.isVisibleToUser()) {
+                                return click(b) ? "OK" : "ERR:cannot click WhatsApp send button";
+                            }
+                        }
+                    }
+
+                    // 2. Instagram send button IDs
+                    String[] igIds = {
+                        "com.instagram.android:id/row_thread_composer_send_button_container",
+                        "com.instagram.android:id/row_thread_composer_button_send",
+                        "com.instagram.android:id/direct_text_send_button"
+                    };
+                    for (String igId : igIds) {
+                        List<AccessibilityNodeInfo> igList = root.findAccessibilityNodeInfosByViewId(igId);
+                        if (igList != null && !igList.isEmpty()) {
+                            for (AccessibilityNodeInfo b : igList) {
+                                if (b != null && b.isVisibleToUser()) {
+                                    return click(b) ? "OK" : "ERR:cannot click Instagram send button";
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. Messages / Telegram / Standard SMS send button IDs
+                    String[] sIds = {
+                        "com.google.android.apps.messaging:id/send_message_button_icon",
+                        "com.google.android.apps.messaging:id/send_message_button",
+                        "org.telegram.messenger:id/send_button",
+                        "com.android.mms:id/send_button"
+                    };
+                    for (String sId : sIds) {
+                        List<AccessibilityNodeInfo> sList = root.findAccessibilityNodeInfosByViewId(sId);
+                        if (sList != null && !sList.isEmpty()) {
+                            for (AccessibilityNodeInfo b : sList) {
+                                if (b != null && b.isVisibleToUser()) {
+                                    return click(b) ? "OK" : "ERR:cannot click send button";
+                                }
+                            }
+                        }
+                    }
+
+                    // 4. By contentDescription or label matching "send" / "அனுப்பு" / "送信"
+                    for (AccessibilityNodeInfo n : all(root)) {
+                        if (!n.isVisibleToUser()) continue;
+                        String l = label(n);
+                        if (l.contains("send") || l.contains("அனுப்பு") || l.contains("送信")) {
+                            if (!l.contains("cancel") && !l.contains("resend") && !l.contains("sending") && !l.contains("money")) {
+                                AccessibilityNodeInfo target = clickableSelfOrParent(n);
+                                if (target != null) {
+                                    return click(target) ? "OK" : "ERR:cannot click send button";
+                                }
+                            }
+                        }
+                    }
+
+                    // 5. Fallback: IME enter on editable message field
+                    AccessibilityNodeInfo edit = findEditable(root);
+                    if (edit != null) {
+                        if (edit.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.getId())) {
+                            return "OK";
+                        }
+                    }
+                }
+                sleep(150);
+            }
+            return "ERR:send button not found";
+        }
+
+        // General text search for click
         for (int i = 0; i < 15; i++) {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root != null && !isOwnApp(root)) {
@@ -394,9 +492,105 @@ public class AgentAccessibilityService extends AccessibilityService {
         return false;
     }
 
+    private static final String[] EXCLUDE_NAV_WORDS = {
+        "search", "thedu", "தேடு", "menu", "more options", "overflow",
+        "camera", "chats", "updates", "status", "calls", "communities",
+        "tab", "navigation", "navigate up", "back", "settings", "filter",
+        "new chat", "new call", "create", "voice search", "audio search",
+        "cast", "notifications", "unread", "archived", "starred messages"
+    };
+
+    private boolean isExcludedHeaderOrNav(AccessibilityNodeInfo n) {
+        if (n == null) return false;
+        String vId = n.getViewIdResourceName();
+        String id = vId == null ? "" : vId.toLowerCase(Locale.ROOT);
+        if (id.contains("search") || id.contains("menuitem") || id.contains("camera") ||
+            id.contains("toolbar") || id.contains("action_bar") || id.contains("tab_layout") ||
+            id.contains("header_container") || id.contains("search_src_text") ||
+            id.contains("search_button") || id.contains("menu_item") || id.contains("tab")) {
+            return true;
+        }
+        if (n.isEditable() || findEditable(n) != null) return true;
+
+        String l = label(n).trim();
+        for (String ex : EXCLUDE_NAV_WORDS) {
+            if (l.equals(ex) || l.startsWith(ex + " ") || l.endsWith(" " + ex)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void sortItems(List<AccessibilityNodeInfo> items) {
+        Collections.sort(items, new Comparator<AccessibilityNodeInfo>() {
+            @Override public int compare(AccessibilityNodeInfo a, AccessibilityNodeInfo b) {
+                Rect ra = new Rect(), rb = new Rect();
+                a.getBoundsInScreen(ra); b.getBoundsInScreen(rb);
+                if (Math.abs(ra.top - rb.top) > 30) {
+                    return Integer.compare(ra.top, rb.top);
+                }
+                return Integer.compare(ra.left, rb.left);
+            }
+        });
+    }
+
     /** The visible, tappable rows/cards of the main list on screen (chats, search results, videos, shelves...), top to bottom. */
     private List<AccessibilityNodeInfo> listItems(AccessibilityNodeInfo root) {
         List<AccessibilityNodeInfo> items = new ArrayList<>();
+        CharSequence rootPkgSeq = root.getPackageName();
+        String rootPkg = rootPkgSeq == null ? "" : rootPkgSeq.toString().toLowerCase(Locale.ROOT);
+
+        // 1. WhatsApp Fast Path: detect actual chat rows directly
+        if (rootPkg.contains("whatsapp")) {
+            List<AccessibilityNodeInfo> waRows = root.findAccessibilityNodeInfosByViewId("com.whatsapp:id/contact_row_container");
+            if (waRows != null && !waRows.isEmpty()) {
+                List<AccessibilityNodeInfo> visibleWa = new ArrayList<>();
+                for (AccessibilityNodeInfo row : waRows) {
+                    if (row != null && row.isVisibleToUser() && (row.isClickable() || hasClickable(row))) {
+                        visibleWa.add(row);
+                    }
+                }
+                if (!visibleWa.isEmpty()) {
+                    sortItems(visibleWa);
+                    return visibleWa;
+                }
+            }
+
+            List<AccessibilityNodeInfo> waNames = root.findAccessibilityNodeInfosByViewId("com.whatsapp:id/conversations_row_contact_name");
+            if (waNames != null && !waNames.isEmpty()) {
+                List<AccessibilityNodeInfo> visibleWa = new ArrayList<>();
+                for (AccessibilityNodeInfo nameNode : waNames) {
+                    if (nameNode != null && nameNode.isVisibleToUser()) {
+                        AccessibilityNodeInfo parent = clickableSelfOrParent(nameNode);
+                        if (parent != null && !visibleWa.contains(parent)) {
+                            visibleWa.add(parent);
+                        }
+                    }
+                }
+                if (!visibleWa.isEmpty()) {
+                    sortItems(visibleWa);
+                    return visibleWa;
+                }
+            }
+        }
+
+        // 2. Instagram Fast Path: detect direct inbox thread rows directly
+        if (rootPkg.contains("instagram")) {
+            List<AccessibilityNodeInfo> igRows = root.findAccessibilityNodeInfosByViewId("com.instagram.android:id/row_inbox_container");
+            if (igRows != null && !igRows.isEmpty()) {
+                List<AccessibilityNodeInfo> visibleIg = new ArrayList<>();
+                for (AccessibilityNodeInfo row : igRows) {
+                    if (row != null && row.isVisibleToUser() && (row.isClickable() || hasClickable(row))) {
+                        visibleIg.add(row);
+                    }
+                }
+                if (!visibleIg.isEmpty()) {
+                    sortItems(visibleIg);
+                    return visibleIg;
+                }
+            }
+        }
+
         AccessibilityNodeInfo container = biggestScrollable(root);
         Rect bounds = new Rect();
 
@@ -404,7 +598,7 @@ public class AgentAccessibilityService extends AccessibilityService {
             for (int i = 0; i < container.getChildCount(); i++) {
                 AccessibilityNodeInfo ch = container.getChild(i);
                 if (ch == null || !ch.isVisibleToUser()) continue;
-                if (findEditable(ch) != null) continue; // skip search bar row
+                if (isExcludedHeaderOrNav(ch)) continue;
 
                 // Check if this child is a horizontal shelf / collection (e.g. YouTube video shelf, carousel)
                 CharSequence chClass = ch.getClassName();
@@ -416,7 +610,7 @@ public class AgentAccessibilityService extends AccessibilityService {
                     List<AccessibilityNodeInfo> subItems = new ArrayList<>();
                     for (int j = 0; j < subCount; j++) {
                         AccessibilityNodeInfo sub = ch.getChild(j);
-                        if (sub != null && sub.isVisibleToUser()) {
+                        if (sub != null && sub.isVisibleToUser() && !isExcludedHeaderOrNav(sub)) {
                             sub.getBoundsInScreen(bounds);
                             if (bounds.height() >= 40 && bounds.width() >= 60 && (sub.isClickable() || hasClickable(sub))) {
                                 subItems.add(sub);
@@ -436,16 +630,16 @@ public class AgentAccessibilityService extends AccessibilityService {
             }
         }
 
-        // FALLBACK: If container has fewer than 2 items (e.g. WhatsApp search results or custom layouts)
+        // FALLBACK: If container has fewer than 2 items
         if (items.size() < 2) {
             List<AccessibilityNodeInfo> allNodes = all(root);
             Rect scrBounds = new Rect();
             for (AccessibilityNodeInfo n : allNodes) {
                 if (!n.isVisibleToUser()) continue;
-                if (n.isEditable() || findEditable(n) != null) continue;
+                if (isExcludedHeaderOrNav(n)) continue;
                 n.getBoundsInScreen(scrBounds);
-                // Exclude status bar and header (top < 100px)
-                if (scrBounds.top < 100 || scrBounds.height() < 45 || scrBounds.width() < 120) continue;
+                // Exclude status bar and header (top < 160px)
+                if (scrBounds.top < 160 || scrBounds.height() < 45 || scrBounds.width() < 120) continue;
 
                 // Must be clickable or contain clickable element
                 if (!n.isClickable() && !hasClickable(n)) continue;
@@ -470,18 +664,7 @@ public class AgentAccessibilityService extends AccessibilityService {
             }
         }
 
-        // Sort items in natural visual reading order: top to bottom, then left to right
-        Collections.sort(items, new Comparator<AccessibilityNodeInfo>() {
-            @Override public int compare(AccessibilityNodeInfo a, AccessibilityNodeInfo b) {
-                Rect ra = new Rect(), rb = new Rect();
-                a.getBoundsInScreen(ra); b.getBoundsInScreen(rb);
-                if (Math.abs(ra.top - rb.top) > 30) {
-                    return Integer.compare(ra.top, rb.top);
-                }
-                return Integer.compare(ra.left, rb.left);
-            }
-        });
-
+        sortItems(items);
         return items;
     }
 

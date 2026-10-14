@@ -272,29 +272,63 @@ class Voice(
 
         val loc = Locale.forLanguageTag(lang)
         t.language = loc
-        val vs = t.voices?.filter { it.locale.language == loc.language }?.sortedBy { it.name }.orEmpty()
-        if (vs.isNotEmpty()) {
-            if (female) {
-                val ogFemale = vs.firstOrNull { it.name.contains("sfg") || it.name.contains("tpf") }
-                    ?: vs.firstOrNull { it.name.lowercase(Locale.ROOT).contains("female") }
-                    ?: vs.last()
-                t.voice = ogFemale
-                t.setPitch(1.0f)
-            } else {
-                val ogMale = vs.firstOrNull { it.name.contains("tpd") || it.name.contains("tpc") }
-                    ?: vs.firstOrNull { it.name.lowercase(Locale.ROOT).contains("male") || it.name.contains("-m-") }
-                    ?: vs.firstOrNull { !it.name.contains("sfg") && !it.name.contains("tpf") }
-                    ?: vs.first()
-                t.voice = ogMale
-                t.setPitch(0.92f)
-            }
-        } else {
-            t.setPitch(if (female) 1.0f else 0.92f)
-        }
-        t.setSpeechRate(1.0f)
+        applyVoiceAndPitch(t, loc, female)
         if (t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "u" + System.nanoTime()) != TextToSpeech.SUCCESS) {
             release()
         }
+    }
+
+    private fun applyVoiceAndPitch(t: TextToSpeech, loc: Locale, isFemale: Boolean) {
+        val allVoices = t.voices?.filter { it.locale.language == loc.language }
+            ?.filter { !it.isNetworkConnectionRequired || isOnline() }
+            .orEmpty()
+
+        fun isVoiceFemale(v: android.speech.tts.Voice): Boolean {
+            val n = v.name.lowercase(Locale.ROOT)
+            val f = v.features.map { it.lowercase(Locale.ROOT) }
+            if (f.any { it.contains("female") }) return true
+            if (f.any { it.contains("male") }) return false
+            if (n.contains("female") || n.contains("#female") || n.contains("-f-") || n.contains("-fem-")) return true
+            if (n.contains("male") || n.contains("#male") || n.contains("-m-")) return false
+            // Language-specific Google TTS female codes
+            if (n.contains("taf") || n.contains("htf") || n.contains("iof") || n.contains("tpd") || n.contains("tpf") || n.contains("iol")) return true
+            if (n.contains("tam") || n.contains("htm") || n.contains("iom") || n.contains("sfg") || n.contains("tpc") || n.contains("iob")) return false
+            return false
+        }
+
+        fun isVoiceMale(v: android.speech.tts.Voice): Boolean {
+            val n = v.name.lowercase(Locale.ROOT)
+            val f = v.features.map { it.lowercase(Locale.ROOT) }
+            if (f.any { it.contains("male") && !it.contains("female") }) return true
+            if (f.any { it.contains("female") }) return false
+            if (n.contains("male") && !n.contains("female") && !n.contains("#female")) return true
+            if (n.contains("#male") || n.contains("-m-")) return true
+            if (n.contains("female") || n.contains("#female") || n.contains("-f-")) return false
+            // Language-specific Google TTS male codes
+            if (n.contains("tam") || n.contains("htm") || n.contains("iom") || n.contains("sfg") || n.contains("tpc") || n.contains("iob")) return true
+            if (n.contains("taf") || n.contains("htf") || n.contains("iof") || n.contains("tpd") || n.contains("tpf") || n.contains("iol")) return false
+            return false
+        }
+
+        val chosenVoice = if (isFemale) {
+            allVoices.firstOrNull { isVoiceFemale(it) }
+                ?: allVoices.firstOrNull { !isVoiceMale(it) }
+                ?: allVoices.firstOrNull()
+        } else {
+            allVoices.firstOrNull { isVoiceMale(it) }
+                ?: allVoices.firstOrNull { !isVoiceFemale(it) }
+                ?: allVoices.lastOrNull()
+        }
+
+        if (chosenVoice != null) {
+            try { t.voice = chosenVoice } catch (ignored: Exception) {}
+        }
+
+        // Distinct acoustic pitch:
+        // Female: 1.18f (crisp, pleasant, feminine)
+        // Male: 0.82f (deep, distinctly masculine)
+        t.setPitch(if (isFemale) 1.18f else 0.82f)
+        t.setSpeechRate(1.0f)
     }
 
     private fun isOnline(): Boolean {

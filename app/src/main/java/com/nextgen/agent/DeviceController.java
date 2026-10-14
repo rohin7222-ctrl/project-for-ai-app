@@ -105,6 +105,7 @@ public class DeviceController {
                 case "ui_click": return ui(2, a);
                 case "ui_type": return ui(3, a);
                 case "ui_scroll": return ui(4, a);
+                case "ui_clear_text": return ui(5, a);
                 default: return "ERR:unknown action " + type;
             }
         } catch (Exception e) {
@@ -456,7 +457,9 @@ public class DeviceController {
             case 1: return s.uiOpenNth(a.optInt("n", 1));
             case 2: return s.uiClick(a.optString("text"));
             case 3: return s.uiType(a.optString("text"), a.optBoolean("send", false));
-            default: return s.uiScroll(!"up".equals(a.optString("dir")));
+            case 4: return s.uiScroll(!"up".equals(a.optString("dir")));
+            case 5: return s.uiClearText();
+            default: return "ERR:unknown ui action " + kind;
         }
     }
 
