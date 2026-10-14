@@ -15,6 +15,7 @@ data class Config(
     val female: Boolean = true,
     val dark: Boolean = false,
     val commandingWord: String = "Jarvis",
+    val commandingStopWord: String = "Stop",
     val autoWakeEnabled: Boolean = true,
     val voiceMatchEnabled: Boolean = false,
     val voicePitchMean: Float = 0f,
@@ -37,7 +38,9 @@ class Store(ctx: Context) {
         sp.getString("provider", "gemini")!!, sp.getString("key", "")!!, sp.getString("model", "")!!,
         sp.getString("url", "")!!, sp.getBoolean("female", true),
         if (sp.getBoolean("dark_custom", false)) sp.getBoolean("dark", false) else systemDark,
-        sp.getString("commanding_word", "Jarvis")!!, sp.getBoolean("auto_wake", true),
+        sp.getString("commanding_word", "Jarvis")!!,
+        sp.getString("commanding_stop_word", "Stop")!!,
+        sp.getBoolean("auto_wake", true),
         sp.getBoolean("voice_match", false), sp.getFloat("pitch_mean", 0f),
         sp.getFloat("pitch_std", 0f), sp.getBoolean("voice_enrolled", false),
         sp.getBoolean("dark_custom", false)
@@ -48,7 +51,9 @@ class Store(ctx: Context) {
             .putString("provider", c.provider).putString("key", c.key).putString("model", c.model)
             .putString("url", c.url).putBoolean("female", c.female).putBoolean("dark", c.dark)
             .putBoolean("dark_custom", c.darkCustom)
-            .putString("commanding_word", c.commandingWord).putBoolean("auto_wake", c.autoWakeEnabled)
+            .putString("commanding_word", c.commandingWord)
+            .putString("commanding_stop_word", c.commandingStopWord)
+            .putBoolean("auto_wake", c.autoWakeEnabled)
             .putBoolean("voice_match", c.voiceMatchEnabled).putFloat("pitch_mean", c.voicePitchMean)
             .putFloat("pitch_std", c.voicePitchStd).putBoolean("voice_enrolled", c.voiceEnrolled).apply()
     }

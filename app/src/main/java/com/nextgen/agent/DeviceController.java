@@ -97,6 +97,7 @@ public class DeviceController {
                 case "clipboard": return clipboard(a.optString("text"));
                 case "system": return system(a.optString("name"));
                 case "settings": return settings(a.optString("page"));
+                case "stop_assistant": return "OK";
                 case "answer_call": return telecom(true);
                 case "end_call": return telecom(false);
                 case "ui_search": return ui(0, a);

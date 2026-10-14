@@ -59,6 +59,9 @@ object S {
         "cmd_word" to listOf("கட்டளை சொல் (Commanding Word)", "Commanding Word (Wake Word)", "起動ワード (ウェイクワード)"),
         "cmd_word_sub" to listOf("இந்த வார்த்தையைச் சொன்னால் தானாக குரல் பயன்முறை ஆன் ஆகும்", "Say this word to turn on voice mode automatically", "この言葉を話すと音声モードが自動で起動します"),
         "cmd_word_hint" to listOf("எ.கா: Jarvis", "e.g. Jarvis", "例: Jarvis"),
+        "cmd_stop_word" to listOf("நிறுத்தும் சொல் (Stop Command Word)", "Stop Command Word", "停止コマンドワード"),
+        "cmd_stop_word_sub" to listOf("இந்த வார்த்தையைச் சொன்னால் குரல் பயன்முறை உடனே நின்றுவிடும்", "Say this word to stop voice assistant immediately", "この言葉を話すと音声アシスタントが即座に停止します"),
+        "cmd_stop_word_hint" to listOf("எ.கா: Stop / நிறுத்து", "e.g. Stop", "例: Stop"),
         "auto_wake" to listOf("தானியங்கி குரல் ஆன் (Auto Wake)", "Auto Wake Mode", "自動ウェイクモード"),
         "auto_wake_sub" to listOf("ஸ்டார்ட் பட்டன் தொடாமல் குரலால் அழைக்க", "Wake assistant by voice without tapping Start", "ボタンを押さずに音声で呼び出し"),
         "voice_match" to listOf("என் குரலுக்கு மட்டும் பதிலளிக்கவும் (Voice Lock)", "Respond only to my voice (Voice Lock)", "私の声にのみ応答 (音声照合)"),
@@ -86,7 +89,8 @@ object S {
         "standby_wake_off" to listOf("Jarvis Standby: OFF", "Jarvis Standby: OFF", "Jarvis Standby: OFF"),
         "standby_badge_desc" to listOf("குரல் மூலம் அழைக்கலாம்", "Voice activation active", "音声起動が有効"),
         "calling_direct" to listOf("அழைக்கப்படுகிறது…", "Dialing…", "発信中…"),
-        "chip_call_appa" to listOf("அப்பாவுக்கு கால்", "Call Appa", "お父さんに電話")
+        "chip_call_appa" to listOf("அப்பாவுக்கு கால்", "Call Appa", "お父さんに電話"),
+        "call_in_progress" to listOf("போன் அழைப்பில் உள்ளது (குரல் நிறுத்தி வைக்கப்பட்டுள்ளது)", "In call (Voice suspended)", "通話中 (音声一時停止)")
     )
 
     fun t(lang: String, k: String): String {

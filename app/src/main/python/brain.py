@@ -455,6 +455,12 @@ def _parse_one(p, last_app):
     if "quick settings" in t:
         return [{"type": "system", "name": "quick_settings", "desc": "Quick Settings"}], "ok"
 
+    # --- assistant stop command
+    stop_words = ("stop", "exit", "pause", "sleep", "shut down", "shutdown", "stop assistant", "bye", "goodbye",
+                  "போதும்", "நிறுத்து", "நில்", "ஸ்டாப்", "முடி", "தூங்கு", "stop pannu", "stop panu", "off pannu")
+    if t in stop_words or any(t == s for s in stop_words) or re.search(r"^(?:stop|exit|sleep|shut down|quit|pause|stop assistant|bye|goodbye|போதும்|நிறுத்து|நில்|ஸ்டாப்)(?:\s+(?:pannu|panu|podu|vai|seiy|pa|da))?$", t):
+        return [{"type": "stop_assistant", "desc": "Stop Assistant"}], "stop"
+
     # --- torch / flashlight
     torch_words = ("torch", "flashlight", "flash light", "tochu", "டார்ச்", "விளக்கு", "லைட்", "ライト")
     if any(w in t for w in torch_words):
@@ -634,19 +640,22 @@ SAY = {  # spoken confirmation per language
               "torch_on": "டார்ச் ஆன் செய்துள்ளேன்.", "torch_off": "டார்ச் ஆஃப் செய்துள்ளேன்.",
               "wifi_on": "வைஃபை ஆன் செய்கிறேன்.", "wifi_off": "வைஃபை ஆஃப் செய்கிறேன்.",
               "bt_on": "ப்ளூடூத் ஆன் செய்கிறேன்.", "bt_off": "ப்ளூடூத் ஆஃப் செய்கிறேன்.",
-              "screenshot": "ஸ்கிரீன்ஷாட் எடுக்கப்பட்டது.", "media": "இசை மாற்றப்பட்டது.", "clipboard": "நகலெடுக்கப்பட்டது."},
+              "screenshot": "ஸ்கிரீன்ஷாட் எடுக்கப்பட்டது.", "media": "இசை மாற்றப்பட்டது.", "clipboard": "நகலெடுக்கப்பட்டது.",
+              "stop": "சரி, நிறுத்துகிறேன்."},
     "en-US": {"app": "Opening %s.", "search": "Searching %s.", "call": "Calling %s right now.",
               "nth": "Opening number %d.", "ok": "Done.", "yt": "Searching %s on YouTube.",
               "torch_on": "Flashlight turned on.", "torch_off": "Flashlight turned off.",
               "wifi_on": "Turning on Wi-Fi.", "wifi_off": "Turning off Wi-Fi.",
               "bt_on": "Turning on Bluetooth.", "bt_off": "Turning off Bluetooth.",
-              "screenshot": "Screenshot captured.", "media": "Media updated.", "clipboard": "Copied to clipboard."},
+              "screenshot": "Screenshot captured.", "media": "Media updated.", "clipboard": "Copied to clipboard.",
+              "stop": "Stopping assistant."},
     "ja-JP": {"app": "%sを開きます。", "search": "%sを検索します。", "call": "%sに電話をかけています。",
               "nth": "%d番目を開きます。", "ok": "はい。", "yt": "YouTubeで%sを検索します。",
               "torch_on": "ライトをつけました。", "torch_off": "ライトを消しました。",
               "wifi_on": "Wi-Fiをオンにします。", "wifi_off": "Wi-Fiをオフにします。",
               "bt_on": "Bluetoothをオンにします。", "bt_off": "Bluetoothをオフにします。",
-              "screenshot": "スクリーンショットを撮影しました。", "media": "メディアを更新しました。", "clipboard": "コピーしました。"},
+              "screenshot": "スクリーンショットを撮影しました。", "media": "メディアを更新しました。", "clipboard": "コピーしました。",
+              "stop": "わかりました。停止します。"},
 }
 
 
@@ -681,6 +690,7 @@ def local_command(text, lang="en-US"):
         elif kind == "screenshot": said.append(s["screenshot"])
         elif kind == "media": said.append(s["media"])
         elif kind == "clipboard": said.append(s["clipboard"])
+        elif kind == "stop": said.append(s.get("stop", "OK"))
         else: said.append(s["ok"])
     return {"speech": " ".join(said), "actions": actions}
 

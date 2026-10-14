@@ -1,14 +1,20 @@
 package com.nextgen.agent
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.telephony.PhoneStateListener
+import android.telephony.TelephonyCallback
+import android.telephony.TelephonyManager
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -127,11 +133,17 @@ class MainActivity : FragmentActivity() {
     private val chat = mutableStateListOf<Msg>()
 
     private val perms = arrayOf(
-        Manifest.permission.RECORD_AUDIO, Manifest.permission.CALL_PHONE, Manifest.permission.READ_CONTACTS
+        Manifest.permission.RECORD_AUDIO, Manifest.permission.CALL_PHONE, Manifest.permission.READ_CONTACTS, Manifest.permission.READ_PHONE_STATE
     )
     private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         if (has(Manifest.permission.RECORD_AUDIO)) startVoice()
     }
+
+    private var wasActiveBeforeCall = false
+    private var wasStandbyBeforeCall = false
+    private var isInPhoneCall = false
+    private var telephonyCallback: Any? = null
+    private var phoneStateReceiver: BroadcastReceiver? = null
 
     private fun has(p: String) = ContextCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED
     private fun tr(k: String) = S.t(cfg.lang, k)
@@ -145,6 +157,7 @@ class MainActivity : FragmentActivity() {
         voice.lang = cfg.lang
         voice.female = cfg.female
         voice.commandingWord = cfg.commandingWord
+        voice.commandingStopWord = cfg.commandingStopWord
         voice.autoWakeEnabled = cfg.autoWakeEnabled
         voice.voiceMatchEnabled = cfg.voiceMatchEnabled
         voice.voiceProfile = VoiceProfile(cfg.voicePitchMean, cfg.voicePitchStd, cfg.voiceEnrolled)
@@ -180,9 +193,13 @@ class MainActivity : FragmentActivity() {
                 voice.speak(ack)
             }
         }
+        voice.onStopCommandTriggered = {
+            stopVoiceWithAck()
+        }
         voice.onVoiceRejected = {
             Toast.makeText(this@MainActivity, tr("voice_rejected"), Toast.LENGTH_SHORT).show()
         }
+        setupCallStateMonitoring()
         // Attempt automatic accessibility configuration silently
         AgentAccessibilityService.autoEnable(this)
 
@@ -190,7 +207,11 @@ class MainActivity : FragmentActivity() {
         setContent { App() }
     }
 
-    override fun onDestroy() { voice.shutdown(); super.onDestroy() }
+    override fun onDestroy() {
+        teardownCallStateMonitoring()
+        voice.shutdown()
+        super.onDestroy()
+    }
 
     // ------------------------------------------------------------------ security: biometric / PIN lock
     private fun authenticate() {
@@ -220,10 +241,25 @@ class MainActivity : FragmentActivity() {
         voice.start()
     }
 
+    private fun stopVoiceWithAck() {
+        val ack = when (cfg.lang) {
+            "ta-IN" -> "சரி, நிறுத்துகிறேன்."
+            "ja-JP" -> "わかりました。停止します。"
+            else -> "Stopping assistant."
+        }
+        chat.add(Msg(mine = false, text = ack, time = nowTime()))
+        voice.speak(ack)
+        voice.stop()
+    }
+
     private fun handleUser(text: String) {
         val t = text.trim()
         if (t.isBlank()) return
         chat.add(Msg(mine = true, text = t, time = nowTime()))
+        if (voice.isStopCommand(t)) {
+            stopVoiceWithAck()
+            return
+        }
         thinking = true
         lifecycleScope.launch {
             val r = withContext(Dispatchers.IO) { Brain.chat(cfg, t) }
@@ -244,12 +280,23 @@ class MainActivity : FragmentActivity() {
 
     private suspend fun runList(list: List<JSONObject>) {
         for (a in list) {
+            val type = a.optString("type")
+            if (type == "stop_assistant") {
+                stopVoiceWithAck()
+                return
+            }
+            if (type == "call") {
+                isInPhoneCall = true
+                wasActiveBeforeCall = voice.active
+                wasStandbyBeforeCall = voice.standby
+                voice.pauseForCall()
+            }
             val d = a.optString("desc")
             if (d.isNotBlank()) executingAction = d
             val r = withContext(Dispatchers.IO) { device.execute(a) }   // ui_* actions block while they wait for the screen
-            if (a.optString("type") == "open_app") delay(2500)          // let the app finish opening before the next step
-            else if (a.optString("type") == "call") delay(1000)
-            else if (a.optString("type").startsWith("ui_")) delay(600)
+            if (type == "open_app") delay(2500)          // let the app finish opening before the next step
+            else if (type == "call") delay(1000)
+            else if (type.startsWith("ui_")) delay(600)
             executingAction = ""
             when {
                 r == "NEED_ACCESSIBILITY" -> {
@@ -260,6 +307,94 @@ class MainActivity : FragmentActivity() {
                     val errMsg = r.removePrefix("ERR:")
                     chat.add(Msg(mine = false, text = "⚠ $errMsg", time = nowTime(), isError = true))
                     voice.speak(errMsg)
+                }
+            }
+        }
+    }
+
+    private fun setupCallStateMonitoring() {
+        val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val cb = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
+                override fun onCallStateChanged(state: Int) {
+                    onPhoneCallStateChanged(state)
+                }
+            }
+            try {
+                tm.registerTelephonyCallback(mainExecutor, cb)
+                telephonyCallback = cb
+            } catch (ignored: Exception) {}
+        } else {
+            @Suppress("DEPRECATION")
+            val listener = object : PhoneStateListener() {
+                @Deprecated("Deprecated in Java")
+                override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                    onPhoneCallStateChanged(state)
+                }
+            }
+            try {
+                @Suppress("DEPRECATION")
+                tm.listen(listener, PhoneStateListener.LISTEN_CALL_STATE)
+                telephonyCallback = listener
+            } catch (ignored: Exception) {}
+        }
+
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == TelephonyManager.ACTION_PHONE_STATE_CHANGED) {
+                    val stateStr = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
+                    val state = when (stateStr) {
+                        TelephonyManager.EXTRA_STATE_RINGING -> TelephonyManager.CALL_STATE_RINGING
+                        TelephonyManager.EXTRA_STATE_OFFHOOK -> TelephonyManager.CALL_STATE_OFFHOOK
+                        TelephonyManager.EXTRA_STATE_IDLE -> TelephonyManager.CALL_STATE_IDLE
+                        else -> -1
+                    }
+                    if (state >= 0) onPhoneCallStateChanged(state)
+                }
+            }
+        }
+        val filter = IntentFilter(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
+        try {
+            registerReceiver(receiver, filter)
+            phoneStateReceiver = receiver
+        } catch (ignored: Exception) {}
+    }
+
+    private fun teardownCallStateMonitoring() {
+        try {
+            phoneStateReceiver?.let { unregisterReceiver(it) }
+            phoneStateReceiver = null
+        } catch (ignored: Exception) {}
+        val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            (telephonyCallback as? TelephonyCallback)?.let { tm?.unregisterTelephonyCallback(it) }
+        } else {
+            @Suppress("DEPRECATION")
+            (telephonyCallback as? PhoneStateListener)?.let { tm?.listen(it, PhoneStateListener.LISTEN_NONE) }
+        }
+        telephonyCallback = null
+    }
+
+    private fun onPhoneCallStateChanged(state: Int) {
+        when (state) {
+            TelephonyManager.CALL_STATE_RINGING, TelephonyManager.CALL_STATE_OFFHOOK -> {
+                if (!isInPhoneCall) {
+                    isInPhoneCall = true
+                    wasActiveBeforeCall = voice.active
+                    wasStandbyBeforeCall = voice.standby
+                    voice.pauseForCall()
+                }
+            }
+            TelephonyManager.CALL_STATE_IDLE -> {
+                if (isInPhoneCall) {
+                    isInPhoneCall = false
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        if (!isInPhoneCall) {
+                            voice.resumeAfterCall(wasActiveBeforeCall, wasStandbyBeforeCall)
+                            wasActiveBeforeCall = false
+                            wasStandbyBeforeCall = false
+                        }
+                    }, 1000)
                 }
             }
         }
@@ -666,6 +801,31 @@ class MainActivity : FragmentActivity() {
                                     onValueChange = { word -> upd { it.copy(commandingWord = word) } },
                                     singleLine = true,
                                     placeholder = { Text(tr("cmd_word_hint")) },
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Indigo,
+                                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                    )
+                                )
+
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = tr("cmd_stop_word"),
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = tr("cmd_stop_word_sub"),
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                )
+                                OutlinedTextField(
+                                    value = cfg.commandingStopWord,
+                                    onValueChange = { word -> upd { it.copy(commandingStopWord = word) } },
+                                    singleLine = true,
+                                    placeholder = { Text(tr("cmd_stop_word_hint")) },
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = OutlinedTextFieldDefaults.colors(
@@ -1193,6 +1353,7 @@ class MainActivity : FragmentActivity() {
                             }
                         }
                         val statusText = when {
+                            isInPhoneCall -> tr("call_in_progress")
                             executingAction.isNotBlank() -> "${tr("executing")} $executingAction"
                             thinking -> tr("thinking")
                             listening -> tr("listening")
@@ -1202,7 +1363,7 @@ class MainActivity : FragmentActivity() {
                             text = statusText,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = if (listening || thinking || executingAction.isNotBlank()) Indigo else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            color = if (isInPhoneCall) Amber else if (listening || thinking || executingAction.isNotBlank()) Indigo else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                     }
 
