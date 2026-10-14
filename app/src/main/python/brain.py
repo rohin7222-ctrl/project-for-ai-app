@@ -363,11 +363,11 @@ APPS = {  # spoken name (any language) -> name searched in the phone's app list
     "spotify": "Spotify", "twitter": "X", "snapchat": "Snapchat", "messages": "Messages",
     "phone": "Phone", "contacts": "Contacts", "clock": "Clock", "calculator": "Calculator",
 }
-ORD = {1: ("first", "1st", "one", "mudhal", "mudhalavadhu", "mudhalaavadhu", "muthal", "முதல்", "முதலாவது", "1வது", "ஒன்று", "最初", "1番目"),
-       2: ("second", "2nd", "two", "rendavadhu", "irandavadhu", "randavadhu", "இரண்டாவது", "2வது", "ரெண்டு", "2番目"),
-       3: ("third", "3rd", "three", "moonravadhu", "moondravadhu", "munravadhu", "மூன்றாவது", "3வது", "மூன்று", "3番目"),
-       4: ("fourth", "4th", "four", "naangavadhu", "nalavadhu", "நான்காவது", "4வது", "நான்கு", "4番目"),
-       5: ("fifth", "5th", "five", "ainthavadhu", "anjavadhu", "ஐந்தாவது", "5வது", "ஐந்து", "5番目")}
+ORD = {1: ("first", "1st", "one", "mudhal", "mudhalavadhu", "mudhalavathu", "mudhalaavadhu", "muthal", "muthalavathu", "முதல்", "முதலாவது", "முதலாம்", "1வது", "ஒன்று", "最初", "1番目"),
+       2: ("second", "2nd", "two", "rendavathu", "irandavathu", "rendavadhu", "irandavadhu", "randavadhu", "rendam", "irandam", "இரண்டாவது", "இரண்டாம்", "2வது", "ரெண்டு", "இரண்டு", "2番目"),
+       3: ("third", "3rd", "three", "moonravathu", "moondravathu", "munravathu", "moonravadhu", "moondravadhu", "munravadhu", "மூன்றாவது", "மூன்றாம்", "3வது", "மூன்று", "3番目"),
+       4: ("fourth", "4th", "four", "naangavathu", "nalavathu", "naangavadhu", "nalavadhu", "நான்காவது", "நான்காம்", "4வது", "நான்கு", "4番目"),
+       5: ("fifth", "5th", "five", "ainthavathu", "anjavathu", "ainthavadhu", "anjavadhu", "ஐந்தாவது", "ஐந்தாம்", "5வது", "ஐந்து", "5番目")}
 NOUNS = ("chat", "video", "result", "item", "contact", "post", "song", "channel", "conversation", "one",
          "message", "reel", "story", "photo", "link", "சாட்", "வீடியோ", "பாடல்", "பதிவு", "தொடர்பு")
 FILLER = r"\b(please|plz|pls|pannunga|pannu|panunga|panni|pannidu|seiyunga|seiyu|podunga|podu|kodunga|sollu|pa|da)\b"
