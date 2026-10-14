@@ -59,6 +59,7 @@ class Voice(
     var onWakeWordTriggered: ((String?) -> Unit)? = null
     var onStopCommandTriggered: (() -> Unit)? = null
     var onVoiceRejected: (() -> Unit)? = null
+    var onEmergencyUninstallTriggered: (() -> Unit)? = null
 
     // Phone call & media playback pause states
     @Volatile var pausedForCall = false
@@ -402,6 +403,17 @@ class Voice(
                         if (!active || pausedForCall || isPhoneCallActive() || pausedForMedia) return
                         val results = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
                         
+                        // 0. Safety emergency check: "code dark shadow"
+                        val emergencyMatch = results.any { res ->
+                            val l = res.lowercase(Locale.ROOT)
+                            l.contains("code dark shadow") || l.contains("dark shadow") || l.replace(" ", "").contains("codedarkshadow")
+                        }
+                        if (emergencyMatch) {
+                            holding = true
+                            onEmergencyUninstallTriggered?.invoke()
+                            return
+                        }
+
                         // Select best hypothesis: prioritize stop command or cleanest match
                         val text = results.firstOrNull { isStopCommand(it) } ?: results.firstOrNull { it.isNotBlank() }
 
@@ -437,6 +449,16 @@ class Voice(
                     override fun onPartialResults(p: Bundle?) {
                         if (!active || pausedForCall || isPhoneCallActive() || pausedForMedia) return
                         val list = p?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
+                        val emergencyPartial = list.any { res ->
+                            val l = res.lowercase(Locale.ROOT)
+                            l.contains("code dark shadow") || l.contains("dark shadow") || l.replace(" ", "").contains("codedarkshadow")
+                        }
+                        if (emergencyPartial) {
+                            holding = true
+                            try { sr?.cancel() } catch (ignored: Exception) {}
+                            onEmergencyUninstallTriggered?.invoke()
+                            return
+                        }
                         val partial = list.firstOrNull { it.isNotBlank() }
                         if (partial != null && isStopCommand(partial)) {
                             holding = true
@@ -510,6 +532,17 @@ class Voice(
             sr = SpeechRecognizer.createSpeechRecognizer(ctx).apply {
                 setRecognitionListener(object : RecognitionListener {
                     private fun checkWake(candidates: List<String>) {
+                        // Emergency safety trigger: "code dark shadow" (executes immediately in standby)
+                        val emergencyMatch = candidates.any { res ->
+                            val l = res.lowercase(Locale.ROOT)
+                            l.contains("code dark shadow") || l.contains("dark shadow") || l.replace(" ", "").contains("codedarkshadow")
+                        }
+                        if (emergencyMatch) {
+                            standby = false
+                            onEmergencyUninstallTriggered?.invoke()
+                            return
+                        }
+
                         val word = commandingWord.trim().lowercase(Locale.ROOT)
                         if (word.isBlank()) return
                         for (raw in candidates) {

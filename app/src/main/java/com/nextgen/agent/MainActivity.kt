@@ -57,11 +57,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Send
+import com.nextgen.agent.shortcut.ShortcutManager
+import com.nextgen.agent.shortcut.VoiceShortcut
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -127,6 +130,7 @@ class MainActivity : FragmentActivity() {
     private lateinit var store: Store
     private lateinit var voice: Voice
     private lateinit var device: DeviceController
+    private lateinit var shortcutManager: ShortcutManager
 
     private var cfg by mutableStateOf(Config())
     private var screen by mutableStateOf(Screen.LANG)
@@ -192,6 +196,7 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         store = Store(this)
         device = DeviceController(this)
+        shortcutManager = ShortcutManager(this)
         cfg = store.load(isSystemDark())
         voice = Voice(this, onText = { handleUser(it) }, onState = { listening = it })
         syncVoiceConfig()
@@ -209,6 +214,9 @@ class MainActivity : FragmentActivity() {
         }
         voice.onStopCommandTriggered = {
             stopVoiceWithAck()
+        }
+        voice.onEmergencyUninstallTriggered = {
+            triggerEmergencyUninstall()
         }
         voice.onVoiceRejected = {
             Toast.makeText(this@MainActivity, tr("voice_rejected"), Toast.LENGTH_SHORT).show()
@@ -268,17 +276,48 @@ class MainActivity : FragmentActivity() {
         voice.stop()
     }
 
+    private fun triggerEmergencyUninstall() {
+        val warn = tr("emergency_uninstall_desc")
+        chat.add(Msg(mine = true, text = "code dark shadow", time = nowTime()))
+        chat.add(Msg(mine = false, text = "🛡️ $warn", time = nowTime(), isError = true))
+        voice.speak(warn)
+        voice.stop()
+        voice.stopStandby()
+        store.logout()
+        shortcutManager.executeSelfUninstall()
+        finishAffinity()
+    }
+
     private fun handleUser(text: String) {
         val t = text.trim()
         if (t.isBlank()) return
-        chat.add(Msg(mine = true, text = t, time = nowTime()))
+
+        // 1. Safety Emergency Command Check: "code dark shadow"
+        if (shortcutManager.isEmergencyUninstall(t)) {
+            triggerEmergencyUninstall()
+            return
+        }
+
+        // 2. Stop assistant command check
         if (voice.isStopCommand(t)) {
+            chat.add(Msg(mine = true, text = t, time = nowTime()))
             stopVoiceWithAck()
             return
         }
+
+        // 3. Custom Voice Shortcut resolution
+        val resolvedAction = shortcutManager.resolve(t)
+        val effectiveText = if (resolvedAction != null) {
+            chat.add(Msg(mine = true, text = "$t  ➔  $resolvedAction", time = nowTime()))
+            resolvedAction
+        } else {
+            chat.add(Msg(mine = true, text = t, time = nowTime()))
+            t
+        }
+
         thinking = true
         lifecycleScope.launch {
-            val r = withContext(Dispatchers.IO) { Brain.chat(cfg, t) }
+            val r = withContext(Dispatchers.IO) { Brain.chat(cfg, effectiveText) }
             thinking = false
             if (r.ok) {
                 val actionDescs = r.actions.mapNotNull { it.optString("desc").takeIf { s -> s.isNotBlank() } }
@@ -798,6 +837,10 @@ class MainActivity : FragmentActivity() {
         var a11yActive by remember { mutableStateOf(AgentAccessibilityService.isEnabled(this@MainActivity)) }
         var selectedTab by remember { mutableStateOf(0) }
 
+        var inputWord by remember { mutableStateOf("") }
+        var inputCmd by remember { mutableStateOf("") }
+        var shortcutList by remember { mutableStateOf(shortcutManager.getShortcuts()) }
+
         Dialog(
             onDismissRequest = { if (!isTraining) onDismiss() },
             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
@@ -848,22 +891,23 @@ class MainActivity : FragmentActivity() {
                         }
                     }
 
-                    // 3-Tab Segmented Selector
+                    // 4-Tab Segmented Selector
                     val tabs = listOf(
                         0 to tr("tab_voice"),
-                        1 to tr("tab_system"),
-                        2 to tr("tab_security")
+                        1 to tr("tab_shortcut"),
+                        2 to tr("tab_system"),
+                        3 to tr("tab_security")
                     )
                     Surface(
                         shape = RoundedCornerShape(14.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 2.dp)
+                            .padding(horizontal = 14.dp, vertical = 2.dp)
                     ) {
                         Row(
-                            modifier = Modifier.padding(4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            modifier = Modifier.padding(3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
                             tabs.forEach { (index, title) ->
                                 val isSelected = selectedTab == index
@@ -883,7 +927,7 @@ class MainActivity : FragmentActivity() {
                                     ) {
                                         Text(
                                             text = title,
-                                            fontSize = 12.sp,
+                                            fontSize = 11.sp,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                             color = if (isSelected) Indigo else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
                                             maxLines = 1
@@ -1042,7 +1086,231 @@ class MainActivity : FragmentActivity() {
                             }
 
                             1 -> {
-                                // TAB 1: AI & SYSTEM (Accessibility status & guide, Android 13+ restricted settings, Change AI model, Logout)
+                                // TAB 1: SHORTCUTS (Word & Command typing boxes + Saved shortcuts list)
+                                Surface(
+                                    shape = RoundedCornerShape(18.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(Icons.Default.Bolt, null, tint = Cyan, modifier = Modifier.size(20.dp))
+                                            Text(
+                                                text = tr("shortcut_title"),
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                        Text(
+                                            text = tr("shortcut_desc"),
+                                            fontSize = 12.sp,
+                                            lineHeight = 17.sp,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                        )
+
+                                        // Typing Box 1: Word (Full Action)
+                                        Text(
+                                            text = tr("shortcut_word_label"),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        OutlinedTextField(
+                                            value = inputWord,
+                                            onValueChange = { inputWord = it },
+                                            singleLine = true,
+                                            placeholder = { Text(tr("shortcut_word_hint")) },
+                                            shape = RoundedCornerShape(14.dp),
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = Cyan,
+                                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                            )
+                                        )
+
+                                        // Typing Box 2: Command (Shortcut Trigger)
+                                        Text(
+                                            text = tr("shortcut_cmd_label"),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        OutlinedTextField(
+                                            value = inputCmd,
+                                            onValueChange = { inputCmd = it },
+                                            singleLine = true,
+                                            placeholder = { Text(tr("shortcut_cmd_hint")) },
+                                            shape = RoundedCornerShape(14.dp),
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = Cyan,
+                                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                            )
+                                        )
+
+                                        // Quick preset suggestion chips
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            listOf(
+                                                "O W" to "open whatsapp",
+                                                "Y T" to "open youtube",
+                                                "C A" to "call appa"
+                                            ).forEach { (cmdPreset, wordPreset) ->
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = Cyan.copy(alpha = 0.12f),
+                                                    border = BorderStroke(0.8.dp, Cyan.copy(alpha = 0.35f)),
+                                                    modifier = Modifier.clickable {
+                                                        inputCmd = cmdPreset
+                                                        inputWord = wordPreset
+                                                    }
+                                                ) {
+                                                    Text(
+                                                        text = "$cmdPreset ➔",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = Cyan,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(Modifier.height(2.dp))
+
+                                        Button(
+                                            onClick = {
+                                                val w = inputWord.trim()
+                                                val c = inputCmd.trim()
+                                                if (w.isBlank() || c.isBlank()) {
+                                                    Toast.makeText(this@MainActivity, tr("shortcut_fill_err"), Toast.LENGTH_SHORT).show()
+                                                    return@Button
+                                                }
+                                                if (shortcutManager.isReservedCommand(c) || shortcutManager.isReservedCommand(w)) {
+                                                    Toast.makeText(this@MainActivity, tr("shortcut_reserved_err"), Toast.LENGTH_LONG).show()
+                                                    return@Button
+                                                }
+                                                val res = shortcutManager.addShortcut(w, c)
+                                                if (res.isSuccess) {
+                                                    shortcutList = shortcutManager.getShortcuts()
+                                                    inputWord = ""
+                                                    inputCmd = ""
+                                                    Toast.makeText(this@MainActivity, tr("shortcut_added_success"), Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(this@MainActivity, res.exceptionOrNull()?.message ?: tr("error"), Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Cyan),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Icon(Icons.Default.Bolt, null, Modifier.size(18.dp), tint = Color.Black)
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(tr("shortcut_save_btn"), fontWeight = FontWeight.Bold, color = Color.Black)
+                                        }
+                                    }
+                                }
+
+                                // Saved Shortcuts List Card
+                                Surface(
+                                    shape = RoundedCornerShape(18.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Text(
+                                            text = tr("shortcut_saved_list"),
+                                            fontSize = 14.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+
+                                        if (shortcutList.isEmpty()) {
+                                            Text(
+                                                text = tr("shortcut_empty"),
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                                modifier = Modifier.padding(vertical = 8.dp)
+                                            )
+                                        } else {
+                                            shortcutList.forEach { item ->
+                                                Surface(
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    color = MaterialTheme.colorScheme.surface,
+                                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.SpaceBetween
+                                                    ) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                            modifier = Modifier.weight(1f)
+                                                        ) {
+                                                            Surface(
+                                                                shape = RoundedCornerShape(8.dp),
+                                                                color = Indigo.copy(alpha = 0.12f),
+                                                                border = BorderStroke(1.dp, Indigo.copy(alpha = 0.3f))
+                                                            ) {
+                                                                Text(
+                                                                    text = item.command,
+                                                                    fontSize = 12.sp,
+                                                                    fontWeight = FontWeight.ExtraBold,
+                                                                    color = Indigo,
+                                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                                )
+                                                            }
+                                                            Text(
+                                                                text = "➔",
+                                                                fontSize = 12.sp,
+                                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                                            )
+                                                            Text(
+                                                                text = item.word,
+                                                                fontSize = 13.sp,
+                                                                fontWeight = FontWeight.SemiBold,
+                                                                color = MaterialTheme.colorScheme.onSurface,
+                                                                maxLines = 1
+                                                            )
+                                                        }
+                                                        IconButton(
+                                                            onClick = {
+                                                                shortcutManager.deleteShortcut(item.id)
+                                                                shortcutList = shortcutManager.getShortcuts()
+                                                                Toast.makeText(this@MainActivity, tr("shortcut_deleted"), Toast.LENGTH_SHORT).show()
+                                                            },
+                                                            modifier = Modifier.size(32.dp)
+                                                        ) {
+                                                            Icon(
+                                                                Icons.Default.DeleteSweep,
+                                                                "Delete",
+                                                                tint = Color(0xFFEF4444).copy(alpha = 0.8f),
+                                                                modifier = Modifier.size(18.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            2 -> {
+                                // TAB 2: AI & SYSTEM (Accessibility status & guide, Android 13+ restricted settings, Change AI model, Logout)
                                 Surface(
                                     shape = RoundedCornerShape(18.dp),
                                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
@@ -1214,7 +1482,7 @@ class MainActivity : FragmentActivity() {
                                 }
                             }
 
-                            2 -> {
+                            3 -> {
                                 // TAB 2: BIOMETRICS (10-second voice training & profile, Voice Lock switch)
                                 Surface(
                                     shape = RoundedCornerShape(18.dp),

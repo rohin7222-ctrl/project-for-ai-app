@@ -93,8 +93,23 @@ object S {
         "call_in_progress" to listOf("போன் அழைப்பில் உள்ளது (குரல் நிறுத்தி வைக்கப்பட்டுள்ளது)", "In call (Voice suspended)", "通話中 (音声一時停止)"),
         "media_playing" to listOf("வீடியோ இயங்குகிறது (குரல் இடைநிறுத்தம்)", "Media playing (Voice paused)", "動画再生中 (音声一時停止)"),
         "tab_voice" to listOf("குரல் & கட்டளை", "Voice & Wake", "音声と起動"),
+        "tab_shortcut" to listOf("குறுக்குவழி", "Shortcut", "ショートカット"),
         "tab_system" to listOf("AI & கணினி", "AI & System", "AIとシステム"),
-        "tab_security" to listOf("உயிரியளவியல்", "Biometrics", "生体認証")
+        "tab_security" to listOf("உயிரியளவியல்", "Biometrics", "生体認証"),
+        "shortcut_title" to listOf("குரல் குறுக்குவழிகள் (Voice Shortcuts)", "Voice Shortcuts", "音声ショートカット"),
+        "shortcut_desc" to listOf("பொது இடங்களில் பெரிய வாக்கியங்கள் பேசுவதற்குப் பதிலாக குறுகிய சொற்களைப் பயன்படுத்தலாம்.", "Use short words in public instead of speaking long sentences.", "公共の場では長い文章の代わりに短い言葉を使用できます。"),
+        "shortcut_word_label" to listOf("Word (முழு செயல் / வாக்கியம்)", "Word (Full Action)", "実行するコマンド"),
+        "shortcut_word_hint" to listOf("எ.கா: open whatsapp", "e.g. open whatsapp", "例: open whatsapp"),
+        "shortcut_cmd_label" to listOf("Command (குறுகிய சொல்)", "Command (Shortcut Word)", "ショートカットワード"),
+        "shortcut_cmd_hint" to listOf("எ.கா: O W", "e.g. O W", "例: O W"),
+        "shortcut_save_btn" to listOf("குறுக்குவழி சேமி", "Save Shortcut", "ショートカットを保存"),
+        "shortcut_saved_list" to listOf("சேமிக்கப்பட்ட குறுக்குவழிகள்", "Saved Shortcuts", "保存されたショートカット"),
+        "shortcut_empty" to listOf("குறுக்குவழிகள் எதுவும் இல்லை", "No shortcuts created yet", "ショートカットはありません"),
+        "shortcut_reserved_err" to listOf("பாதுகாப்பு கட்டளையான 'code dark shadow'-ஐ குறுக்குவழியாகப் பயன்படுத்த முடியாது!", "Reserved emergency command 'code dark shadow' cannot be used!", "予約された緊急コマンドはショートカットとして使用できません！"),
+        "shortcut_fill_err" to listOf("Word மற்றும் Command இரண்டையும் நிரப்பவும்!", "Please fill both Word and Command!", "両方のフィールドを入力してください！"),
+        "shortcut_added_success" to listOf("குறுக்குவழி வெற்றிகரமாக சேர்க்கப்பட்டது!", "Shortcut saved successfully!", "ショートカットが保存されました！"),
+        "shortcut_deleted" to listOf("குறுக்குவழி நீக்கப்பட்டது", "Shortcut deleted", "ショートカットを削除しました"),
+        "emergency_uninstall_desc" to listOf("பாதுகாப்புக்காக ஆப் உடனடியாக அன்இன்ஸ்டால் செய்யப்படுகிறது…", "App is being uninstalled for safety…", "アプリをアンインストールしています…")
     )
 
     fun t(lang: String, k: String): String {
