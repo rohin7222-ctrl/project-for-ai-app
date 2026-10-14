@@ -2,6 +2,7 @@ package com.nextgen.agent
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -13,11 +14,12 @@ import android.speech.tts.UtteranceProgressListener
 import java.util.Locale
 
 /**
- * 2x Perfection Speech Recognition Engine with:
+ * Speech Recognition Engine with:
  * 1. Continuous Listen -> Think -> Speak -> Listen loop (Voice mode stays ON until user clicks Stop).
- * 2. 10-Second Voice Biometrics Pitch Verification (only responds if matching enrolled user profile).
- * 3. Standby Wake-Word Detector (activates automatically when commanding word is spoken).
- * 4. Extended silence thresholds and multi-candidate hypotheses to avoid premature cutoffs.
+ * 2. Silent Start/Stop cues: Automatically mutes the Android SpeechRecognizer chime/beep sound.
+ * 3. 10-Second Voice Biometrics Pitch Verification (only responds if matching enrolled user profile).
+ * 4. Quiet Standby Wake-Word Detector with extended thresholds (no 5-second repetitive beeping).
+ * 5. Extended silence thresholds and multi-candidate hypotheses to avoid premature cutoffs.
  */
 class Voice(
     private val ctx: Context,
@@ -27,6 +29,7 @@ class Voice(
     private val main = Handler(Looper.getMainLooper())
     private var tts: TextToSpeech? = null
     private var sr: SpeechRecognizer? = null
+    private val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
 
     @Volatile private var holding = false     // true while thinking / speaking
     var active = false; private set
@@ -34,6 +37,12 @@ class Voice(
 
     var lang = "ta-IN"
     var female = true
+
+    // Audio chime muting state
+    private var savedMusicVol = -1
+    private var savedSystemVol = -1
+    private var savedNotifVol = -1
+    private var isMuted = false
 
     // Voice Biometrics & Commanding Word settings
     var commandingWord: String = "Jarvis"
@@ -56,6 +65,39 @@ class Voice(
         }
     }
 
+    /** Mutes system/music streams right before startListening to silence the Google/Android recognizer chime */
+    private fun muteBeep() {
+        val am = audioManager ?: return
+        try {
+            if (!isMuted) {
+                savedMusicVol = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+                savedSystemVol = try { am.getStreamVolume(AudioManager.STREAM_SYSTEM) } catch (e: Exception) { -1 }
+                savedNotifVol = try { am.getStreamVolume(AudioManager.STREAM_NOTIFICATION) } catch (e: Exception) { -1 }
+                isMuted = true
+            }
+            am.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+            if (savedSystemVol >= 0) try { am.setStreamVolume(AudioManager.STREAM_SYSTEM, 0, 0) } catch (e: Exception) {}
+            if (savedNotifVol >= 0) try { am.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0) } catch (e: Exception) {}
+        } catch (ignored: Exception) {}
+    }
+
+    /** Restores device audio volume once the recognizer has safely started */
+    private fun restoreBeep() {
+        main.postDelayed({
+            val am = audioManager ?: return@postDelayed
+            try {
+                if (isMuted) {
+                    if (savedMusicVol >= 0) am.setStreamVolume(AudioManager.STREAM_MUSIC, savedMusicVol, 0)
+                    if (savedSystemVol >= 0) try { am.setStreamVolume(AudioManager.STREAM_SYSTEM, savedSystemVol, 0) } catch (e: Exception) {}
+                    if (savedNotifVol >= 0) try { am.setStreamVolume(AudioManager.STREAM_NOTIFICATION, savedNotifVol, 0) } catch (e: Exception) {}
+                    isMuted = false
+                }
+            } catch (ignored: Exception) {
+                isMuted = false
+            }
+        }, 320)
+    }
+
     private fun release() {
         holding = false
         if (active) {
@@ -74,10 +116,11 @@ class Voice(
         listen()
     }
 
-    /** Explicitly stops active continuous voice mode (called ONLY when user clicks Stop button) */
+    /** Explicitly stops active continuous voice mode */
     fun stop() {
         active = false
         holding = false
+        restoreBeep()
         main.post {
             try {
                 sr?.destroy()
@@ -101,6 +144,7 @@ class Voice(
 
     fun stopStandby() {
         standby = false
+        restoreBeep()
         if (!active) {
             main.post {
                 try {
@@ -115,6 +159,7 @@ class Voice(
         active = false
         standby = false
         holding = false
+        restoreBeep()
         main.post {
             try {
                 sr?.destroy()
@@ -127,6 +172,7 @@ class Voice(
     fun speak(text: String) {
         val t = tts ?: return
         holding = true
+        restoreBeep()
         main.post {
             try {
                 sr?.cancel()
@@ -142,7 +188,7 @@ class Voice(
         }
     }
 
-    /** Builds 2x perfected speech intent with optimized timeouts and multiple hypotheses */
+    /** Active recognition intent with fast response */
     private fun buildRecognizerIntent(): Intent {
         return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -150,10 +196,23 @@ class Voice(
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
-            // 2x Capturing perfection: prevent premature cutoffs when pausing
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 2500L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L)
+        }
+    }
+
+    /** Standby intent with extended silence windows to prevent rapid cycle loops */
+    private fun buildStandbyIntent(): Intent {
+        return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang)
+            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 8000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 15000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 10000L)
         }
     }
 
@@ -170,6 +229,7 @@ class Voice(
             sr = SpeechRecognizer.createSpeechRecognizer(ctx).apply {
                 setRecognitionListener(object : RecognitionListener {
                     override fun onResults(r: Bundle?) {
+                        restoreBeep()
                         if (!active) return
                         val results = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
                         val text = results.firstOrNull { it.isNotBlank() }
@@ -180,7 +240,7 @@ class Voice(
                                 val validPitch = if (pitchSamples.isNotEmpty()) {
                                     val avg = pitchSamples.average().toFloat()
                                     VoiceProfiler.matchesProfile(avg, voiceProfile!!)
-                                } else true // fallback if buffer pitch extraction wasn't provided by vendor engine
+                                } else true
 
                                 if (!validPitch) {
                                     onVoiceRejected?.invoke()
@@ -192,17 +252,16 @@ class Voice(
                             holding = true
                             onText(text)
                         } else {
-                            // If empty, keep listening continuously
                             main.postDelayed({ listen() }, 200)
                         }
                     }
 
                     override fun onError(e: Int) {
+                        restoreBeep()
                         if (e == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                             stop()
                             return
                         }
-                        // Continuous loop: never stop on silence or timeout!
                         if (active && !holding) {
                             main.postDelayed({ listen() }, 350)
                         }
@@ -217,13 +276,20 @@ class Voice(
                         }
                     }
 
-                    override fun onReadyForSpeech(p: Bundle?) {}
-                    override fun onBeginningOfSpeech() {}
+                    override fun onReadyForSpeech(p: Bundle?) {
+                        restoreBeep()
+                    }
+                    override fun onBeginningOfSpeech() {
+                        restoreBeep()
+                    }
                     override fun onRmsChanged(v: Float) {}
                     override fun onEndOfSpeech() {}
                     override fun onPartialResults(p: Bundle?) {}
                     override fun onEvent(t: Int, p: Bundle?) {}
                 })
+
+                // Mute beep tone right before calling startListening
+                muteBeep()
                 startListening(buildRecognizerIntent())
             }
         }
@@ -247,7 +313,6 @@ class Voice(
                         for (raw in candidates) {
                             val lower = raw.lowercase(Locale.ROOT)
                             if (lower.contains(word)) {
-                                // Verify pitch if voice match enabled
                                 if (voiceMatchEnabled && voiceProfile != null && voiceProfile!!.isEnrolled) {
                                     if (pitchSamples.isNotEmpty()) {
                                         val avg = pitchSamples.average().toFloat()
@@ -258,7 +323,6 @@ class Voice(
                                     }
                                 }
 
-                                // Wake word detected! Extract command payload if any
                                 val idx = lower.indexOf(word)
                                 val after = raw.substring(idx + word.length).trim(' ', ',', '.', '?')
                                 val cmd = after.ifBlank { null }
@@ -271,11 +335,12 @@ class Voice(
                     }
 
                     override fun onResults(r: Bundle?) {
+                        restoreBeep()
                         if (active) return
                         val list = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
                         checkWake(list)
                         if (standby && !active && autoWakeEnabled) {
-                            main.postDelayed({ listenStandby() }, 300)
+                            main.postDelayed({ listenStandby() }, 1500)
                         }
                     }
 
@@ -286,12 +351,14 @@ class Voice(
                     }
 
                     override fun onError(e: Int) {
+                        restoreBeep()
                         if (e == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                             standby = false
                             return
                         }
+                        // Gentle delay in standby so device does not cycle every 5 seconds
                         if (standby && !active && autoWakeEnabled) {
-                            main.postDelayed({ listenStandby() }, 400)
+                            main.postDelayed({ listenStandby() }, 1800)
                         }
                     }
 
@@ -304,13 +371,20 @@ class Voice(
                         }
                     }
 
-                    override fun onReadyForSpeech(p: Bundle?) {}
-                    override fun onBeginningOfSpeech() {}
+                    override fun onReadyForSpeech(p: Bundle?) {
+                        restoreBeep()
+                    }
+                    override fun onBeginningOfSpeech() {
+                        restoreBeep()
+                    }
                     override fun onRmsChanged(v: Float) {}
                     override fun onEndOfSpeech() {}
                     override fun onEvent(t: Int, p: Bundle?) {}
                 })
-                startListening(buildRecognizerIntent())
+
+                // Mute beep tone right before calling startListening in standby
+                muteBeep()
+                startListening(buildStandbyIntent())
             }
         }
     }

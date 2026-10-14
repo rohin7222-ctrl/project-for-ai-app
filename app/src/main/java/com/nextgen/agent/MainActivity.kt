@@ -125,8 +125,7 @@ class MainActivity : FragmentActivity() {
     private val chat = mutableStateListOf<Msg>()
 
     private val perms = arrayOf(
-        Manifest.permission.RECORD_AUDIO, Manifest.permission.CALL_PHONE, Manifest.permission.READ_CONTACTS,
-        Manifest.permission.SEND_SMS, Manifest.permission.ANSWER_PHONE_CALLS
+        Manifest.permission.RECORD_AUDIO, Manifest.permission.CALL_PHONE, Manifest.permission.READ_CONTACTS
     )
     private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         if (has(Manifest.permission.RECORD_AUDIO)) startVoice()
@@ -227,10 +226,8 @@ class MainActivity : FragmentActivity() {
                 val actionDescs = r.actions.mapNotNull { it.optString("desc").takeIf { s -> s.isNotBlank() } }
                 chat.add(Msg(mine = false, text = r.speech, time = nowTime(), actions = actionDescs))
                 voice.speak(r.speech)
-                val (sens, safe) = r.actions.partition { DeviceController.isSensitive(it.optString("type")) }
                 delay(1200)                       // let the voice reply start before apps open
-                runList(safe)
-                if (sens.isNotEmpty()) pending = sens   // calls / SMS need an explicit tap
+                runList(r.actions)                // Run all actions directly without blocking modal!
             } else {
                 val m = tr("error")
                 chat.add(Msg(mine = false, text = "$m\n${r.error}", time = nowTime(), isError = true))
@@ -245,6 +242,7 @@ class MainActivity : FragmentActivity() {
             if (d.isNotBlank()) executingAction = d
             val r = withContext(Dispatchers.IO) { device.execute(a) }   // ui_* actions block while they wait for the screen
             if (a.optString("type") == "open_app") delay(2500)          // let the app finish opening before the next step
+            else if (a.optString("type") == "call") delay(1000)
             else if (a.optString("type").startsWith("ui_")) delay(600)
             executingAction = ""
             when {
@@ -252,7 +250,11 @@ class MainActivity : FragmentActivity() {
                     chat.add(Msg(mine = false, text = tr("need_a11y"), time = nowTime(), isError = true))
                     startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 }
-                r.startsWith("ERR") -> chat.add(Msg(mine = false, text = "⚠ " + r.removePrefix("ERR:"), time = nowTime(), isError = true))
+                r.startsWith("ERR") -> {
+                    val errMsg = r.removePrefix("ERR:")
+                    chat.add(Msg(mine = false, text = "⚠ $errMsg", time = nowTime(), isError = true))
+                    voice.speak(errMsg)
+                }
             }
         }
     }
@@ -915,6 +917,56 @@ class MainActivity : FragmentActivity() {
                             }
                         }
 
+                        // Section 3b: Android 13+ Restricted Settings Guide (Allows SMS & Full Accessibility)
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = Amber.copy(alpha = 0.08f),
+                            border = BorderStroke(1.dp, Amber.copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Lock, null, tint = Amber, modifier = Modifier.size(18.dp))
+                                    Text(
+                                        text = tr("restricted_guide_title"),
+                                        fontSize = 14.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                Text(
+                                    text = tr("restricted_guide_desc"),
+                                    fontSize = 12.sp,
+                                    lineHeight = 17.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                )
+                                OutlinedButton(
+                                    onClick = {
+                                        try {
+                                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                                data = android.net.Uri.fromParts("package", packageName, null)
+                                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                            }
+                                            startActivity(intent)
+                                        } catch (e: Exception) {
+                                            startActivity(Intent(Settings.ACTION_SETTINGS))
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, Amber.copy(alpha = 0.6f)),
+                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Amber.copy(alpha = 0.12f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.Tune, null, Modifier.size(16.dp), tint = Amber)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(tr("open_app_info"), fontWeight = FontWeight.Bold, color = Amber, fontSize = 13.sp)
+                                }
+                            }
+                        }
+
                         // Section 4: Voice Gender & Language
                         Surface(
                             shape = RoundedCornerShape(18.dp),
@@ -1096,12 +1148,42 @@ class MainActivity : FragmentActivity() {
                     Spacer(Modifier.width(12.dp))
 
                     Column(Modifier.weight(1f)) {
-                        Text(
-                            text = cfg.name.ifBlank { "NextGen AI" },
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = cfg.name.ifBlank { "NextGen AI" },
+                                fontSize = 19.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            // Standby toggle pill
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (cfg.autoWakeEnabled) Indigo.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                border = BorderStroke(1.dp, if (cfg.autoWakeEnabled) Indigo.copy(alpha = 0.35f) else Color.Transparent),
+                                modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable {
+                                    val next = !cfg.autoWakeEnabled
+                                    upd { it.copy(autoWakeEnabled = next) }
+                                    if (next) voice.startStandby() else voice.stopStandby()
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier.size(6.dp).clip(CircleShape)
+                                            .background(if (cfg.autoWakeEnabled) Color(0xFF10B981) else Color.Gray)
+                                    )
+                                    Text(
+                                        text = if (cfg.autoWakeEnabled) cfg.commandingWord else "Off",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (cfg.autoWakeEnabled) Indigo else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                                    )
+                                }
+                            }
+                        }
                         val statusText = when {
                             executingAction.isNotBlank() -> "${tr("executing")} $executingAction"
                             thinking -> tr("thinking")
@@ -1217,10 +1299,10 @@ class MainActivity : FragmentActivity() {
                                 Spacer(Modifier.height(10.dp))
 
                                 val suggestions = listOf(
+                                    Triple(tr("chip_call_appa"), "📞", if (cfg.lang == "ta-IN") "அப்பாவுக்கு கால் பண்ணு" else "Call Appa"),
                                     Triple(tr("chip_wifi"), "📶", if (cfg.lang == "ta-IN") "வைஃபை ஆன் பண்ணு" else "Turn on Wi-Fi"),
                                     Triple(tr("chip_bt"), "🎧", if (cfg.lang == "ta-IN") "ப்ளூடூத் ஆன் பண்ணு" else "Turn on Bluetooth"),
                                     Triple(tr("chip_whatsapp"), "💬", "Open WhatsApp"),
-                                    Triple(tr("chip_call"), "📞", "Call Contact"),
                                     Triple(tr("chip_yt"), "🔍", "Search YouTube"),
                                     Triple(tr("chip_alarm"), "⏰", "7 AM Alarm"),
                                     Triple(tr("chip_torch"), "🔦", if (cfg.lang == "ta-IN") "டார்ச் ஆன் பண்ணு" else "Turn on torch"),

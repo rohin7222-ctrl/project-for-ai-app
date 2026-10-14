@@ -36,9 +36,29 @@ public class DeviceController {
 
     public DeviceController(Context c) { ctx = c.getApplicationContext(); }
 
+    private static final java.util.Map<String, String[]> RELATION_ALIASES = new java.util.HashMap<>();
+    static {
+        RELATION_ALIASES.put("appa", new String[]{"dad", "daddy", "father", "papa", "dada", "அப்பா", "தந்தை"});
+        RELATION_ALIASES.put("dad", new String[]{"appa", "daddy", "father", "papa", "அப்பா"});
+        RELATION_ALIASES.put("daddy", new String[]{"appa", "dad", "father", "papa", "அப்பா"});
+        RELATION_ALIASES.put("father", new String[]{"appa", "dad", "daddy", "அப்பா"});
+        RELATION_ALIASES.put("amma", new String[]{"mom", "mommy", "mother", "mummy", "அம்மா", "தாய்"});
+        RELATION_ALIASES.put("mom", new String[]{"amma", "mommy", "mother", "mummy", "அம்மா"});
+        RELATION_ALIASES.put("mother", new String[]{"amma", "mom", "mommy", "அம்மா"});
+        RELATION_ALIASES.put("anna", new String[]{"brother", "bro", "அண்ணா", "அண்ணன்"});
+        RELATION_ALIASES.put("brother", new String[]{"anna", "thambi", "bro"});
+        RELATION_ALIASES.put("thambi", new String[]{"brother", "bro", "தம்பி"});
+        RELATION_ALIASES.put("akka", new String[]{"sister", "sis", "அக்கா", "அக்காள்"});
+        RELATION_ALIASES.put("sister", new String[]{"akka", "thangai", "sis"});
+        RELATION_ALIASES.put("thangai", new String[]{"sister", "sis", "தங்கை"});
+        RELATION_ALIASES.put("wife", new String[]{"manaivi", "மனைவி", "பொண்டாட்டி"});
+        RELATION_ALIASES.put("husband", new String[]{"purushan", "கணவர்"});
+        RELATION_ALIASES.put("home", new String[]{"veedu", "வீடு"});
+    }
+
     /** Actions that cost money / affect other people: the UI asks the user to confirm first. */
     public static boolean isSensitive(String type) {
-        return "call".equals(type) || "sms".equals(type) || "end_call".equals(type);
+        return "sms".equals(type) || "end_call".equals(type);
     }
 
     public String execute(JSONObject a) {
@@ -119,13 +139,23 @@ public class DeviceController {
         String num = smartLookup(name);
         if (num != null) return num;
 
-        // 3. Try smart lookup with spelled-out concatenated version
+        // 3. Try relationship aliases (e.g. "appa" -> dad, daddy, father, அப்பா)
+        String lowerTarget = name.toLowerCase(Locale.ROOT).trim();
+        String[] aliases = RELATION_ALIASES.get(lowerTarget);
+        if (aliases != null) {
+            for (String alias : aliases) {
+                num = smartLookup(alias);
+                if (num != null) return num;
+            }
+        }
+
+        // 4. Try smart lookup with spelled-out concatenated version
         if (!spelledOut.equalsIgnoreCase(name) && spelledOut.length() >= 2) {
             num = smartLookup(spelledOut);
             if (num != null) return num;
         }
 
-        // 4. Speech recognition often adds extra words ("abhi night"): if nothing matches, drop trailing words and retry
+        // 5. Speech recognition often adds extra words ("abhi night"): if nothing matches, drop trailing words and retry
         while (name.contains(" ")) {
             int sp = name.lastIndexOf(' ');
             name = name.substring(0, sp).trim();
@@ -246,21 +276,51 @@ public class DeviceController {
 
     // ---------- actions ----------
     private String call(String target) {
-        if (!has(Manifest.permission.CALL_PHONE)) return "ERR:phone permission not granted";
         String num = resolveNumber(target);
-        if (num == null) return "ERR:contact not found: " + target;
-        return start(new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(num))));
+        if (num == null) {
+            // Open phone dialer with target name or number pre-filled so user can tap Call
+            try {
+                Intent dialIntent = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(target)));
+                dialIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(dialIntent);
+                return "OK";
+            } catch (Exception e) {
+                return "ERR:contact not found: " + target;
+            }
+        }
+        if (has(Manifest.permission.CALL_PHONE)) {
+            try {
+                return start(new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(num))));
+            } catch (Exception e) {
+                return start(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(num))));
+            }
+        } else {
+            return start(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(num))));
+        }
     }
 
     private String sms(String target, String text) {
-        if (!has(Manifest.permission.SEND_SMS)) return "ERR:sms permission not granted";
         String num = resolveNumber(target);
-        if (num == null) return "ERR:contact not found: " + target;
-        SmsManager sm = Build.VERSION.SDK_INT >= 31
-                ? ctx.getSystemService(SmsManager.class) : SmsManager.getDefault();
-        ArrayList<String> parts = sm.divideMessage(text);
-        sm.sendMultipartTextMessage(num, null, parts, null, null);
-        return "OK";
+        if (num == null) num = target;
+        if (has(Manifest.permission.SEND_SMS)) {
+            try {
+                SmsManager sm = Build.VERSION.SDK_INT >= 31
+                        ? ctx.getSystemService(SmsManager.class) : SmsManager.getDefault();
+                ArrayList<String> parts = sm.divideMessage(text);
+                sm.sendMultipartTextMessage(num, null, parts, null, null);
+                return "OK";
+            } catch (Exception ignored) {}
+        }
+        // Fallback: Open SMS app directly with number and body prefilled (no restricted permission needed!)
+        try {
+            Intent smsIntent = new Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(num)));
+            smsIntent.putExtra("sms_body", text);
+            smsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(smsIntent);
+            return "OK";
+        } catch (Exception e) {
+            return "ERR:" + e.getMessage();
+        }
     }
 
     private String openApp(String name) {

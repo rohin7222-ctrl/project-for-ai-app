@@ -78,7 +78,15 @@ object S {
         "settings_title" to listOf("அமைப்புகள் (Settings)", "Settings", "設定"),
         "voice_settings" to listOf("குரல் & உயிரியளவியல்", "Voice & Biometrics", "音声＆生体認証"),
         "general_settings" to listOf("பொதுவான அமைப்புகள்", "General Settings", "一般設定"),
-        "voice_rejected" to listOf("வேறு நபரின் குரல் நிராகரிக்கப்பட்டது", "Unrecognized voice ignored", "登録外の音声を無視しました")
+        "voice_rejected" to listOf("வேறு நபரின் குரல் நிராகரிக்கப்பட்டது", "Unrecognized voice ignored", "登録外の音声を無視しました"),
+        "restricted_guide_title" to listOf("Android 13+ கட்டுப்பாட்டு அனுமதி (Restricted Settings)", "Android 13+ Restricted Settings Guide", "Android 13+ 制限付き設定ガイド"),
+        "restricted_guide_desc" to listOf("SMS மற்றும் Accessibility-ஐ இயக்க:\n1. கீழே உள்ள 'App Info திற' தொடவும்\n2. மேலே வலதுபுறம் உள்ள 3 புள்ளிகள் (⋮) தொடவும்\n3. 'Allow restricted settings' தேர்வு செய்து PIN/Fingerprint கொடுக்கவும்", "To enable SMS & full system control on Android 13+:\n1. Tap 'Open App Info' below\n2. Tap 3 dots (⋮) in the top-right corner\n3. Tap 'Allow restricted settings' and verify PIN/fingerprint", "Android 13+でSMSとユーザー補助を有効にするには：\n1. 「アプリ情報を開く」をタップ\n2. 右上の3点メニュー（⋮）をタップ\n3. 「制限付き設定を許可」をタップ"),
+        "open_app_info" to listOf("App Info பக்கத்தை திற", "Open App Info Settings", "アプリ情報を開く"),
+        "standby_wake_on" to listOf("Jarvis Standby: ON", "Jarvis Standby: ON", "Jarvis Standby: ON"),
+        "standby_wake_off" to listOf("Jarvis Standby: OFF", "Jarvis Standby: OFF", "Jarvis Standby: OFF"),
+        "standby_badge_desc" to listOf("குரல் மூலம் அழைக்கலாம்", "Voice activation active", "音声起動が有効"),
+        "calling_direct" to listOf("அழைக்கப்படுகிறது…", "Dialing…", "発信中…"),
+        "chip_call_appa" to listOf("அப்பாவுக்கு கால்", "Call Appa", "お父さんに電話")
     )
 
     fun t(lang: String, k: String): String {

@@ -321,7 +321,21 @@ def _chat_api(cfg, user_text):
     if len(_cache) > 100:
         _cache.clear()
     _cache[cache_key] = speech
-    return {"ok": True, "speech": speech, "actions": []}
+
+    # Agentic Safety Net: Extract actions if the model response acknowledged a call or app launch
+    actions = []
+    # e.g. "I will place that call to Appa for you right now." or "Calling Appa right away"
+    m_call = re.search(r"(?:place(?: that)? call to|calling|dialing|dial|call)\s+(?P<t>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)(?:\s+(?:for you|now|right away|right now|directly|\.|$))", speech, re.I)
+    if not m_call:
+        # Check user text if user was asking to call
+        m_call = re.search(r"\b(?:call|dial|phone)\s+(?:to\s+)?(?P<t>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)(?:\s+(?:please|now|pa|da|$))", user_text, re.I)
+    if m_call:
+        tgt = m_call.group("t").strip()
+        tgt = re.sub(r"\s+(?:for|now|right|please|pa|da)$", "", tgt, flags=re.I).strip()
+        if tgt and len(tgt) < 30 and tgt.lower() not in ("you", "them", "someone", "me", "it", "him", "her"):
+            actions.append({"type": "call", "target": tgt, "desc": f"Call {tgt}"})
+
+    return {"ok": True, "speech": speech, "actions": actions}
 
 
 # ======================================================================
@@ -348,7 +362,7 @@ ORD = {1: ("first", "1st", "one", "mudhal", "mudhalavadhu", "mudhalaavadhu", "mu
        5: ("fifth", "5th", "five", "ainthavadhu", "anjavadhu", "ஐந்தாவது", "5வது", "ஐந்து", "5番目")}
 NOUNS = ("chat", "video", "result", "item", "contact", "post", "song", "channel", "conversation", "one",
          "message", "reel", "story", "photo", "link", "சாட்", "வீடியோ", "பாடல்", "பதிவு", "தொடர்பு")
-FILLER = r"\b(please|plz|pls|pannunga|pannu|panunga|panni|pannidu|seiyunga|seiyu|podunga|podu|kodunga|sollu|appa|pa)\b"
+FILLER = r"\b(please|plz|pls|pannunga|pannu|panunga|panni|pannidu|seiyunga|seiyu|podunga|podu|kodunga|sollu|pa|da)\b"
 SPLIT = re.compile(r"\s*(?:,|;|\.|\bthen\b|\band\b|\bappuram\b|\bapram\b|\baprom\b|\bpinnadi\b|பிறகு|அப்புறம்|பின்னர்|その後|、)\s*", re.I)
 PART = r"(?:ah|a|ai|ku|kku|la|le|ல|இல்|ஐ|க்கு|க்|கு|வ|வை|ஐயும்|வும்|を|に|で)"
 
@@ -488,13 +502,24 @@ def _parse_one(p, last_app):
         return [{"type": "answer_call", "desc": "Answer Call"}], "ok"
     if re.search(r"\b(end|cut|disconnect|hang ?up)\b.*\bcall\b|\bcall\b.*\b(end|cut)\b", t) or any(w in t for w in ("அழைப்பை முடி", "போன் வை", "கால் கட்")):
         return [{"type": "end_call", "desc": "End Call"}], "ok"
-    m = re.match(r"^(?:call|dial|phone)\s+(?P<t>.+)$", t) or \
-        re.match(r"^(?P<t>.+?)\s+" + PART + r"?\s*(?:call|phone|dial|போன்|கால்|அழை)(?:\s+(?:vidu|panni vidu|pa|da|பண்ணு|செய்))?$", t)
-    if m and not any(w in t for w in ("search", "thedu", "open", "in whatsapp", "தேடு")):
-        tgt = m.group("t").strip()
+
+    # Direct call patterns: "call appa", "call to dad", "can you call mom", "dial appa"
+    m_call = re.match(r"^(?:call|dial|phone|make a call to|place a call to|ring)\s+(?:to\s+)?(?:my\s+)?(?P<t>.+?)(?:\s+(?:please|plz|now|pa|da))?$", t)
+    if not m_call:
+        # Suffix/Dative call patterns: "appa ku call pannu", "appa vukku call", "அப்பாவுக்கு கால் பண்ணு", "appa call"
+        m_call = re.match(r"^(?:my\s+)?(?P<t>.+?)(?:\s+(?:ku|kku|vukku|ukku|ah|la|nu)|-(?:ku|kku|ukku|vukku|ah)|வுக்கு|க்கு|க்குக்|ஐ)?\s*(?:call|phone|dial|போன்|கால்|அழைப்பு|கூப்பிடு)(?:\s+(?:pannu|panni vidu|podu|vai|vidu|seiy|செய்|பண்ணு|போடு))?$", t)
+    if not m_call:
+        # Informal: "<name> call", e.g. "appa call", "dad call", "amma call"
+        m_call = re.match(r"^(?P<t>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)\s+(?:call|phone|dial|போன்|கால்)(?:\s+(?:pannu|podu|vai|vidu|seiy))?$", t)
+
+    if m_call and not any(w in t for w in ("search", "thedu", "open", "in whatsapp", "தேடு")):
+        tgt = m_call.group("t").strip()
+        tgt = re.sub(r"^(?:to|my)\s+", "", tgt).strip()
+        tgt = re.sub(r"\s+(?:to|pannu|panunga|podu|vidu|seiyu|sollu)$", "", tgt).strip()
         tgt = re.sub(r"\s+" + PART + r"$", "", tgt).strip()
-        num = _digits(tgt) or tgt
-        return [{"type": "call", "target": num, "desc": f"Call {num}"}], "call"
+        if tgt and tgt not in ("search", "open", "thedu"):
+            num = _digits(tgt) or tgt
+            return [{"type": "call", "target": num, "desc": f"Call {num}"}], "call"
 
     # --- alarm / timer
     if any(w in t for w in ("alarm", "அலாரம்", "アラーム")):
@@ -596,19 +621,19 @@ def _parse_one(p, last_app):
 
 
 SAY = {  # spoken confirmation per language
-    "ta-IN": {"app": "%s திறக்கிறேன்.", "search": "%s தேடுகிறேன்.", "call": "%s க்கு கால் செய்யவா? உறுதிப்படுத்துங்கள்.",
+    "ta-IN": {"app": "%s திறக்கிறேன்.", "search": "%s தேடுகிறேன்.", "call": "%s-க்கு இப்போது அழைக்கிறேன்.",
               "nth": "%d-வது ஐ திறக்கிறேன்.", "ok": "சரி.", "yt": "YouTube-ல %s தேடுகிறேன்.",
               "torch_on": "டார்ச் ஆன் செய்துள்ளேன்.", "torch_off": "டார்ச் ஆஃப் செய்துள்ளேன்.",
               "wifi_on": "வைஃபை ஆன் செய்கிறேன்.", "wifi_off": "வைஃபை ஆஃப் செய்கிறேன்.",
               "bt_on": "ப்ளூடூத் ஆன் செய்கிறேன்.", "bt_off": "ப்ளூடூத் ஆஃப் செய்கிறேன்.",
               "screenshot": "ஸ்கிரீன்ஷாட் எடுக்கப்பட்டது.", "media": "இசை மாற்றப்பட்டது.", "clipboard": "நகலெடுக்கப்பட்டது."},
-    "en-US": {"app": "Opening %s.", "search": "Searching %s.", "call": "Calling %s. Please confirm.",
+    "en-US": {"app": "Opening %s.", "search": "Searching %s.", "call": "Calling %s right now.",
               "nth": "Opening number %d.", "ok": "Done.", "yt": "Searching %s on YouTube.",
               "torch_on": "Flashlight turned on.", "torch_off": "Flashlight turned off.",
               "wifi_on": "Turning on Wi-Fi.", "wifi_off": "Turning off Wi-Fi.",
               "bt_on": "Turning on Bluetooth.", "bt_off": "Turning off Bluetooth.",
               "screenshot": "Screenshot captured.", "media": "Media updated.", "clipboard": "Copied to clipboard."},
-    "ja-JP": {"app": "%sを開きます。", "search": "%sを検索します。", "call": "%sに電話します。確認してください。",
+    "ja-JP": {"app": "%sを開きます。", "search": "%sを検索します。", "call": "%sに電話をかけています。",
               "nth": "%d番目を開きます。", "ok": "はい。", "yt": "YouTubeで%sを検索します。",
               "torch_on": "ライトをつけました。", "torch_off": "ライトを消しました。",
               "wifi_on": "Wi-Fiをオンにします。", "wifi_off": "Wi-Fiをオフにします。",
