@@ -43,7 +43,6 @@ def _http(url, body=None, headers=None, timeout=45):
     req = urllib.request.Request(url, data=data, headers=h,
                                  method="POST" if body is not None else "GET")
     last_err = None
-    # Retry loop to handle slow internet, transient DNS delays, and brief socket drops
     for attempt in range(2):
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -51,11 +50,18 @@ def _http(url, body=None, headers=None, timeout=45):
         except urllib.error.HTTPError as e:
             raise ApiError(e.code, e.read().decode("utf-8", "ignore")[:300])
         except urllib.error.URLError as e:
+            reason = str(e.reason).lower()
             last_err = ApiError(0, str(e.reason))
+            # If offline / airplane mode / DNS unreachable, fail immediately without hanging for 90s!
+            if any(w in reason for w in ("getaddrinfo", "unreachable", "network is down", "nodename", "no route", "not known")):
+                raise ApiError(0, "OFFLINE")
         except (TimeoutError, OSError) as e:
+            err_str = str(e).lower()
             last_err = ApiError(0, str(e))
+            if any(w in err_str for w in ("getaddrinfo", "unreachable", "network is down", "nodename", "no route", "not known")):
+                raise ApiError(0, "OFFLINE")
         if attempt == 0:
-            time.sleep(1.2)
+            time.sleep(0.8)
     if last_err:
         raise last_err
     raise ApiError(0, "Network timeout")
@@ -147,17 +153,17 @@ def _complete(cfg, system, hist):
 MSG = {
     "ta-IN": {"busy": "AI சர்வர் இப்போது பிஸியா இருக்கு. கொஞ்சம் கழித்து மீண்டும் சொல்லுங்க.",
               "key": "API key தவறு அல்லது அனுமதி இல்லை. Settings-ல சரிபார்க்கவும்.",
-              "net": "இன்டர்நெட் இணைப்பு மிகவும் மெதுவாக உள்ளது அல்லது தடைபட்டுள்ளது. மீண்டும் முயற்சிக்கவும்.",
+              "net": "ஏரோப்ளேன் மோட் (Airplane Mode) ஆன்-ல் உள்ளது அல்லது இணைய இணைப்பு இல்லை. ஆப்லைன் போன் கட்டளைகளை (கால், வைஃபை, டார்ச், அலாரம், ஆப்) என்னால் செய்ய முடியும்.",
               "err": "ஏதோ பிரச்சனை. மீண்டும் முயற்சிக்கவும்.",
               "unclear": "புரியவில்லை. கொஞ்சம் எளிமையா சொல்லுங்க, உதாரணம்: WhatsApp open பண்ணு."},
     "en-US": {"busy": "The AI server is busy right now. Please try again in a moment.",
               "key": "The API key is wrong or not allowed. Please check it in settings.",
-              "net": "Internet is slow or disconnected. Please check connection and try again.",
+              "net": "Airplane Mode is active or internet is disconnected. Offline controls (calls, flashlight, apps, volume, alarms) are fully working.",
               "err": "Something went wrong. Please try again.",
               "unclear": "I did not understand. Please say it simply, like: open WhatsApp."},
     "ja-JP": {"busy": "AIサーバーが混み合っています。少し待ってからもう一度お試しください。",
               "key": "APIキーが正しくないか、許可されていません。設定を確認してください。",
-              "net": "インターネット接続が遅いか不安定です。もう一度お試しください。",
+              "net": "機内モードが有効か、オフラインです。通話、ライト、アプリ起動、アラームなどの機能は利用できます。",
               "err": "問題が発生しました。もう一度お試しください。",
               "unclear": "よく分かりませんでした。例えば「WhatsAppを開いて」のように言ってください。"},
 }
@@ -202,7 +208,9 @@ def _complete_resilient(cfg, system, hist):
                 return _complete(c, system, hist)
             except ApiError as e:
                 last = e
-                # Also retry on slow network / timeout (code 0) up to 3 times before giving up
+                # Fail immediately if offline / in airplane mode without wasting user time
+                if e.text == "OFFLINE" or any(w in str(e.text).lower() for w in ("offline", "getaddrinfo", "unreachable")):
+                    raise
                 if e.code not in (0, 429, 500, 502, 503, 504):
                     raise
                 time.sleep(1 + attempt)

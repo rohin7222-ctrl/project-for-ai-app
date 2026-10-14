@@ -6,6 +6,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
@@ -32,6 +33,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -154,12 +156,16 @@ class MainActivity : FragmentActivity() {
         cm?.setPrimaryClip(ClipData.newPlainText("AI Text", text))
     }
 
+    private fun isSystemDark(): Boolean {
+        return (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    }
+
     // ------------------------------------------------------------------ lifecycle
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = Store(this)
         device = DeviceController(this)
-        cfg = store.load()
+        cfg = store.load(isSystemDark())
         voice = Voice(this, onText = { handleUser(it) }, onState = { listening = it })
         syncVoiceConfig()
         voice.onWakeWordTriggered = { cmd ->
@@ -271,7 +277,7 @@ class MainActivity : FragmentActivity() {
         store.logout()
         Brain.reset()
         chat.clear()
-        cfg = store.load()
+        cfg = store.load(isSystemDark())
         syncVoiceConfig()
         screen = Screen.LANG
     }
@@ -279,7 +285,9 @@ class MainActivity : FragmentActivity() {
     // ------------------------------------------------------------------ UI
     @Composable
     private fun App() {
-        val scheme = if (cfg.dark)
+        val systemDark = isSystemInDarkTheme()
+        val isDark = if (cfg.darkCustom) cfg.dark else systemDark
+        val scheme = if (isDark)
             darkColorScheme(primary = Indigo, secondary = Violet, background = Color(0xFF0E0E12),
                 surface = Color(0xFF1A1A21), surfaceVariant = Color(0xFF26262F),
                 onBackground = Color(0xFFEDEDF2), onSurface = Color(0xFFEDEDF2))
@@ -1202,7 +1210,11 @@ class MainActivity : FragmentActivity() {
                         RoundIcon(Icons.Default.DeleteSweep) { showClearDialog = true }
                         Spacer(Modifier.width(6.dp))
                     }
-                    RoundIcon(if (cfg.dark) Icons.Default.LightMode else Icons.Default.DarkMode) { upd { it.copy(dark = !it.dark) } }
+                    val isDark = if (cfg.darkCustom) cfg.dark else isSystemInDarkTheme()
+                    RoundIcon(if (isDark) Icons.Default.LightMode else Icons.Default.DarkMode) {
+                        val next = !isDark
+                        upd { it.copy(dark = next, darkCustom = true) }
+                    }
                     Spacer(Modifier.width(6.dp))
                     RoundIcon(Icons.Default.Settings) { showSettingsModal = true }
                 }

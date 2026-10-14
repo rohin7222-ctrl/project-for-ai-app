@@ -181,14 +181,33 @@ class Voice(
         val loc = Locale.forLanguageTag(lang)
         t.language = loc
         val vs = t.voices?.filter { it.locale.language == loc.language }?.sortedBy { it.name }.orEmpty()
-        if (vs.isNotEmpty()) t.voice = if (female) vs.first() else vs.last()
-        t.setPitch(if (female) 1.1f else 0.8f)
+        if (vs.isNotEmpty()) {
+            if (female) {
+                // User requirement: Give the OG natural female voice to Female (not robotic)
+                val ogFemale = vs.firstOrNull { it.name.contains("sfg") || it.name.contains("tpf") }
+                    ?: vs.firstOrNull { it.name.lowercase(Locale.ROOT).contains("female") }
+                    ?: vs.last() // vs.last() was the natural voice observed by user
+                t.voice = ogFemale
+                t.setPitch(1.0f) // Natural pitch without synthetic robotic shift
+            } else {
+                // User requirement: Give the true OG male voice to Male
+                val ogMale = vs.firstOrNull { it.name.contains("tpd") || it.name.contains("tpc") }
+                    ?: vs.firstOrNull { it.name.lowercase(Locale.ROOT).contains("male") || it.name.contains("-m-") }
+                    ?: vs.firstOrNull { !it.name.contains("sfg") && !it.name.contains("tpf") }
+                    ?: vs.first()
+                t.voice = ogMale
+                t.setPitch(0.92f) // Deep natural masculine voice tone
+            }
+        } else {
+            t.setPitch(if (female) 1.0f else 0.92f)
+        }
+        t.setSpeechRate(1.0f)
         if (t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "u" + System.nanoTime()) != TextToSpeech.SUCCESS) {
             release()
         }
     }
 
-    /** Active recognition intent with fast response */
+    /** Active recognition intent with fast response and on-device offline recognition (works in Airplane Mode) */
     private fun buildRecognizerIntent(): Intent {
         return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -199,10 +218,12 @@ class Voice(
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 2500L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L)
+            // Enable offline / airplane mode speech recognition
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
         }
     }
 
-    /** Standby intent with extended silence windows to prevent rapid cycle loops */
+    /** Standby intent with extended silence windows and on-device offline recognition */
     private fun buildStandbyIntent(): Intent {
         return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -213,6 +234,8 @@ class Voice(
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 8000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 15000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 10000L)
+            // Enable offline / airplane mode speech recognition
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
         }
     }
 

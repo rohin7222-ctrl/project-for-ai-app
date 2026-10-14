@@ -19,7 +19,8 @@ data class Config(
     val voiceMatchEnabled: Boolean = false,
     val voicePitchMean: Float = 0f,
     val voicePitchStd: Float = 0f,
-    val voiceEnrolled: Boolean = false
+    val voiceEnrolled: Boolean = false,
+    val darkCustom: Boolean = false
 )
 
 /** All settings (including the API key) live in AES-256 encrypted preferences backed by the Android Keystore. */
@@ -31,19 +32,22 @@ class Store(ctx: Context) {
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
 
-    fun load() = Config(
+    fun load(systemDark: Boolean = false) = Config(
         sp.getString("lang", "ta-IN")!!, sp.getString("name", "")!!, sp.getString("type", "api")!!,
         sp.getString("provider", "gemini")!!, sp.getString("key", "")!!, sp.getString("model", "")!!,
-        sp.getString("url", "")!!, sp.getBoolean("female", true), sp.getBoolean("dark", false),
+        sp.getString("url", "")!!, sp.getBoolean("female", true),
+        if (sp.getBoolean("dark_custom", false)) sp.getBoolean("dark", false) else systemDark,
         sp.getString("commanding_word", "Jarvis")!!, sp.getBoolean("auto_wake", true),
         sp.getBoolean("voice_match", false), sp.getFloat("pitch_mean", 0f),
-        sp.getFloat("pitch_std", 0f), sp.getBoolean("voice_enrolled", false)
+        sp.getFloat("pitch_std", 0f), sp.getBoolean("voice_enrolled", false),
+        sp.getBoolean("dark_custom", false)
     )
 
     fun save(c: Config) {
         sp.edit().putString("lang", c.lang).putString("name", c.name).putString("type", c.type)
             .putString("provider", c.provider).putString("key", c.key).putString("model", c.model)
             .putString("url", c.url).putBoolean("female", c.female).putBoolean("dark", c.dark)
+            .putBoolean("dark_custom", c.darkCustom)
             .putString("commanding_word", c.commandingWord).putBoolean("auto_wake", c.autoWakeEnabled)
             .putBoolean("voice_match", c.voiceMatchEnabled).putFloat("pitch_mean", c.voicePitchMean)
             .putFloat("pitch_std", c.voicePitchStd).putBoolean("voice_enrolled", c.voiceEnrolled).apply()
