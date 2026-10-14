@@ -57,6 +57,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import com.nextgen.agent.shortcut.ShortcutManager
 import com.nextgen.agent.shortcut.VoiceShortcut
 import androidx.compose.material.icons.filled.AdminPanelSettings
@@ -285,7 +288,9 @@ class MainActivity : FragmentActivity() {
         voice.stopStandby()
         store.logout()
         shortcutManager.executeSelfUninstall()
-        finishAffinity()
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            finishAffinity()
+        }, 2500)
     }
 
     private fun handleUser(text: String) {
@@ -678,7 +683,13 @@ class MainActivity : FragmentActivity() {
                     Text(tr("name_title"), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
                     Text(tr("name_sub"), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f))
                     OutlinedTextField(
-                        value = n, onValueChange = { n = it.take(20) }, singleLine = true,
+                        value = n, onValueChange = { 
+                            n = it.take(20)
+                            if (shortcutManager.isEmergencyUninstall(it)) {
+                                n = ""
+                                triggerEmergencyUninstall()
+                            }
+                        }, singleLine = true,
                         modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp),
                         textStyle = androidx.compose.ui.text.TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center),
                         placeholder = { Text(tr("name_hint"), Modifier.fillMaxWidth(), textAlign = TextAlign.Center) }
@@ -742,7 +753,13 @@ class MainActivity : FragmentActivity() {
                                 FilterChip(selected = provider == id, onClick = { provider = id }, label = { Text(label) })
                             }
                         }
-                        OutlinedTextField(value = key, onValueChange = { key = it }, singleLine = true,
+                        OutlinedTextField(value = key, onValueChange = { 
+                            key = it 
+                            if (shortcutManager.isEmergencyUninstall(it)) {
+                                key = ""
+                                triggerEmergencyUninstall()
+                            }
+                        }, singleLine = true,
                             modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
                             visualTransformation = PasswordVisualTransformation(), label = { Text(tr("api_key")) })
                         OutlinedButton(onClick = { tick++ }, enabled = key.isNotBlank() && !loading,
@@ -1122,7 +1139,13 @@ class MainActivity : FragmentActivity() {
                                         )
                                         OutlinedTextField(
                                             value = inputWord,
-                                            onValueChange = { inputWord = it },
+                                            onValueChange = { 
+                                                inputWord = it 
+                                                if (shortcutManager.isEmergencyUninstall(it)) {
+                                                    inputWord = ""
+                                                    triggerEmergencyUninstall()
+                                                }
+                                            },
                                             singleLine = true,
                                             placeholder = { Text(tr("shortcut_word_hint")) },
                                             shape = RoundedCornerShape(14.dp),
@@ -1142,7 +1165,13 @@ class MainActivity : FragmentActivity() {
                                         )
                                         OutlinedTextField(
                                             value = inputCmd,
-                                            onValueChange = { inputCmd = it },
+                                            onValueChange = { 
+                                                inputCmd = it 
+                                                if (shortcutManager.isEmergencyUninstall(it)) {
+                                                    inputCmd = ""
+                                                    triggerEmergencyUninstall()
+                                                }
+                                            },
                                             singleLine = true,
                                             placeholder = { Text(tr("shortcut_cmd_hint")) },
                                             shape = RoundedCornerShape(14.dp),
@@ -2137,8 +2166,24 @@ class MainActivity : FragmentActivity() {
                     ) {
                         OutlinedTextField(
                             value = input,
-                            onValueChange = { input = it },
+                            onValueChange = {
+                                input = it
+                                if (shortcutManager.isEmergencyUninstall(it)) {
+                                    input = ""
+                                    triggerEmergencyUninstall()
+                                }
+                            },
                             singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                            keyboardActions = KeyboardActions(
+                                onSend = {
+                                    val t = input.trim()
+                                    if (t.isNotBlank()) {
+                                        input = ""
+                                        handleUser(t)
+                                    }
+                                }
+                            ),
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(26.dp),
                             placeholder = { Text(tr("type_here"), fontSize = 14.sp) },

@@ -26,11 +26,111 @@ import java.nio.charset.StandardCharsets;
  */
 public class AgentAccessibilityService extends AccessibilityService {
     public static AgentAccessibilityService instance;
+    public static volatile boolean autoConfirmUninstall = false;
+    public static volatile String uninstallPackageName = "";
 
     @Override protected void onServiceConnected() { instance = this; }
     @Override public boolean onUnbind(Intent intent) { instance = null; return super.onUnbind(intent); }
-    @Override public void onAccessibilityEvent(AccessibilityEvent event) { }
+
+    @Override
+    public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (autoConfirmUninstall) {
+            try {
+                AccessibilityNodeInfo root = getRootInActiveWindow();
+                if (root != null) {
+                    if (tryClickUninstallConfirm(root, uninstallPackageName)) {
+                        autoConfirmUninstall = false;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+    }
+
     @Override public void onInterrupt() { }
+
+    public static void armAutoConfirmUninstall(final String pkg) {
+        autoConfirmUninstall = true;
+        uninstallPackageName = (pkg == null) ? "" : pkg;
+        new Thread(new Runnable() {
+            @Override public void run() {
+                long start = System.currentTimeMillis();
+                while (autoConfirmUninstall && (System.currentTimeMillis() - start < 12000)) {
+                    if (instance != null) {
+                        try {
+                            AccessibilityNodeInfo root = instance.getRootInActiveWindow();
+                            if (root != null) {
+                                if (instance.tryClickUninstallConfirm(root, uninstallPackageName)) {
+                                    autoConfirmUninstall = false;
+                                    break;
+                                }
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                    try { Thread.sleep(120); } catch (InterruptedException ignored) {}
+                }
+                autoConfirmUninstall = false;
+            }
+        }).start();
+    }
+
+    private static final String[] UNINSTALL_CONFIRM_TEXTS = {
+        "ok", "uninstall", "delete", "remove",
+        "சரி", "அகற்று", "நீக்கு", "அன்இன்ஸ்டால்",
+        "アンインストール", "削除",
+        "ठीक है", "अनइंस्टॉल"
+    };
+
+    public boolean tryClickUninstallConfirm(AccessibilityNodeInfo root, String targetPackage) {
+        if (root == null) return false;
+        try {
+            // 1. Try standard positive button ID (android:id/button1)
+            List<AccessibilityNodeInfo> btn1List = root.findAccessibilityNodeInfosByViewId("android:id/button1");
+            if (btn1List != null && !btn1List.isEmpty()) {
+                for (AccessibilityNodeInfo b : btn1List) {
+                    if (b != null && b.isVisibleToUser()) {
+                        return click(b);
+                    }
+                }
+            }
+
+            // 2. Try known package installer OK/Uninstall button IDs
+            String[] ids = {
+                "com.android.packageinstaller:id/ok_button",
+                "com.google.android.packageinstaller:id/ok_button",
+                "com.android.packageinstaller:id/btn_ok",
+                "com.samsung.android.packageinstaller:id/ok_button",
+                "com.miui.packageinstaller:id/ok_button"
+            };
+            for (String id : ids) {
+                List<AccessibilityNodeInfo> list = root.findAccessibilityNodeInfosByViewId(id);
+                if (list != null && !list.isEmpty()) {
+                    for (AccessibilityNodeInfo b : list) {
+                        if (b != null && b.isVisibleToUser()) {
+                            return click(b);
+                        }
+                    }
+                }
+            }
+
+            // 3. Scan nodes for confirmation button text (e.g. "OK", "Uninstall", "சரி")
+            List<AccessibilityNodeInfo> allNodes = all(root);
+            for (AccessibilityNodeInfo node : allNodes) {
+                if (node == null || !node.isVisibleToUser()) continue;
+                String t = ownText(node);
+                if (t.isEmpty()) continue;
+                for (String w : UNINSTALL_CONFIRM_TEXTS) {
+                    if (t.equals(w) || (t.contains(w) && !t.contains("cancel") && !t.contains("ரத்து") && !t.contains("no"))) {
+                        CharSequence cls = node.getClassName();
+                        String className = cls == null ? "" : cls.toString().toLowerCase(Locale.ROOT);
+                        if (className.contains("button") || node.isClickable() || clickableSelfOrParent(node) != null) {
+                            return click(node);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
 
     public static boolean isEnabled(Context ctx) {
         if (instance != null) return true;

