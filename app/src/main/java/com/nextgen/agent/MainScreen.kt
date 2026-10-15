@@ -878,23 +878,23 @@ internal fun MainActivity.MainScreen() {
             }
         }
 
-        // Top Helm Wheel Menu (Settings & Preferences)
-        HelmWheelMenu(
+        // Top Corner Half-Wheel Menu (Settings & Preferences)
+        CornerHelmWheel(
             isExpanded = showTopWheel,
             onDismissRequest = { showTopWheel = false },
             position = WheelPosition.TOP_RIGHT,
             hubIcon = Icons.Default.Settings,
             hubLabel = "Settings",
-            onHubClick = { showSettingsModal = true },
+            onHubClick = { showTopWheel = false; showSettingsModal = true },
             items = topWheelItems
         )
 
-        // Bottom Helm Wheel Menu (Quick Menu Actions)
-        HelmWheelMenu(
+        // Bottom Corner Half-Wheel Menu (Quick Menu Actions)
+        CornerHelmWheel(
             isExpanded = showBottomWheel,
             onDismissRequest = { showBottomWheel = false },
             position = WheelPosition.BOTTOM_RIGHT,
-            hubIcon = Icons.Default.Hub,
+            hubIcon = Icons.Default.Menu,
             hubLabel = "Quick Actions",
             onHubClick = { showBottomWheel = false },
             items = bottomWheelItems

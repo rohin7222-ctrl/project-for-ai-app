@@ -26,6 +26,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -36,16 +38,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,13 +58,13 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Represents an action item located on one of the wheel spokes.
+ * Action item for a wheel spoke.
  */
 data class WheelItem(
     val id: String,
     val label: String,
     val icon: ImageVector,
-    val accentColor: Color = Indigo,
+    val accentColor: Color = Color.Black,
     val onClick: () -> Unit
 )
 
@@ -72,15 +74,17 @@ enum class WheelPosition {
 }
 
 /**
- * High-performance, animated ship helm / steering wheel menu.
- * Supports:
- * - Interactive finger drag rotation around the hub.
- * - One-time 360° spin animation on item selection before triggering the action.
- * - Expand / collapse transitions from corner anchors.
- * - Dynamic Dark and Light theme styling with brushed metallic rims & neon aura glows.
+ * Corner-Anchored Half-Wheel / Ship's Helm Menu.
+ * Matches user's wireframe design:
+ * - Anchored right at the top-right or bottom-right corner of the screen.
+ * - Shows a half-wheel (arc) extending into the screen with dual concentric rims, 8 spokes,
+ *   helm handles with round knobs, and spoke-mounted circular icon badges.
+ * - Supports continuous finger drag rotation around the corner hub.
+ * - Performs a full 1-time 360° spin on item tap before executing the action.
+ * - Operates directly on the screen without a dark obscuring background so logo and screen are visible.
  */
 @Composable
-fun HelmWheelMenu(
+fun CornerHelmWheel(
     isExpanded: Boolean,
     onDismissRequest: () -> Unit,
     position: WheelPosition,
@@ -96,72 +100,62 @@ fun HelmWheelMenu(
     val isDark = isSystemInDarkTheme()
     val density = LocalDensity.current
 
-    // Rotation state in degrees
-    val rotationAngle = remember { Animatable(if (position == WheelPosition.TOP_RIGHT) 45f else -45f) }
+    // Rotation angle in degrees:
+    // Initial angle offsets so the primary items appear in the visible quadrant:
+    // For TOP_RIGHT: visible quadrant is angles 90° to 180° (down and left).
+    // For BOTTOM_RIGHT: visible quadrant is angles 180° to 270° (left and up).
+    val initialAngle = if (position == WheelPosition.TOP_RIGHT) 100f else 190f
+    val rotationAngle = remember { Animatable(initialAngle) }
     var spinningItemId by remember { mutableStateOf<String?>(null) }
     var isSpinning by remember { mutableStateOf(false) }
 
-    // Dimensions
-    val wheelRadius = 145.dp
-    val badgeRadius = 110.dp
-    val hubRadius = 38.dp
-    val rimOuterRadius = 130.dp
-    val rimInnerRadius = 85.dp
-    val handleLength = 25.dp
+    // Wheel Geometry Dimensions
+    val hubRadius = 26.dp
+    val innerRimRadius = 66.dp
+    val outerRimRadius = 106.dp
+    val badgeRadius = 106.dp
+    val handleLength = 34.dp
+    val totalRadius = outerRimRadius + handleLength // ~140.dp
 
-    val wheelRadiusPx = with(density) { wheelRadius.toPx() }
-    val badgeRadiusPx = with(density) { badgeRadius.toPx() }
     val hubRadiusPx = with(density) { hubRadius.toPx() }
-    val rimOuterPx = with(density) { rimOuterRadius.toPx() }
-    val rimInnerPx = with(density) { rimInnerRadius.toPx() }
+    val innerRimPx = with(density) { innerRimRadius.toPx() }
+    val outerRimPx = with(density) { outerRimRadius.toPx() }
     val handleLenPx = with(density) { handleLength.toPx() }
 
-    // Theme color palette
-    val rimBrush = if (isDark) {
-        Brush.sweepGradient(
-            listOf(
-                Color(0xFF38BDF8),
-                Color(0xFF818CF8),
-                Color(0xFFC084FC),
-                Color(0xFF34D399),
-                Color(0xFF38BDF8)
-            )
-        )
-    } else {
-        Brush.sweepGradient(
-            listOf(
-                Color(0xFF4F46E5),
-                Color(0xFF0284C7),
-                Color(0xFF7C3AED),
-                Color(0xFF0D9488),
-                Color(0xFF4F46E5)
-            )
-        )
+    // Wireframe Design Colors (Light & Dark Theme):
+    // In light theme: classic crisp sketch/line-art with deep charcoal lines and white fills.
+    // In dark theme: cyber obsidian with metallic silver/cyan highlights.
+    val strokeColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF1E293B)
+    val rimBandFill = if (isDark) Color(0xFF1A1F2E) else Color(0xFFF1F5F9)
+    val handleColor = if (isDark) Color(0xFFCBD5E1) else Color(0xFF334155)
+    val hubBg = if (isDark) Color(0xFF131722) else Color(0xFFFFFFFF)
+    val hubBorder = if (isDark) Color(0xFF38BDF8) else Color(0xFF0F172A)
+    val knobColor = if (isDark) Color(0xFFE2E8F0) else Color(0xFF0F172A)
+
+    // The container size covers the full diameter of the wheel:
+    val containerSize = totalRadius * 2 + 60.dp
+    val halfContainer = containerSize / 2
+
+    // Hub center offset relative to container center is (0, 0).
+    // We position the container so its center aligns with the phone corner:
+    // For TOP_RIGHT: center is at (screenWidth - 34.dp, 34.dp)
+    // For BOTTOM_RIGHT: center is at (screenWidth - 34.dp, screenHeight - 110.dp)
+    val cornerOffset = when (position) {
+        WheelPosition.TOP_RIGHT -> Modifier
+            .offset(x = halfContainer - 34.dp, y = -(halfContainer - 34.dp))
+        WheelPosition.BOTTOM_RIGHT -> Modifier
+            .offset(x = halfContainer - 34.dp, y = halfContainer - 115.dp)
     }
 
-    val spokeColor = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
-    val handleColor = if (isDark) Color(0xFFCBD5E1) else Color(0xFF475569)
-    val hubBg = if (isDark) Color(0xFF131726) else Color(0xFFFFFFFF)
-    val hubBorder = if (isDark) Color(0xFF38BDF8) else Color(0xFF4F46E5)
+    val boxAlignment = when (position) {
+        WheelPosition.TOP_RIGHT -> Alignment.TopEnd
+        WheelPosition.BOTTOM_RIGHT -> Alignment.BottomEnd
+    }
 
-    // Pulse animation for selection / idle halo
-    val pulseTransition = rememberInfiniteTransition(label = "helm_pulse")
-    val haloAlpha by pulseTransition.animateFloat(
-        initialValue = 0.25f,
-        targetValue = 0.55f,
-        animationSpec = infiniteRepeatable(tween(1800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "halo"
-    )
-
-    // Wheel Container Size (Diameter = 2 * wheelRadius + 2 * handleLength + 40dp for badges)
-    val containerSize = wheelRadius * 2 + handleLength * 2 + 50.dp
-    val centerOffsetDp = containerSize / 2
-
-    // Dismiss scrim backdrop
+    // Transparent tap-outside listener (no dark scrim covering the screen!)
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = if (isDark) 0.55f else 0.35f))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -169,18 +163,7 @@ fun HelmWheelMenu(
                 if (!isSpinning) onDismissRequest()
             }
     ) {
-        // Alignment anchor
-        val boxAlignment = when (position) {
-            WheelPosition.TOP_RIGHT -> Alignment.TopEnd
-            WheelPosition.BOTTOM_RIGHT -> Alignment.BottomEnd
-        }
-
-        // Corner offset so the center of the wheel is near the screen edge/corner
-        val cornerOffset = when (position) {
-            WheelPosition.TOP_RIGHT -> Modifier.offset(x = 60.dp, y = (-20).dp)
-            WheelPosition.BOTTOM_RIGHT -> Modifier.offset(x = 60.dp, y = 20.dp)
-        }
-
+        // Corner Helm Wheel Container
         Box(
             modifier = Modifier
                 .align(boxAlignment)
@@ -214,7 +197,7 @@ fun HelmWheelMenu(
         ) {
             val currentRot = rotationAngle.value
 
-            // 1. Canvas: Realistic Ship's Helm drawing (Hub, Spokes, Rim, Handles)
+            // 1. Canvas: Authentic Ship's Helm drawing matching wireframe line art!
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
@@ -223,41 +206,66 @@ fun HelmWheelMenu(
                 val cx = size.width / 2f
                 val cy = size.height / 2f
 
-                // Outer ambient aura glow
+                // Outer ambient aura glow (subtle)
                 drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            if (isDark) Color(0xFF6366F1).copy(alpha = haloAlpha) else Color(0xFF38BDF8).copy(alpha = haloAlpha * 0.7f),
-                            Color.Transparent
-                        ),
-                        center = Offset(cx, cy),
-                        radius = rimOuterPx + handleLenPx + 20f
-                    ),
+                    color = if (isDark) Color(0xFF38BDF8).copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.04f),
                     center = Offset(cx, cy),
-                    radius = rimOuterPx + handleLenPx + 20f
+                    radius = outerRimPx + handleLenPx + 15f
                 )
 
-                // Outer Rim
+                // Outer Rim Band Fill
                 drawCircle(
-                    brush = rimBrush,
+                    color = rimBandFill,
                     center = Offset(cx, cy),
-                    radius = rimOuterPx,
-                    style = Stroke(width = 8.dp.toPx(), cap = StrokeCap.Round)
+                    radius = outerRimPx,
+                    style = Stroke(width = 12.dp.toPx())
                 )
 
-                // Inner Rim
+                // Outer Rim Outer Boundary Line
                 drawCircle(
-                    color = spokeColor.copy(alpha = 0.5f),
+                    color = strokeColor,
                     center = Offset(cx, cy),
-                    radius = rimInnerPx,
-                    style = Stroke(width = 4.dp.toPx())
+                    radius = outerRimPx + 6.dp.toPx(),
+                    style = Stroke(width = 2.dp.toPx())
                 )
 
-                // Draw Spokes and Outer Handles
-                val totalItems = items.size.coerceAtLeast(6)
-                val stepAngle = (2 * PI / totalItems).toFloat()
+                // Outer Rim Inner Boundary Line
+                drawCircle(
+                    color = strokeColor,
+                    center = Offset(cx, cy),
+                    radius = outerRimPx - 6.dp.toPx(),
+                    style = Stroke(width = 1.5.dp.toPx())
+                )
 
-                for (i in 0 until totalItems) {
+                // Inner Rim Band Fill
+                drawCircle(
+                    color = rimBandFill,
+                    center = Offset(cx, cy),
+                    radius = innerRimPx,
+                    style = Stroke(width = 8.dp.toPx())
+                )
+
+                // Inner Rim Outer Boundary Line
+                drawCircle(
+                    color = strokeColor,
+                    center = Offset(cx, cy),
+                    radius = innerRimPx + 4.dp.toPx(),
+                    style = Stroke(width = 1.5.dp.toPx())
+                )
+
+                // Inner Rim Inner Boundary Line
+                drawCircle(
+                    color = strokeColor,
+                    center = Offset(cx, cy),
+                    radius = innerRimPx - 4.dp.toPx(),
+                    style = Stroke(width = 1.5.dp.toPx())
+                )
+
+                // Draw 8 Spokes & Handles with Turned Peg Knobs
+                val totalSpokes = 8
+                val stepAngle = (2 * PI / totalSpokes).toFloat()
+
+                for (i in 0 until totalSpokes) {
                     val angle = i * stepAngle
                     val cosA = cos(angle)
                     val sinA = sin(angle)
@@ -265,110 +273,133 @@ fun HelmWheelMenu(
                     val startX = cx + hubRadiusPx * cosA
                     val startY = cy + hubRadiusPx * sinA
 
-                    val rimX = cx + rimOuterPx * cosA
-                    val rimY = cy + rimOuterPx * sinA
+                    val outerRimX = cx + outerRimPx * cosA
+                    val outerRimY = cy + outerRimPx * sinA
 
-                    val handleTipX = cx + (rimOuterPx + handleLenPx) * cosA
-                    val handleTipY = cy + (rimOuterPx + handleLenPx) * sinA
+                    val handleNeckX = cx + (outerRimPx + 6.dp.toPx()) * cosA
+                    val handleNeckY = cy + (outerRimPx + 6.dp.toPx()) * sinA
 
-                    // Spoke line
+                    val knobX = cx + (outerRimPx + handleLenPx) * cosA
+                    val knobY = cy + (outerRimPx + handleLenPx) * sinA
+
+                    // Spoke shaft (hub to outer rim)
                     drawLine(
-                        color = spokeColor,
+                        color = strokeColor,
                         start = Offset(startX, startY),
-                        end = Offset(rimX, rimY),
-                        strokeWidth = 4.dp.toPx(),
+                        end = Offset(outerRimX, outerRimY),
+                        strokeWidth = 3.5.dp.toPx(),
                         cap = StrokeCap.Round
                     )
 
-                    // Helm Handle / Peg extending past outer rim
+                    // Helm Handle extending outward past outer rim
                     drawLine(
                         color = handleColor,
-                        start = Offset(rimX, rimY),
-                        end = Offset(handleTipX, handleTipY),
-                        strokeWidth = 6.dp.toPx(),
+                        start = Offset(handleNeckX, handleNeckY),
+                        end = Offset(knobX, knobY),
+                        strokeWidth = 5.dp.toPx(),
                         cap = StrokeCap.Round
                     )
 
-                    // Knob at the tip of the handle
+                    // Handle collar ring near rim
                     drawCircle(
-                        color = handleColor,
-                        center = Offset(handleTipX, handleTipY),
-                        radius = 4.5.dp.toPx()
+                        color = strokeColor,
+                        center = Offset(handleNeckX, handleNeckY),
+                        radius = 4.dp.toPx()
+                    )
+
+                    // Round Knob / Ball at the tip of the handle
+                    drawCircle(
+                        color = knobColor,
+                        center = Offset(knobX, knobY),
+                        radius = 6.dp.toPx()
+                    )
+                    drawCircle(
+                        color = if (isDark) Color(0xFF38BDF8) else Color(0xFF0F172A),
+                        center = Offset(knobX, knobY),
+                        radius = 6.dp.toPx(),
+                        style = Stroke(width = 1.2.dp.toPx())
                     )
                 }
+
+                // Center Hub Ring on Canvas
+                drawCircle(
+                    color = hubBg,
+                    center = Offset(cx, cy),
+                    radius = hubRadiusPx
+                )
+                drawCircle(
+                    color = hubBorder,
+                    center = Offset(cx, cy),
+                    radius = hubRadiusPx,
+                    style = Stroke(width = 3.dp.toPx())
+                )
             }
 
-            // 2. Action Node Badges placed on the spokes
+            // 2. Action Node Badges mounted along the spokes
             val totalItems = items.size
             val stepDeg = 360f / totalItems.coerceAtLeast(1)
 
             items.forEachIndexed { i, item ->
-                // Item angle with rotation applied
                 val itemAngleDeg = i * stepDeg + currentRot
                 val itemAngleRad = Math.toRadians(itemAngleDeg.toDouble())
 
+                // Badge offset relative to center
                 val offsetX = (badgeRadius.value * cos(itemAngleRad).toFloat()).dp
                 val offsetY = (badgeRadius.value * sin(itemAngleRad).toFloat()).dp
 
                 val isThisSpinning = spinningItemId == item.id
 
-                // Interactive badge surface
+                // Interactive circular badge
                 Surface(
                     modifier = Modifier
                         .offset(x = offsetX, y = offsetY)
-                        .size(if (isThisSpinning) 54.dp else 48.dp)
-                        .scale(if (isThisSpinning) 1.15f else 1f)
+                        .size(if (isThisSpinning) 48.dp else 42.dp)
+                        .scale(if (isThisSpinning) 1.18f else 1f)
                         .clip(CircleShape)
                         .clickable(enabled = !isSpinning) {
                             // "oru itha select panna antha wheel one time spin agitu open aganum"
                             isSpinning = true
                             spinningItemId = item.id
                             coroutineScope.launch {
-                                // Full 360 degree spin rotation
+                                // Smooth 1-time 360° spin animation
                                 rotationAngle.animateTo(
                                     targetValue = rotationAngle.value + 360f,
                                     animationSpec = tween(
                                         durationMillis = 520,
-                                        easing = CubicBezierEasing(0.25f, 0.9f, 0.35f, 1.0f)
+                                        easing = CubicBezierEasing(0.22f, 0.95f, 0.3f, 1.0f)
                                     )
                                 )
                                 isSpinning = false
                                 spinningItemId = null
-                                onDismissRequest()
                                 item.onClick()
                             }
                         },
                     shape = CircleShape,
                     color = if (isDark) Color(0xFF1E2235) else Color.White,
                     border = BorderStroke(
-                        width = if (isThisSpinning) 2.5.dp else 1.5.dp,
-                        color = if (isThisSpinning) item.accentColor else item.accentColor.copy(alpha = 0.65f)
+                        width = if (isThisSpinning) 2.5.dp else 1.8.dp,
+                        color = if (isThisSpinning) (if (isDark) Color(0xFF38BDF8) else Color(0xFF4F46E5))
+                                else (if (isDark) Color(0xFF64748B) else Color(0xFF1E293B))
                     ),
-                    shadowElevation = if (isThisSpinning) 12.dp else 5.dp
+                    shadowElevation = if (isThisSpinning) 10.dp else 4.dp
                 ) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        // Badge background subtle tint
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(item.accentColor.copy(alpha = if (isThisSpinning) 0.28f else 0.12f))
-                        )
-
-                        // Icon stays upright regardless of wheel rotation for maximum readability
+                        // Badge icon stays upright regardless of wheel rotation
                         Icon(
                             imageVector = item.icon,
                             contentDescription = item.label,
-                            tint = item.accentColor,
-                            modifier = Modifier.size(23.dp)
+                            tint = if (isThisSpinning) (if (isDark) Color(0xFF38BDF8) else Color(0xFF4F46E5))
+                                   else (if (isDark) Color(0xFFE2E8F0) else Color(0xFF0F172A)),
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
             }
 
-            // 3. Center Hub (Settings / Menu Center Button)
+            // 3. Center Hub Button
             Surface(
                 modifier = Modifier
                     .size(hubRadius * 2)
@@ -381,84 +412,46 @@ fun HelmWheelMenu(
                                 animationSpec = tween(500, easing = FastOutSlowInEasing)
                             )
                             isSpinning = false
-                            onDismissRequest()
                             onHubClick()
                         }
                     },
                 shape = CircleShape,
                 color = hubBg,
                 border = BorderStroke(2.5.dp, hubBorder),
-                shadowElevation = 10.dp
+                shadowElevation = 8.dp
             ) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    // Central Hub Icon (Gear for Top Wheel, Menu for Bottom Wheel)
                     Icon(
                         imageVector = hubIcon,
                         contentDescription = hubLabel,
                         tint = hubBorder,
-                        modifier = Modifier.size(26.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                 }
-            }
-        }
-
-        // Close Hint button in opposite corner or header
-        Surface(
-            modifier = Modifier
-                .align(if (position == WheelPosition.TOP_RIGHT) Alignment.TopStart else Alignment.BottomStart)
-                .padding(24.dp)
-                .clip(CircleShape)
-                .clickable { onDismissRequest() },
-            shape = CircleShape,
-            color = if (isDark) Color(0xFF1E2235) else Color.White,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-            shadowElevation = 4.dp
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = "Close Wheel",
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "Close Wheel",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
             }
         }
     }
 }
 
 /**
- * Compact circular Ship's Helm button used in the top-right header and bottom-right bar.
- * Features an animated 8-spoke rotating nautical helm graphic with metallic finish and glowing hub.
+ * Compact circular Ship's Helm icon button used in Frame 2 & Frame 5:
+ * An 8-spoke miniature steering wheel outline.
+ * Tapping it smoothly expands the corner helm wheel!
  */
 @Composable
 fun CompactHelmButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    icon: ImageVector = Icons.Default.Close,
-    accentColor: Color = Indigo,
-    size: Dp = 46.dp
+    icon: ImageVector = Icons.Default.Settings,
+    accentColor: Color = Color.Black,
+    size: Dp = 44.dp
 ) {
     val isDark = isSystemInDarkTheme()
-    val infiniteTransition = rememberInfiniteTransition(label = "idle_rotation")
-    val idleRotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(26000, easing = LinearEasing), RepeatMode.Restart),
-        label = "rot"
-    )
+    val strokeColor = if (isDark) Color(0xFFCBD5E1) else Color(0xFF1E293B)
+    val hubColor = if (isDark) Color(0xFF38BDF8) else Color(0xFF1E293B)
 
     Surface(
         modifier = modifier
@@ -466,47 +459,33 @@ fun CompactHelmButton(
             .clip(CircleShape)
             .clickable(onClick = onClick),
         shape = CircleShape,
-        color = if (isDark) Color(0xFF161A29) else Color.White,
-        border = BorderStroke(
-            1.5.dp,
-            Brush.sweepGradient(
-                listOf(
-                    accentColor,
-                    Cyan,
-                    Violet,
-                    accentColor
-                )
-            )
-        ),
-        shadowElevation = 5.dp
+        color = Color.Transparent
     ) {
         Box(contentAlignment = Alignment.Center) {
-            // Helm Wheel Canvas
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(5.dp)
-                    .rotate(idleRotation)
+                    .padding(4.dp)
             ) {
                 val cx = this.size.width / 2f
                 val cy = this.size.height / 2f
-                val rOuter = cx * 0.82f
-                val rInner = cx * 0.50f
-                val handleLen = cx * 0.18f
+                val rOuter = cx * 0.76f
+                val rInner = cx * 0.48f
+                val handleLen = cx * 0.22f
 
-                // Outer and inner rim
+                // Outer & inner rim rings
                 drawCircle(
-                    color = if (isDark) Color(0xFF38BDF8) else accentColor,
+                    color = strokeColor,
                     radius = rOuter,
                     style = Stroke(width = 1.8.dp.toPx())
                 )
                 drawCircle(
-                    color = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8),
+                    color = strokeColor,
                     radius = rInner,
                     style = Stroke(width = 1.2.dp.toPx())
                 )
 
-                // 8 spokes and handles
+                // 8 Spokes with handle pegs
                 for (i in 0 until 8) {
                     val angle = (i * PI / 4).toFloat()
                     val cosA = cos(angle)
@@ -514,31 +493,38 @@ fun CompactHelmButton(
 
                     // Spoke
                     drawLine(
-                        color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+                        color = strokeColor,
                         start = Offset(cx + rInner * cosA, cy + rInner * sinA),
                         end = Offset(cx + rOuter * cosA, cy + rOuter * sinA),
-                        strokeWidth = 1.5.dp.toPx()
+                        strokeWidth = 1.4.dp.toPx()
                     )
 
-                    // Outer Handle Peg
+                    // Handle peg
                     drawLine(
-                        color = if (isDark) Color(0xFFCBD5E1) else Color(0xFF475569),
+                        color = strokeColor,
                         start = Offset(cx + rOuter * cosA, cy + rOuter * sinA),
                         end = Offset(cx + (rOuter + handleLen) * cosA, cy + (rOuter + handleLen) * sinA),
                         strokeWidth = 2.dp.toPx(),
                         cap = StrokeCap.Round
                     )
                 }
+
+                // Center hub circle
+                drawCircle(
+                    color = strokeColor,
+                    center = Offset(cx, cy),
+                    radius = cx * 0.22f,
+                    style = Stroke(width = 1.5.dp.toPx())
+                )
             }
 
-            // Center icon in the hub
+            // Hub center icon
             Icon(
                 imageVector = icon,
-                contentDescription = "Wheel Menu",
-                tint = if (isDark) Color(0xFFE2E8F0) else Color(0xFF1E293B),
-                modifier = Modifier.size(size * 0.44f)
+                contentDescription = "Menu",
+                tint = hubColor,
+                modifier = Modifier.size(size * 0.32f)
             )
         }
     }
 }
-
