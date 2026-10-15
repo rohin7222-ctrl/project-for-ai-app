@@ -142,29 +142,74 @@ internal fun GeminiSparkle(modifier: Modifier = Modifier, size: androidx.compose
 @Composable
 internal fun GeminiLiveWave() {
     val inf = rememberInfiniteTransition(label = "gemini_wave")
-    val h1 by inf.animateFloat(4f, 18f, infiniteRepeatable(tween(300, 0, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh1")
-    val h2 by inf.animateFloat(6f, 26f, infiniteRepeatable(tween(340, 60, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh2")
-    val h3 by inf.animateFloat(8f, 30f, infiniteRepeatable(tween(280, 120, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh3")
-    val h4 by inf.animateFloat(10f, 34f, infiniteRepeatable(tween(320, 180, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh4")
-    val h5 by inf.animateFloat(8f, 28f, infiniteRepeatable(tween(360, 240, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh5")
-    val h6 by inf.animateFloat(6f, 22f, infiniteRepeatable(tween(290, 100, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh6")
-    val h7 by inf.animateFloat(4f, 16f, infiniteRepeatable(tween(310, 40, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh7")
+    val h1 by inf.animateFloat(4f, 20f, infiniteRepeatable(tween(280, 0, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh1")
+    val h2 by inf.animateFloat(6f, 28f, infiniteRepeatable(tween(320, 60, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh2")
+    val h3 by inf.animateFloat(10f, 34f, infiniteRepeatable(tween(260, 120, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh3")
+    val h4 by inf.animateFloat(12f, 38f, infiniteRepeatable(tween(310, 180, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh4")
+    val h5 by inf.animateFloat(14f, 42f, infiniteRepeatable(tween(350, 240, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh5")
+    val h6 by inf.animateFloat(12f, 38f, infiniteRepeatable(tween(300, 180, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh6")
+    val h7 by inf.animateFloat(10f, 34f, infiniteRepeatable(tween(270, 120, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh7")
+    val h8 by inf.animateFloat(6f, 28f, infiniteRepeatable(tween(330, 60, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh8")
+    val h9 by inf.animateFloat(4f, 20f, infiniteRepeatable(tween(290, 0, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh9")
 
-    val colors = listOf(GeminiBlue, GeminiPurple, GeminiCyan, GeminiPink, GeminiCyan, GeminiPurple, GeminiBlue)
-    val heights = listOf(h1, h2, h3, h4, h5, h6, h7)
+    val colors = listOf(GeminiBlue, GeminiPurple, GeminiCyan, GeminiPink, Color(0xFFF59E0B), GeminiPink, GeminiCyan, GeminiPurple, GeminiBlue)
+    val heights = listOf(h1, h2, h3, h4, h5, h6, h7, h8, h9)
 
     Row(
-        modifier = Modifier.height(34.dp).padding(horizontal = 4.dp),
+        modifier = Modifier.height(38.dp).padding(horizontal = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(3.5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         heights.forEachIndexed { i, h ->
             Box(
                 Modifier
-                    .width(3.dp)
+                    .width(3.2.dp)
                     .height(h.dp)
                     .clip(RoundedCornerShape(2.dp))
                     .background(colors[i % colors.size])
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickPromptCard(
+    modifier: Modifier = Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    accent: Color,
+    onClick: () -> Unit
+) {
+    val isDark = isSystemInDarkTheme()
+    Surface(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = if (isDark) Color(0xFF191D2B) else Color.White,
+        border = BorderStroke(1.2.dp, accent.copy(alpha = if (isDark) 0.35f else 0.25f)),
+        shadowElevation = 3.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(accent.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, null, Modifier.size(18.dp), tint = accent)
+            }
+            Text(
+                text = title,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
             )
         }
     }
@@ -380,6 +425,32 @@ internal fun MainActivity.MainScreen() {
     )
 
     Box(Modifier.fillMaxSize()) {
+        // Futuristic Ambient Atmosphere Orbs
+        Canvas(Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            // Top-right ambient orb
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf((if (isDark) Color(0xFF4F46E5) else Color(0xFF818CF8)).copy(alpha = if (isDark) 0.14f else 0.08f), Color.Transparent),
+                    center = androidx.compose.ui.geometry.Offset(w * 0.9f, h * 0.12f),
+                    radius = w * 0.65f
+                ),
+                center = androidx.compose.ui.geometry.Offset(w * 0.9f, h * 0.12f),
+                radius = w * 0.65f
+            )
+            // Bottom-left ambient orb
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf((if (isDark) Color(0xFF06B6D4) else Color(0xFF38BDF8)).copy(alpha = if (isDark) 0.12f else 0.07f), Color.Transparent),
+                    center = androidx.compose.ui.geometry.Offset(w * 0.1f, h * 0.88f),
+                    radius = w * 0.65f
+                ),
+                center = androidx.compose.ui.geometry.Offset(w * 0.1f, h * 0.88f),
+                radius = w * 0.65f
+            )
+        }
+
         Column(Modifier.fillMaxSize()) {
             // Enhanced Top Bar Header
             Surface(
@@ -561,6 +632,71 @@ internal fun MainActivity.MainScreen() {
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Indigo
+                                )
+                            }
+                        }
+
+                        // Quick Action Starter Grid: 6 glowing cards for instant user interaction
+                        Spacer(Modifier.height(18.dp))
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                QuickPromptCard(
+                                    modifier = Modifier.weight(1f),
+                                    icon = Icons.Default.PlayCircle,
+                                    title = if (cfg.lang == "ta-IN") "யூடியூப் பாட்டு" else "YouTube Music",
+                                    accent = Color(0xFFEF4444),
+                                    onClick = { quickYouTube() }
+                                )
+                                QuickPromptCard(
+                                    modifier = Modifier.weight(1f),
+                                    icon = Icons.AutoMirrored.Filled.Chat,
+                                    title = if (cfg.lang == "ta-IN") "வாட்ஸ்அப்" else "WhatsApp",
+                                    accent = Color(0xFF22C55E),
+                                    onClick = { quickWhatsApp() }
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                QuickPromptCard(
+                                    modifier = Modifier.weight(1f),
+                                    icon = Icons.Default.CameraAlt,
+                                    title = if (cfg.lang == "ta-IN") "இன்ஸ்டா ரீல்ஸ்" else "Insta Reels",
+                                    accent = Color(0xFFE1306C),
+                                    onClick = { quickInstagram() }
+                                )
+                                QuickPromptCard(
+                                    modifier = Modifier.weight(1f),
+                                    icon = Icons.Default.FlashlightOn,
+                                    title = if (cfg.lang == "ta-IN") "டார்ச் ஆன்" else "Toggle Torch",
+                                    accent = Amber,
+                                    onClick = { toggleTorch() }
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                QuickPromptCard(
+                                    modifier = Modifier.weight(1f),
+                                    icon = Icons.Default.Phone,
+                                    title = if (cfg.lang == "ta-IN") "அழைப்பு செய்" else "Quick Call",
+                                    accent = Color(0xFF10B981),
+                                    onClick = { quickCall() }
+                                )
+                                QuickPromptCard(
+                                    modifier = Modifier.weight(1f),
+                                    icon = Icons.Default.WifiTethering,
+                                    title = if (cfg.lang == "ta-IN") "ஹாட்ஸ்பாட்" else "Hotspot",
+                                    accent = Color(0xFFF59E0B),
+                                    onClick = { quickHotspot() }
                                 )
                             }
                         }
@@ -767,13 +903,14 @@ internal fun MainActivity.MainScreen() {
                             GeminiLiveWave()
                             Column {
                                 Text(
-                                    text = tr("listening"),
+                                    text = if (liveSpeechText.isNotBlank()) liveSpeechText else tr("listening"),
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1
                                 )
                                 Text(
-                                    text = "Gemini Live",
+                                    text = if (liveSpeechText.isNotBlank()) "Recognizing voice..." else "Gemini Live",
                                     fontSize = 11.sp,
                                     color = GeminiCyan,
                                     fontWeight = FontWeight.SemiBold

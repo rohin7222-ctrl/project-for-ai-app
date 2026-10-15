@@ -238,30 +238,65 @@ fun CornerHelmWheel(
 
             Surface(
                 shape = RoundedCornerShape(20.dp),
-                color = if (isDark) Color(0xFF161A29).copy(alpha = 0.94f) else Color.White.copy(alpha = 0.94f),
-                border = BorderStroke(1.5.dp, if (isDark) Color(0xFF38BDF8).copy(alpha = 0.6f) else Color(0xFF4F46E5).copy(alpha = 0.4f)),
-                shadowElevation = 8.dp,
+                color = if (isDark) Color(0xFF131722).copy(alpha = 0.96f) else Color.White.copy(alpha = 0.96f),
+                border = BorderStroke(1.8.dp, act.accentColor.copy(alpha = 0.85f)),
+                shadowElevation = 10.dp,
                 modifier = Modifier
                     .align(chipAlignment)
                     .then(chipPadding)
+                    .clip(RoundedCornerShape(20.dp))
+                    .clickable(enabled = !isSpinning) {
+                        isSpinning = true
+                        spinningItemId = act.id
+                        try {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        } catch (ignored: Exception) {}
+                        coroutineScope.launch {
+                            shockwaveAnim.snapTo(0f)
+                            launch { shockwaveAnim.animateTo(1f, tween(480, easing = FastOutSlowInEasing)) }
+                            rotationAngle.animateTo(
+                                targetValue = rotationAngle.value + 360f,
+                                animationSpec = tween(520, easing = CubicBezierEasing(0.22f, 0.95f, 0.3f, 1.0f))
+                            )
+                            isSpinning = false
+                            spinningItemId = null
+                            act.onClick()
+                        }
+                    }
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(9.dp)
                 ) {
-                    Icon(
-                        imageVector = act.icon,
-                        contentDescription = act.label,
-                        modifier = Modifier.size(17.dp),
-                        tint = if (isDark) Color(0xFF38BDF8) else Color(0xFF4F46E5)
-                    )
-                    Text(
-                        text = act.label,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(act.accentColor.copy(alpha = 0.20f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = act.icon,
+                            contentDescription = act.label,
+                            modifier = Modifier.size(17.dp),
+                            tint = act.accentColor
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = act.label,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "தட்டவும் • Tap to spin",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = act.accentColor
+                        )
+                    }
                 }
             }
         }
@@ -329,10 +364,20 @@ fun CornerHelmWheel(
 
                 // Outer ambient aura glow
                 drawCircle(
-                    color = if (isDark) Color(0xFF38BDF8).copy(alpha = haloPulse) else Color.Black.copy(alpha = 0.05f),
+                    color = (activeItem?.accentColor ?: if (isDark) Color(0xFF38BDF8) else Color.Black).copy(alpha = haloPulse * 0.7f),
                     center = Offset(cx, cy),
                     radius = outerRimPx + handleLenPx + 16f
                 )
+
+                // Selection shockwave ring pulse
+                if (shockwaveAnim.value > 0f && shockwaveAnim.value < 1f) {
+                    drawCircle(
+                        color = (activeItem?.accentColor ?: if (isDark) Color(0xFF38BDF8) else Color(0xFF4F46E5)).copy(alpha = (1f - shockwaveAnim.value) * 0.85f),
+                        center = Offset(cx, cy),
+                        radius = badgeRadius.toPx() + shockwaveAnim.value * 45.dp.toPx(),
+                        style = Stroke(width = (4.5f * (1f - shockwaveAnim.value)).dp.toPx())
+                    )
+                }
 
                 // Outer Rim Band Fill
                 drawCircle(
@@ -357,6 +402,23 @@ fun CornerHelmWheel(
                     radius = outerRimPx - 6.5.dp.toPx(),
                     style = Stroke(width = 1.6.dp.toPx())
                 )
+
+                // Astrolabe / Compass 24 Navigation Tick Marks along outer rim
+                val totalTicks = 24
+                val tickStep = (2 * PI / totalTicks).toFloat()
+                for (t in 0 until totalTicks) {
+                    val a = t * tickStep
+                    val isMajor = (t % 3 == 0)
+                    val tLen = if (isMajor) 6.dp.toPx() else 3.5.dp.toPx()
+                    val r1 = outerRimPx - 6.5.dp.toPx()
+                    val r2 = r1 + tLen
+                    drawLine(
+                        color = strokeColor.copy(alpha = if (isMajor) 0.85f else 0.45f),
+                        start = Offset(cx + r1 * cos(a), cy + r1 * sin(a)),
+                        end = Offset(cx + r2 * cos(a), cy + r2 * sin(a)),
+                        strokeWidth = if (isMajor) 1.8.dp.toPx() else 1.1.dp.toPx()
+                    )
+                }
 
                 // Inner Rim Band Fill
                 drawCircle(
@@ -480,13 +542,34 @@ fun CornerHelmWheel(
 
                 val isThisSpinning = spinningItemId == item.id
                 val isFocused = activeItem?.id == item.id
+                val itemColor = item.accentColor
 
-                // Interactive circular badge
+                val badgeBg = if (isDark) {
+                    if (isThisSpinning) itemColor.copy(alpha = 0.38f)
+                    else if (isFocused) itemColor.copy(alpha = 0.22f)
+                    else Color(0xFF131722)
+                } else {
+                    if (isThisSpinning) itemColor.copy(alpha = 0.28f)
+                    else if (isFocused) itemColor.copy(alpha = 0.16f)
+                    else Color(0xFFFFFFFF)
+                }
+                val badgeBorder = if (isThisSpinning || isFocused) {
+                    itemColor
+                } else {
+                    itemColor.copy(alpha = if (isDark) 0.65f else 0.50f)
+                }
+                val iconTint = if (isThisSpinning || isFocused) {
+                    itemColor
+                } else {
+                    itemColor.copy(alpha = if (isDark) 0.95f else 0.90f)
+                }
+
+                // Interactive circular badge with vibrant individual accent color
                 Surface(
                     modifier = Modifier
                         .offset(x = offsetX, y = offsetY)
-                        .size(if (isThisSpinning) 50.dp else if (isFocused) 46.dp else 42.dp)
-                        .scale(if (isThisSpinning) 1.22f else if (isFocused) 1.08f else 1f)
+                        .size(if (isThisSpinning) 52.dp else if (isFocused) 48.dp else 42.dp)
+                        .scale(if (isThisSpinning) 1.25f else if (isFocused) 1.10f else 1f)
                         .clip(CircleShape)
                         .clickable(enabled = !isSpinning) {
                             // "oru itha select panna antha wheel one time spin agitu open aganum"
@@ -517,27 +600,29 @@ fun CornerHelmWheel(
                             }
                         },
                     shape = CircleShape,
-                    color = if (isDark) Color(0xFF1E2235) else Color.White,
+                    color = badgeBg,
                     border = BorderStroke(
-                        width = if (isThisSpinning) 2.6.dp else if (isFocused) 2.2.dp else 1.8.dp,
-                        color = if (isThisSpinning) (if (isDark) Color(0xFF38BDF8) else Color(0xFF4F46E5))
-                                else if (isFocused) (if (isDark) Color(0xFF38BDF8) else Color(0xFF4F46E5))
-                                else (if (isDark) Color(0xFF64748B) else Color(0xFF1E293B))
+                        width = if (isThisSpinning) 2.8.dp else if (isFocused) 2.4.dp else 1.8.dp,
+                        color = badgeBorder
                     ),
-                    shadowElevation = if (isThisSpinning) 12.dp else if (isFocused) 6.dp else 4.dp
+                    shadowElevation = if (isThisSpinning) 14.dp else if (isFocused) 8.dp else 4.dp
                 ) {
                     Box(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.radialGradient(
+                                    listOf(itemColor.copy(alpha = if (isFocused) 0.28f else 0.08f), Color.Transparent)
+                                )
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         // Badge icon stays upright regardless of wheel rotation
                         Icon(
                             imageVector = item.icon,
                             contentDescription = item.label,
-                            tint = if (isThisSpinning) (if (isDark) Color(0xFF38BDF8) else Color(0xFF4F46E5))
-                                   else if (isFocused) (if (isDark) Color(0xFF38BDF8) else Color(0xFF4F46E5))
-                                   else (if (isDark) Color(0xFFE2E8F0) else Color(0xFF0F172A)),
-                            modifier = Modifier.size(23.dp)
+                            tint = iconTint,
+                            modifier = Modifier.size(if (isThisSpinning) 26.dp else if (isFocused) 24.dp else 21.dp)
                         )
                     }
                 }
@@ -598,7 +683,15 @@ fun CompactHelmButton(
 ) {
     val isDark = isSystemInDarkTheme()
     val strokeColor = if (isDark) Color(0xFFCBD5E1) else Color(0xFF1E293B)
-    val hubColor = if (isDark) Color(0xFF38BDF8) else Color(0xFF1E293B)
+    val effectiveAccent = if (accentColor != Color.Black) accentColor else (if (isDark) Color(0xFF38BDF8) else Color(0xFF4F46E5))
+    val hubColor = effectiveAccent
+
+    val inf = rememberInfiniteTransition(label = "compact_helm")
+    val pulseAlpha by inf.animateFloat(
+        initialValue = 0.10f, targetValue = 0.28f,
+        animationSpec = infiniteRepeatable(tween(2000, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "cpa"
+    )
 
     Surface(
         modifier = modifier
@@ -606,7 +699,9 @@ fun CompactHelmButton(
             .clip(CircleShape)
             .clickable(onClick = onClick),
         shape = CircleShape,
-        color = Color.Transparent
+        color = effectiveAccent.copy(alpha = if (isDark) 0.14f else 0.08f),
+        border = BorderStroke(1.2.dp, effectiveAccent.copy(alpha = 0.45f)),
+        shadowElevation = 3.dp
     ) {
         Box(contentAlignment = Alignment.Center) {
             Canvas(
@@ -619,6 +714,12 @@ fun CompactHelmButton(
                 val rOuter = cx * 0.76f
                 val rInner = cx * 0.48f
                 val handleLen = cx * 0.22f
+
+                // Outer ambient aura glow
+                drawCircle(
+                    color = effectiveAccent.copy(alpha = pulseAlpha),
+                    radius = rOuter + handleLen + 2.dp.toPx()
+                )
 
                 // Outer & inner rim rings
                 drawCircle(
@@ -670,7 +771,7 @@ fun CompactHelmButton(
                 imageVector = icon,
                 contentDescription = "Menu",
                 tint = hubColor,
-                modifier = Modifier.size(size * 0.32f)
+                modifier = Modifier.size(size * 0.34f)
             )
         }
     }

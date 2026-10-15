@@ -60,6 +60,7 @@ class Voice(
     var onStopCommandTriggered: (() -> Unit)? = null
     var onVoiceRejected: (() -> Unit)? = null
     var onEmergencyUninstallTriggered: (() -> Unit)? = null
+    var onPartialText: ((String) -> Unit)? = null
 
     // Phone call & media playback pause states
     @Volatile var pausedForCall = false
@@ -583,6 +584,7 @@ class Voice(
                             }
 
                             holding = true
+                            onPartialText?.invoke("")
                             onText(text)
                         } else {
                             main.postDelayed({ listen() }, 200)
@@ -600,15 +602,20 @@ class Voice(
                             return
                         }
                         val partial = list.firstOrNull { it.isNotBlank() }
-                        if (partial != null && isStopCommand(partial)) {
-                            holding = true
-                            try { sr?.cancel() } catch (ignored: Exception) {}
-                            onStopCommandTriggered?.invoke()
+                        if (partial != null) {
+                            onPartialText?.invoke(partial)
+                            if (isStopCommand(partial)) {
+                                holding = true
+                                onPartialText?.invoke("")
+                                try { sr?.cancel() } catch (ignored: Exception) {}
+                                onStopCommandTriggered?.invoke()
+                            }
                         }
                     }
 
                     override fun onError(e: Int) {
                         restoreBeep()
+                        onPartialText?.invoke("")
                         Log.d("VoiceEngine", "Active Recognizer onError code: $e")
                         if (e == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                             stop()

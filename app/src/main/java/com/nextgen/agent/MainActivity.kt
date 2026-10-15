@@ -197,6 +197,7 @@ class MainActivity : FragmentActivity() {
     internal var thinking by mutableStateOf(false)
     internal var unlocked by mutableStateOf(true)
     internal var executingAction by mutableStateOf("")
+    internal var liveSpeechText by mutableStateOf("")
     internal var pending by mutableStateOf<List<JSONObject>>(emptyList())
     internal val chat = mutableStateListOf<Msg>()
 
@@ -268,7 +269,14 @@ class MainActivity : FragmentActivity() {
         device = DeviceController(this)
         shortcutManager = ShortcutManager(this)
         cfg = store.load(isSystemDark())
-        voice = Voice(this, onText = { handleUser(it) }, onState = { listening = it })
+        voice = Voice(this, onText = { 
+            liveSpeechText = ""
+            handleUser(it) 
+        }, onState = { 
+            listening = it 
+            if (!it) liveSpeechText = ""
+        })
+        voice.onPartialText = { liveSpeechText = it }
         syncVoiceConfig()
         voice.onWakeWordTriggered = { cmd ->
             if (!cmd.isNullOrBlank()) {
