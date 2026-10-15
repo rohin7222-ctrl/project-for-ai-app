@@ -1,5 +1,6 @@
 package com.nextgen.agent
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
@@ -41,18 +42,19 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -74,14 +76,15 @@ enum class WheelPosition {
 }
 
 /**
- * Corner-Anchored Half-Wheel / Ship's Helm Menu.
- * Matches user's wireframe design:
- * - Anchored right at the top-right or bottom-right corner of the screen.
- * - Shows a half-wheel (arc) extending into the screen with dual concentric rims, 8 spokes,
- *   helm handles with round knobs, and spoke-mounted circular icon badges.
- * - Supports continuous finger drag rotation around the corner hub.
- * - Performs a full 1-time 360° spin on item tap before executing the action.
- * - Operates directly on the screen without a dark obscuring background so logo and screen are visible.
+ * Premium Corner-Anchored Half-Wheel / Ship's Helm Menu.
+ * Matching the exact user wireframe artwork:
+ * - Corner-anchored half-wheel arc (lower-left quadrant for Top-Right, upper-left quadrant for Bottom-Right).
+ * - Authentic nautical helm graphics: dual concentric rims, 8 radial spokes, turned handles with 3D spherical knobs.
+ * - Spoke-mounted circular action badges.
+ * - Drag-to-spin physics with fling momentum/decay and tactile haptic feedback per spoke.
+ * - Floating active tooltip chip displaying the focused spoke item label.
+ * - Snappy 1-time 360° selection spin animation with shockwave glow before executing the action.
+ * - Operates directly in-place on the screen with no dark scrim covering the logo or background.
  */
 @Composable
 fun CornerHelmWheel(
@@ -99,47 +102,106 @@ fun CornerHelmWheel(
     val coroutineScope = rememberCoroutineScope()
     val isDark = isSystemInDarkTheme()
     val density = LocalDensity.current
+    val view = LocalView.current
 
-    // Rotation angle in degrees:
-    // Initial angle offsets so the primary items appear in the visible quadrant:
-    // For TOP_RIGHT: visible quadrant is angles 90° to 180° (down and left).
-    // For BOTTOM_RIGHT: visible quadrant is angles 180° to 270° (left and up).
+    // Rotation angle state:
+    // Initial angle offsets so the primary items appear inside the visible quadrant:
     val initialAngle = if (position == WheelPosition.TOP_RIGHT) 100f else 190f
     val rotationAngle = remember { Animatable(initialAngle) }
     var spinningItemId by remember { mutableStateOf<String?>(null) }
     var isSpinning by remember { mutableStateOf(false) }
 
-    // Wheel Geometry Dimensions
-    val hubRadius = 26.dp
-    val innerRimRadius = 66.dp
-    val outerRimRadius = 106.dp
-    val badgeRadius = 106.dp
-    val handleLength = 34.dp
-    val totalRadius = outerRimRadius + handleLength // ~140.dp
+    // Haptic feedback tick on spoke crossing
+    var lastHapticSector by remember { mutableStateOf((initialAngle / 45f).toInt()) }
+    LaunchedEffect(rotationAngle.value) {
+        val currentSector = (rotationAngle.value / 45f).toInt()
+        if (currentSector != lastHapticSector) {
+            lastHapticSector = currentSector
+            try {
+                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            } catch (ignored: Exception) {}
+        }
+    }
+
+    // Geometry Dimensions
+    val hubRadius = 28.dp
+    val innerRimRadius = 68.dp
+    val outerRimRadius = 108.dp
+    val badgeRadius = 108.dp
+    val handleLength = 36.dp
+    val totalRadius = outerRimRadius + handleLength // ~144.dp
 
     val hubRadiusPx = with(density) { hubRadius.toPx() }
     val innerRimPx = with(density) { innerRimRadius.toPx() }
     val outerRimPx = with(density) { outerRimRadius.toPx() }
     val handleLenPx = with(density) { handleLength.toPx() }
 
-    // Wireframe Design Colors (Light & Dark Theme):
-    // In light theme: classic crisp sketch/line-art with deep charcoal lines and white fills.
-    // In dark theme: cyber obsidian with metallic silver/cyan highlights.
+    // Theme Palettes
     val strokeColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF1E293B)
-    val rimBandFill = if (isDark) Color(0xFF1A1F2E) else Color(0xFFF1F5F9)
+    val rimBandFill = if (isDark) {
+        Brush.sweepGradient(
+            listOf(
+                Color(0xFF1E2538),
+                Color(0xFF2A334E),
+                Color(0xFF1E2538),
+                Color(0xFF2A334E),
+                Color(0xFF1E2538)
+            )
+        )
+    } else {
+        Brush.sweepGradient(
+            listOf(
+                Color(0xFFE2E8F0),
+                Color(0xFFF1F5F9),
+                Color(0xFFE2E8F0),
+                Color(0xFFF8FAFC),
+                Color(0xFFE2E8F0)
+            )
+        )
+    }
+
     val handleColor = if (isDark) Color(0xFFCBD5E1) else Color(0xFF334155)
     val hubBg = if (isDark) Color(0xFF131722) else Color(0xFFFFFFFF)
     val hubBorder = if (isDark) Color(0xFF38BDF8) else Color(0xFF0F172A)
     val knobColor = if (isDark) Color(0xFFE2E8F0) else Color(0xFF0F172A)
 
-    // The container size covers the full diameter of the wheel:
+    // Pulse transition for idle helm sheen
+    val pulseTransition = rememberInfiniteTransition(label = "helm_halo")
+    val haloPulse by pulseTransition.animateFloat(
+        initialValue = 0.15f, targetValue = 0.35f,
+        animationSpec = infiniteRepeatable(tween(2000, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "hp"
+    )
+
+    // Selection shockwave ring animation
+    val shockwaveAnim = remember { Animatable(0f) }
+
+    // Find currently focused spoke item pointing toward user's view:
+    // Top-Right wheel sweet-spot angle is 135° (pointing down-left).
+    // Bottom-Right wheel sweet-spot angle is 225° (pointing up-left).
+    val sweetSpotAngle = if (position == WheelPosition.TOP_RIGHT) 135.0 else 225.0
+    val totalItems = items.size
+    val stepDeg = 360f / totalItems.coerceAtLeast(1)
+
+    val currentRotNorm = ((rotationAngle.value % 360f) + 360f) % 360f
+    var focusedItemIndex = 0
+    var minDiff = 360.0
+    for (i in 0 until totalItems) {
+        val spokeAngle = ((i * stepDeg + currentRotNorm) % 360f).toDouble()
+        var diff = abs(spokeAngle - sweetSpotAngle)
+        if (diff > 180.0) diff = 360.0 - diff
+        if (diff < minDiff) {
+            minDiff = diff
+            focusedItemIndex = i
+        }
+    }
+    val activeItem = items.getOrNull(focusedItemIndex) ?: items.firstOrNull()
+
+    // Container size covers full diameter:
     val containerSize = totalRadius * 2 + 60.dp
     val halfContainer = containerSize / 2
 
-    // Hub center offset relative to container center is (0, 0).
-    // We position the container so its center aligns with the phone corner:
-    // For TOP_RIGHT: center is at (screenWidth - 34.dp, 34.dp)
-    // For BOTTOM_RIGHT: center is at (screenWidth - 34.dp, screenHeight - 110.dp)
+    // Corner offset to align center with top-right or bottom-right corner:
     val cornerOffset = when (position) {
         WheelPosition.TOP_RIGHT -> Modifier
             .offset(x = halfContainer - 34.dp, y = -(halfContainer - 34.dp))
@@ -163,6 +225,47 @@ fun CornerHelmWheel(
                 if (!isSpinning) onDismissRequest()
             }
     ) {
+        // Active Floating Tooltip Label Chip
+        activeItem?.let { act ->
+            val chipAlignment = when (position) {
+                WheelPosition.TOP_RIGHT -> Alignment.TopStart
+                WheelPosition.BOTTOM_RIGHT -> Alignment.BottomStart
+            }
+            val chipPadding = when (position) {
+                WheelPosition.TOP_RIGHT -> Modifier.padding(start = 20.dp, top = 80.dp)
+                WheelPosition.BOTTOM_RIGHT -> Modifier.padding(start = 20.dp, bottom = 125.dp)
+            }
+
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = if (isDark) Color(0xFF161A29).copy(alpha = 0.94f) else Color.White.copy(alpha = 0.94f),
+                border = BorderStroke(1.5.dp, if (isDark) Color(0xFF38BDF8).copy(alpha = 0.6f) else Color(0xFF4F46E5).copy(alpha = 0.4f)),
+                shadowElevation = 8.dp,
+                modifier = Modifier
+                    .align(chipAlignment)
+                    .then(chipPadding)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = act.icon,
+                        contentDescription = act.label,
+                        modifier = Modifier.size(17.dp),
+                        tint = if (isDark) Color(0xFF38BDF8) else Color(0xFF4F46E5)
+                    )
+                    Text(
+                        text = act.label,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+
         // Corner Helm Wheel Container
         Box(
             modifier = Modifier
@@ -172,11 +275,13 @@ fun CornerHelmWheel(
                 .pointerInput(isSpinning) {
                     if (isSpinning) return@pointerInput
                     var lastAngle = 0f
+                    var lastDelta = 0f
                     detectDragGestures(
                         onDragStart = { offset ->
                             val cx = size.width / 2f
                             val cy = size.height / 2f
                             lastAngle = Math.toDegrees(atan2((offset.y - cy).toDouble(), (offset.x - cx).toDouble())).toFloat()
+                            lastDelta = 0f
                         },
                         onDrag = { change, _ ->
                             change.consume()
@@ -187,8 +292,24 @@ fun CornerHelmWheel(
                             if (delta > 180f) delta -= 360f
                             if (delta < -180f) delta += 360f
                             lastAngle = currentAngle
+                            lastDelta = delta
                             coroutineScope.launch {
                                 rotationAngle.snapTo(rotationAngle.value + delta)
+                            }
+                        },
+                        onDragEnd = {
+                            // Fling momentum physics: continue spinning with friction decay
+                            if (abs(lastDelta) > 1.2f) {
+                                coroutineScope.launch {
+                                    val momentum = lastDelta * 35f
+                                    rotationAngle.animateTo(
+                                        targetValue = rotationAngle.value + momentum,
+                                        animationSpec = tween(
+                                            durationMillis = 750,
+                                            easing = CubicBezierEasing(0.1f, 0.9f, 0.2f, 1.0f)
+                                        )
+                                    )
+                                }
                             }
                         }
                     )
@@ -197,7 +318,7 @@ fun CornerHelmWheel(
         ) {
             val currentRot = rotationAngle.value
 
-            // 1. Canvas: Authentic Ship's Helm drawing matching wireframe line art!
+            // 1. Canvas: High-Fidelity Ship's Helm Canvas Drawing
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
@@ -206,62 +327,62 @@ fun CornerHelmWheel(
                 val cx = size.width / 2f
                 val cy = size.height / 2f
 
-                // Outer ambient aura glow (subtle)
+                // Outer ambient aura glow
                 drawCircle(
-                    color = if (isDark) Color(0xFF38BDF8).copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.04f),
+                    color = if (isDark) Color(0xFF38BDF8).copy(alpha = haloPulse) else Color.Black.copy(alpha = 0.05f),
                     center = Offset(cx, cy),
-                    radius = outerRimPx + handleLenPx + 15f
+                    radius = outerRimPx + handleLenPx + 16f
                 )
 
                 // Outer Rim Band Fill
                 drawCircle(
-                    color = rimBandFill,
+                    brush = rimBandFill,
                     center = Offset(cx, cy),
                     radius = outerRimPx,
-                    style = Stroke(width = 12.dp.toPx())
+                    style = Stroke(width = 13.dp.toPx())
                 )
 
                 // Outer Rim Outer Boundary Line
                 drawCircle(
                     color = strokeColor,
                     center = Offset(cx, cy),
-                    radius = outerRimPx + 6.dp.toPx(),
-                    style = Stroke(width = 2.dp.toPx())
+                    radius = outerRimPx + 6.5.dp.toPx(),
+                    style = Stroke(width = 2.2.dp.toPx())
                 )
 
                 // Outer Rim Inner Boundary Line
                 drawCircle(
                     color = strokeColor,
                     center = Offset(cx, cy),
-                    radius = outerRimPx - 6.dp.toPx(),
-                    style = Stroke(width = 1.5.dp.toPx())
+                    radius = outerRimPx - 6.5.dp.toPx(),
+                    style = Stroke(width = 1.6.dp.toPx())
                 )
 
                 // Inner Rim Band Fill
                 drawCircle(
-                    color = rimBandFill,
+                    brush = rimBandFill,
                     center = Offset(cx, cy),
                     radius = innerRimPx,
-                    style = Stroke(width = 8.dp.toPx())
+                    style = Stroke(width = 8.5.dp.toPx())
                 )
 
                 // Inner Rim Outer Boundary Line
                 drawCircle(
                     color = strokeColor,
                     center = Offset(cx, cy),
-                    radius = innerRimPx + 4.dp.toPx(),
-                    style = Stroke(width = 1.5.dp.toPx())
+                    radius = innerRimPx + 4.2.dp.toPx(),
+                    style = Stroke(width = 1.6.dp.toPx())
                 )
 
                 // Inner Rim Inner Boundary Line
                 drawCircle(
                     color = strokeColor,
                     center = Offset(cx, cy),
-                    radius = innerRimPx - 4.dp.toPx(),
-                    style = Stroke(width = 1.5.dp.toPx())
+                    radius = innerRimPx - 4.2.dp.toPx(),
+                    style = Stroke(width = 1.6.dp.toPx())
                 )
 
-                // Draw 8 Spokes & Handles with Turned Peg Knobs
+                // Draw 8 Spokes & Handles with Turned Peg Knobs & 3D Specular Highlights
                 val totalSpokes = 8
                 val stepAngle = (2 * PI / totalSpokes).toFloat()
 
@@ -276,8 +397,8 @@ fun CornerHelmWheel(
                     val outerRimX = cx + outerRimPx * cosA
                     val outerRimY = cy + outerRimPx * sinA
 
-                    val handleNeckX = cx + (outerRimPx + 6.dp.toPx()) * cosA
-                    val handleNeckY = cy + (outerRimPx + 6.dp.toPx()) * sinA
+                    val handleNeckX = cx + (outerRimPx + 6.5.dp.toPx()) * cosA
+                    val handleNeckY = cy + (outerRimPx + 6.5.dp.toPx()) * sinA
 
                     val knobX = cx + (outerRimPx + handleLenPx) * cosA
                     val knobY = cy + (outerRimPx + handleLenPx) * sinA
@@ -287,7 +408,7 @@ fun CornerHelmWheel(
                         color = strokeColor,
                         start = Offset(startX, startY),
                         end = Offset(outerRimX, outerRimY),
-                        strokeWidth = 3.5.dp.toPx(),
+                        strokeWidth = 3.6.dp.toPx(),
                         cap = StrokeCap.Round
                     )
 
@@ -296,7 +417,7 @@ fun CornerHelmWheel(
                         color = handleColor,
                         start = Offset(handleNeckX, handleNeckY),
                         end = Offset(knobX, knobY),
-                        strokeWidth = 5.dp.toPx(),
+                        strokeWidth = 5.2.dp.toPx(),
                         cap = StrokeCap.Round
                     )
 
@@ -304,20 +425,27 @@ fun CornerHelmWheel(
                     drawCircle(
                         color = strokeColor,
                         center = Offset(handleNeckX, handleNeckY),
-                        radius = 4.dp.toPx()
+                        radius = 4.2.dp.toPx()
                     )
 
-                    // Round Knob / Ball at the tip of the handle
+                    // Round Knob / Ball at the tip of the handle (Base sphere)
                     drawCircle(
                         color = knobColor,
                         center = Offset(knobX, knobY),
-                        radius = 6.dp.toPx()
+                        radius = 6.5.dp.toPx()
                     )
                     drawCircle(
                         color = if (isDark) Color(0xFF38BDF8) else Color(0xFF0F172A),
                         center = Offset(knobX, knobY),
-                        radius = 6.dp.toPx(),
-                        style = Stroke(width = 1.2.dp.toPx())
+                        radius = 6.5.dp.toPx(),
+                        style = Stroke(width = 1.3.dp.toPx())
+                    )
+
+                    // 3D Specular shine highlight on the knob
+                    drawCircle(
+                        color = Color.White.copy(alpha = if (isDark) 0.85f else 0.65f),
+                        center = Offset(knobX - 2.dp.toPx(), knobY - 2.dp.toPx()),
+                        radius = 2.dp.toPx()
                     )
                 }
 
@@ -331,14 +459,17 @@ fun CornerHelmWheel(
                     color = hubBorder,
                     center = Offset(cx, cy),
                     radius = hubRadiusPx,
-                    style = Stroke(width = 3.dp.toPx())
+                    style = Stroke(width = 3.2.dp.toPx())
+                )
+                drawCircle(
+                    color = strokeColor.copy(alpha = 0.3f),
+                    center = Offset(cx, cy),
+                    radius = hubRadiusPx * 0.75f,
+                    style = Stroke(width = 1.2.dp.toPx())
                 )
             }
 
             // 2. Action Node Badges mounted along the spokes
-            val totalItems = items.size
-            val stepDeg = 360f / totalItems.coerceAtLeast(1)
-
             items.forEachIndexed { i, item ->
                 val itemAngleDeg = i * stepDeg + currentRot
                 val itemAngleRad = Math.toRadians(itemAngleDeg.toDouble())
@@ -348,19 +479,30 @@ fun CornerHelmWheel(
                 val offsetY = (badgeRadius.value * sin(itemAngleRad).toFloat()).dp
 
                 val isThisSpinning = spinningItemId == item.id
+                val isFocused = activeItem?.id == item.id
 
                 // Interactive circular badge
                 Surface(
                     modifier = Modifier
                         .offset(x = offsetX, y = offsetY)
-                        .size(if (isThisSpinning) 48.dp else 42.dp)
-                        .scale(if (isThisSpinning) 1.18f else 1f)
+                        .size(if (isThisSpinning) 50.dp else if (isFocused) 46.dp else 42.dp)
+                        .scale(if (isThisSpinning) 1.22f else if (isFocused) 1.08f else 1f)
                         .clip(CircleShape)
                         .clickable(enabled = !isSpinning) {
                             // "oru itha select panna antha wheel one time spin agitu open aganum"
                             isSpinning = true
                             spinningItemId = item.id
+                            try {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            } catch (ignored: Exception) {}
+
                             coroutineScope.launch {
+                                // Trigger shockwave pulse
+                                shockwaveAnim.snapTo(0f)
+                                launch {
+                                    shockwaveAnim.animateTo(1f, tween(480, easing = FastOutSlowInEasing))
+                                }
+
                                 // Smooth 1-time 360° spin animation
                                 rotationAngle.animateTo(
                                     targetValue = rotationAngle.value + 360f,
@@ -377,11 +519,12 @@ fun CornerHelmWheel(
                     shape = CircleShape,
                     color = if (isDark) Color(0xFF1E2235) else Color.White,
                     border = BorderStroke(
-                        width = if (isThisSpinning) 2.5.dp else 1.8.dp,
+                        width = if (isThisSpinning) 2.6.dp else if (isFocused) 2.2.dp else 1.8.dp,
                         color = if (isThisSpinning) (if (isDark) Color(0xFF38BDF8) else Color(0xFF4F46E5))
+                                else if (isFocused) (if (isDark) Color(0xFF38BDF8) else Color(0xFF4F46E5))
                                 else (if (isDark) Color(0xFF64748B) else Color(0xFF1E293B))
                     ),
-                    shadowElevation = if (isThisSpinning) 10.dp else 4.dp
+                    shadowElevation = if (isThisSpinning) 12.dp else if (isFocused) 6.dp else 4.dp
                 ) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -392,8 +535,9 @@ fun CornerHelmWheel(
                             imageVector = item.icon,
                             contentDescription = item.label,
                             tint = if (isThisSpinning) (if (isDark) Color(0xFF38BDF8) else Color(0xFF4F46E5))
+                                   else if (isFocused) (if (isDark) Color(0xFF38BDF8) else Color(0xFF4F46E5))
                                    else (if (isDark) Color(0xFFE2E8F0) else Color(0xFF0F172A)),
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(23.dp)
                         )
                     }
                 }
@@ -406,6 +550,9 @@ fun CornerHelmWheel(
                     .clip(CircleShape)
                     .clickable(enabled = !isSpinning) {
                         isSpinning = true
+                        try {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        } catch (ignored: Exception) {}
                         coroutineScope.launch {
                             rotationAngle.animateTo(
                                 targetValue = rotationAngle.value + 360f,
@@ -417,7 +564,7 @@ fun CornerHelmWheel(
                     },
                 shape = CircleShape,
                 color = hubBg,
-                border = BorderStroke(2.5.dp, hubBorder),
+                border = BorderStroke(2.8.dp, hubBorder),
                 shadowElevation = 8.dp
             ) {
                 Box(
@@ -428,7 +575,7 @@ fun CornerHelmWheel(
                         imageVector = hubIcon,
                         contentDescription = hubLabel,
                         tint = hubBorder,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(25.dp)
                     )
                 }
             }
@@ -438,7 +585,7 @@ fun CornerHelmWheel(
 
 /**
  * Compact circular Ship's Helm icon button used in Frame 2 & Frame 5:
- * An 8-spoke miniature steering wheel outline.
+ * An 8-spoke miniature steering wheel outline with subtle interactive sheen.
  * Tapping it smoothly expands the corner helm wheel!
  */
 @Composable
