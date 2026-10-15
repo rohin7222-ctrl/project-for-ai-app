@@ -1,13 +1,20 @@
 package com.nextgen.agent
 
 import android.Manifest
+import android.content.Intent
+import android.provider.Settings
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -25,16 +32,32 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FlashlightOn
+import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -102,10 +125,10 @@ internal fun GeminiSparkle(modifier: Modifier = Modifier, size: androidx.compose
         val cy = h / 2f
         val path = Path().apply {
             moveTo(cx, 0f)
-            quadraticBezierTo(cx, cy, w, cy)
-            quadraticBezierTo(cx, cy, cx, h)
-            quadraticBezierTo(cx, cy, 0f, cy)
-            quadraticBezierTo(cx, cy, cx, 0f)
+            quadraticTo(cx, cy, w, cy)
+            quadraticTo(cx, cy, cx, h)
+            quadraticTo(cx, cy, 0f, cy)
+            quadraticTo(cx, cy, cx, 0f)
             close()
         }
         drawPath(path, GeminiGradient)
@@ -150,6 +173,8 @@ internal fun MainActivity.MainScreen() {
     var showSettingsModal by remember { mutableStateOf(false) }
     var input by remember { mutableStateOf("") }
     var showClearDialog by remember { mutableStateOf(false) }
+    var showTopWheel by remember { mutableStateOf(false) }
+    var showBottomWheel by remember { mutableStateOf(false) }
     val ls = rememberLazyListState()
     LaunchedEffect(chat.size) { if (chat.isNotEmpty()) ls.animateScrollToItem(chat.size - 1) }
 
@@ -186,422 +211,480 @@ internal fun MainActivity.MainScreen() {
         )
     }
 
-    Column(Modifier.fillMaxSize()) {
-        // Enhanced Top Bar Header
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-            tonalElevation = 2.dp,
-            shadowElevation = 6.dp
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
+    val isDark = if (cfg.darkCustom) cfg.dark else isSystemInDarkTheme()
+
+    // 1. TOP WHEEL ITEMS (Settings & Preferences Wheel)
+    val topWheelItems = listOf(
+        WheelItem(
+            id = "clear_chat",
+            label = tr("clear_chat"),
+            icon = Icons.Default.DeleteSweep,
+            accentColor = Color(0xFFEF4444),
+            onClick = { showClearDialog = true }
+        ),
+        WheelItem(
+            id = "theme_toggle",
+            label = if (isDark) "Light Mode" else "Dark Mode",
+            icon = if (isDark) Icons.Default.LightMode else Icons.Default.DarkMode,
+            accentColor = Amber,
+            onClick = { upd { it.copy(dark = !isDark, darkCustom = true) } }
+        ),
+        WheelItem(
+            id = "lang_switch",
+            label = tr("app_lang"),
+            icon = Icons.Default.Language,
+            accentColor = Cyan,
+            onClick = { cycleLanguage() }
+        ),
+        WheelItem(
+            id = "brain_config",
+            label = tr("ai_model"),
+            icon = Icons.Default.Bolt,
+            accentColor = Indigo,
+            onClick = { changeModel = true; screen = Screen.BRAIN }
+        ),
+        WheelItem(
+            id = "name_config",
+            label = tr("name_title"),
+            icon = Icons.Default.Edit,
+            accentColor = Violet,
+            onClick = { screen = Screen.NAME }
+        ),
+        WheelItem(
+            id = "auto_wake",
+            label = tr("auto_wake"),
+            icon = Icons.Default.RecordVoiceOver,
+            accentColor = if (cfg.autoWakeEnabled) Color(0xFF10B981) else Color.Gray,
+            onClick = {
+                val next = !cfg.autoWakeEnabled
+                upd { it.copy(autoWakeEnabled = next) }
+                if (next) voice.startStandby() else voice.stopStandby()
+                Toast.makeText(activity, if (next) "Auto-Wake ON" else "Auto-Wake OFF", Toast.LENGTH_SHORT).show()
+            }
+        ),
+        WheelItem(
+            id = "accessibility",
+            label = "Accessibility",
+            icon = Icons.Default.AdminPanelSettings,
+            accentColor = Color(0xFFF97316),
+            onClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+        )
+    )
+
+    // 2. BOTTOM WHEEL ITEMS (Quick Actions Menu Wheel)
+    val bottomWheelItems = listOf(
+        WheelItem(
+            id = "quick_call",
+            label = tr("chip_call"),
+            icon = Icons.Default.Phone,
+            accentColor = Color(0xFF10B981),
+            onClick = { quickCall() }
+        ),
+        WheelItem(
+            id = "quick_bluetooth",
+            label = tr("chip_bt"),
+            icon = Icons.Default.Bluetooth,
+            accentColor = Color(0xFF3B82F6),
+            onClick = { toggleBluetooth() }
+        ),
+        WheelItem(
+            id = "quick_torch",
+            label = tr("chip_torch"),
+            icon = Icons.Default.FlashlightOn,
+            accentColor = Amber,
+            onClick = { toggleTorch() }
+        ),
+        WheelItem(
+            id = "quick_alarm",
+            label = tr("chip_alarm"),
+            icon = Icons.Default.Alarm,
+            accentColor = Color(0xFFEC4899),
+            onClick = { quickAlarm() }
+        ),
+        WheelItem(
+            id = "quick_whatsapp",
+            label = tr("chip_whatsapp"),
+            icon = Icons.AutoMirrored.Filled.Chat,
+            accentColor = Color(0xFF22C55E),
+            onClick = { quickWhatsApp() }
+        ),
+        WheelItem(
+            id = "quick_wifi",
+            label = tr("chip_wifi"),
+            icon = Icons.Default.Wifi,
+            accentColor = Cyan,
+            onClick = { quickWifi() }
+        ),
+        WheelItem(
+            id = "quick_screenshot",
+            label = tr("chip_screenshot"),
+            icon = Icons.Default.PhotoCamera,
+            accentColor = Violet,
+            onClick = { quickScreenshot() }
+        ),
+        WheelItem(
+            id = "quick_volume",
+            label = "Volume",
+            icon = Icons.AutoMirrored.Filled.VolumeUp,
+            accentColor = Color(0xFF06B6D4),
+            onClick = { quickVolume() }
+        ),
+        WheelItem(
+            id = "quick_youtube",
+            label = tr("chip_yt"),
+            icon = Icons.Default.PlayCircle,
+            accentColor = Color(0xFFEF4444),
+            onClick = { quickYouTube() }
+        )
+    )
+
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            // Enhanced Top Bar Header
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+                tonalElevation = 2.dp,
+                shadowElevation = 6.dp
             ) {
-                // App Logo avatar with live status dot
-                Box(contentAlignment = Alignment.BottomEnd) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Left: Pill Badge matching wireframe [ name ]
                     Surface(
-                        modifier = Modifier.size(44.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.5.dp, Brush.linearGradient(listOf(Indigo, Violet, Cyan))),
-                        color = MaterialTheme.colorScheme.surfaceVariant
-                    ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.app_logo),
-                            contentDescription = "NextGen AI Logo",
-                            modifier = Modifier.fillMaxSize().padding(3.dp),
-                            contentScale = ContentScale.Fit
-                        )
-                    }
-                    val dotColor = when {
-                        isInPhoneCall || isMediaPlayingState -> Amber
-                        executingAction.isNotBlank() -> Amber
-                        thinking -> Violet
-                        listening -> Cyan
-                        else -> Color(0xFF10B981)
-                    }
-                    Box(
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
+                        border = BorderStroke(1.5.dp, Brush.horizontalGradient(listOf(Indigo, Violet, Cyan))),
+                        shadowElevation = 3.dp,
                         modifier = Modifier
-                            .size(13.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surface)
-                            .padding(2.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .clickable { screen = Screen.NAME }
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(CircleShape)
-                                .background(dotColor)
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val dotColor = when {
+                                isInPhoneCall || isMediaPlayingState -> Amber
+                                executingAction.isNotBlank() -> Amber
+                                thinking -> Violet
+                                listening -> Cyan
+                                else -> Color(0xFF10B981)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(dotColor)
+                            )
+                            Text(
+                                text = cfg.name.ifBlank { "NextGen AI" },
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            GeminiSparkle(size = 15.dp)
+                        }
+                    }
+
+                    // Right: Top Helm Wheel Button
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (chat.isNotEmpty()) {
+                            RoundIcon(Icons.Default.DeleteSweep) { showClearDialog = true }
+                        }
+
+                        // Compact Top Helm Button (opens top wheel menu)
+                        CompactHelmButton(
+                            onClick = { showTopWheel = true },
+                            icon = Icons.Default.Settings,
+                            accentColor = Indigo,
+                            size = 46.dp
                         )
                     }
                 }
+            }
 
-                Spacer(Modifier.width(12.dp))
-
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = cfg.name.ifBlank { "NextGen AI" },
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSurface
+            // Middle Content: Logo vs Chat Feed
+            // "chat panna start pannita antha center la iruka pora app logo disappear agidanum."
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                if (chat.isEmpty()) {
+                    // Center Hero App Logo (Visible only before chatting)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 24.dp, vertical = 20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        val logoPulse by rememberInfiniteTransition(label = "logoPulse").animateFloat(
+                            initialValue = 1f, targetValue = 1.06f,
+                            animationSpec = infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+                            label = "lp"
                         )
-                        GeminiSparkle(size = 18.dp)
-                        // Standby toggle pill
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (cfg.autoWakeEnabled) Indigo.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                            border = BorderStroke(1.dp, if (cfg.autoWakeEnabled) Indigo.copy(alpha = 0.35f) else Color.Transparent),
-                            modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable {
-                                val next = !cfg.autoWakeEnabled
-                                upd { it.copy(autoWakeEnabled = next) }
-                                if (next) voice.startStandby() else voice.stopStandby()
-                            }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+
+                        // Circular logo area matching wireframe "logo"
+                        Box(contentAlignment = Alignment.Center) {
+                            // Pulsing ambient glow
+                            Box(
+                                Modifier
+                                    .size(170.dp)
+                                    .scale(logoPulse)
+                                    .clip(CircleShape)
+                                    .background(
+                                        Brush.radialGradient(
+                                            listOf(
+                                                GeminiBlue.copy(alpha = 0.35f),
+                                                GeminiPurple.copy(alpha = 0.22f),
+                                                Cyan.copy(alpha = 0.12f),
+                                                Color.Transparent
+                                            )
+                                        )
+                                    )
+                            )
+                            // Outer ring card
+                            Surface(
+                                modifier = Modifier.size(142.dp),
+                                shape = CircleShape,
+                                shadowElevation = 18.dp,
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(3.dp, GeminiAuraGradient)
                             ) {
                                 Box(
-                                    modifier = Modifier.size(6.dp).clip(CircleShape)
-                                        .background(if (cfg.autoWakeEnabled) Color(0xFF10B981) else Color.Gray)
-                                )
-                                Text(
-                                    text = if (cfg.autoWakeEnabled) cfg.commandingWord else "Off",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (cfg.autoWakeEnabled) Indigo else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-                                )
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(14.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Image(
+                                        painter = painterResource(id = R.drawable.app_logo),
+                                        contentDescription = "NextGen AI Logo",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Fit
+                                    )
+                                }
                             }
                         }
-                    }
-                    val statusText = when {
-                        isInPhoneCall -> tr("call_in_progress")
-                        isMediaPlayingState -> tr("media_playing")
-                        executingAction.isNotBlank() -> "${tr("executing")} $executingAction"
-                        thinking -> tr("thinking")
-                        listening -> tr("listening")
-                        else -> tr("ready")
-                    }
-                    Text(
-                        text = statusText,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (isInPhoneCall || isMediaPlayingState) Amber else if (listening || thinking || executingAction.isNotBlank()) Indigo else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                }
 
-                if (chat.isNotEmpty()) {
-                    RoundIcon(Icons.Default.DeleteSweep) { showClearDialog = true }
-                    Spacer(Modifier.width(6.dp))
-                }
-                val isDark = if (cfg.darkCustom) cfg.dark else isSystemInDarkTheme()
-                RoundIcon(if (isDark) Icons.Default.LightMode else Icons.Default.DarkMode) {
-                    val next = !isDark
-                    upd { it.copy(dark = next, darkCustom = true) }
-                }
-                Spacer(Modifier.width(6.dp))
-                RoundIcon(Icons.Default.Settings) { showSettingsModal = true }
-            }
-        }
+                        Spacer(Modifier.height(20.dp))
 
-        // Middle Content (Empty State vs Chat Feed)
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (chat.isEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 24.dp, vertical = 20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    // App Logo hero with subtle pulse
-                    val logoPulse by rememberInfiniteTransition(label = "logoPulse").animateFloat(
-                        initialValue = 1f, targetValue = 1.05f,
-                        animationSpec = infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-                        label = "lp"
-                    )
-                    Box(contentAlignment = Alignment.Center) {
-                        Box(
-                            Modifier
-                                .size(132.dp)
-                                .scale(logoPulse)
-                                .clip(RoundedCornerShape(44.dp))
-                                .background(Brush.radialGradient(listOf(GeminiBlue.copy(alpha = 0.28f), GeminiPurple.copy(alpha = 0.18f), Color.Transparent)))
-                        )
-                        Surface(
-                            modifier = Modifier.size(110.dp),
-                            shape = RoundedCornerShape(36.dp),
-                            shadowElevation = 16.dp,
-                            color = MaterialTheme.colorScheme.surface,
-                            border = BorderStroke(2.dp, GeminiGradient)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                GeminiSparkle(size = 54.dp)
-                            }
+                            Text(
+                                text = tr("hello").format(cfg.name),
+                                fontSize = 26.sp,
+                                fontWeight = FontWeight.Black,
+                                textAlign = TextAlign.Center,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            GeminiSparkle(size = 22.dp)
                         }
-                    }
 
-                    Spacer(Modifier.height(18.dp))
+                        Spacer(Modifier.height(8.dp))
 
-                    Text(
-                        text = tr("hello").format(cfg.name),
-                        fontSize = 25.sp,
-                        fontWeight = FontWeight.Black,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                        Text(
+                            text = tr("welcome_sub"),
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                            lineHeight = 19.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
 
-                    Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(20.dp))
 
-                    Text(
-                        text = tr("welcome_sub"),
-                        fontSize = 13.sp,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-                        lineHeight = 19.sp,
-                        modifier = Modifier.padding(horizontal = 8.dp)
-                    )
-
-                    Spacer(Modifier.height(24.dp))
-
-                    // Quick Actions Container
-                    Surface(
-                        shape = RoundedCornerShape(22.dp),
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                        tonalElevation = 1.dp,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.surfaceVariant),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(14.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        // Interactive hint banner for two spinning wheels
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Indigo.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, Indigo.copy(alpha = 0.35f))
                         ) {
                             Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Default.Bolt, null, Modifier.size(16.dp), tint = Indigo)
+                                Text("☸️", fontSize = 16.sp)
                                 Text(
-                                    text = tr("quick_actions"),
+                                    text = if (cfg.lang == "ta-IN") "மேல் & கீழ் வீல்களை சுழற்றி பயன் பெறவும்" else "Spin top & bottom wheels for quick controls",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Indigo
                                 )
                             }
-                            Spacer(Modifier.height(10.dp))
-
-                            val suggestions = listOf(
-                                Triple(tr("chip_call_appa"), "📞", if (cfg.lang == "ta-IN") "அப்பாவுக்கு கால் பண்ணு" else "Call Appa"),
-                                Triple(tr("chip_wifi"), "📶", if (cfg.lang == "ta-IN") "வைஃபை ஆன் பண்ணு" else "Turn on Wi-Fi"),
-                                Triple(tr("chip_bt"), "🎧", if (cfg.lang == "ta-IN") "ப்ளூடூத் ஆன் பண்ணு" else "Turn on Bluetooth"),
-                                Triple(tr("chip_whatsapp"), "💬", "Open WhatsApp"),
-                                Triple(tr("chip_yt"), "🔍", "Search YouTube"),
-                                Triple(tr("chip_alarm"), "⏰", "7 AM Alarm"),
-                                Triple(tr("chip_torch"), "🔦", if (cfg.lang == "ta-IN") "டார்ச் ஆன் பண்ணு" else "Turn on torch"),
-                                Triple(tr("chip_screenshot"), "📸", if (cfg.lang == "ta-IN") "ஸ்கிரீன்ஷாட் எடு" else "Take screenshot")
-                            )
-
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                suggestions.chunked(2).forEach { rowChips ->
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        rowChips.forEach { (label, emoji, cmd) ->
-                                            Surface(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .clip(RoundedCornerShape(14.dp))
-                                                    .clickable { handleUser(cmd) },
-                                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                                                shape = RoundedCornerShape(14.dp),
-                                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                ) {
-                                                    Text(emoji, fontSize = 14.sp)
-                                                    Text(
-                                                        text = label,
-                                                        fontSize = 12.sp,
-                                                        fontWeight = FontWeight.SemiBold,
-                                                        maxLines = 1
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        if (rowChips.size == 1) {
-                                            Spacer(Modifier.weight(1f))
-                                        }
-                                    }
-                                }
-                            }
                         }
                     }
-                }
-            } else {
-                LazyColumn(
-                    state = ls,
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(chat) { m ->
-                        if (m.mine) {
-                            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Surface(
-                                        shape = RoundedCornerShape(20.dp, 20.dp, 4.dp, 20.dp),
-                                        color = Indigo,
-                                        shadowElevation = 3.dp,
-                                        modifier = Modifier.widthIn(max = 300.dp)
-                                    ) {
-                                        Text(
-                                            text = m.text,
-                                            modifier = Modifier.padding(horizontal = 15.dp, vertical = 11.dp),
-                                            color = Color.White,
-                                            fontSize = 15.sp,
-                                            lineHeight = 21.sp
-                                        )
-                                    }
-                                    if (m.time.isNotBlank()) {
-                                        Text(
-                                            text = m.time,
-                                            fontSize = 10.sp,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
-                                            modifier = Modifier.padding(top = 2.dp, end = 4.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        } else {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Start,
-                                verticalAlignment = Alignment.Top
-                            ) {
-                                Surface(
-                                    modifier = Modifier
-                                        .padding(top = 2.dp)
-                                        .size(30.dp),
-                                    shape = RoundedCornerShape(10.dp),
-                                    border = BorderStroke(1.dp, GeminiPurple.copy(alpha = 0.5f)),
-                                    color = MaterialTheme.colorScheme.surfaceVariant
-                                ) {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        GeminiSparkle(size = 18.dp)
-                                    }
-                                }
-
-                                Spacer(Modifier.width(8.dp))
-
-                                Column(modifier = Modifier.widthIn(max = 300.dp)) {
-                                    Surface(
-                                        shape = RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp),
-                                        color = if (m.isError) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface,
-                                        tonalElevation = 2.dp,
-                                        shadowElevation = 2.dp,
-                                        border = BorderStroke(1.dp, if (m.isError) MaterialTheme.colorScheme.error.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                                    ) {
-                                        Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
+                } else {
+                    // Active Chat Conversation History
+                    LazyColumn(
+                        state = ls,
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(chat) { m ->
+                            if (m.mine) {
+                                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Surface(
+                                            shape = RoundedCornerShape(20.dp, 20.dp, 4.dp, 20.dp),
+                                            color = Indigo,
+                                            shadowElevation = 3.dp,
+                                            modifier = Modifier.widthIn(max = 300.dp)
+                                        ) {
                                             Text(
                                                 text = m.text,
-                                                color = if (m.isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.padding(horizontal = 15.dp, vertical = 11.dp),
+                                                color = Color.White,
                                                 fontSize = 15.sp,
                                                 lineHeight = 21.sp
                                             )
+                                        }
+                                        if (m.time.isNotBlank()) {
+                                            Text(
+                                                text = m.time,
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                                                modifier = Modifier.padding(top = 2.dp, end = 4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Start,
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .padding(top = 2.dp)
+                                            .size(30.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(1.dp, GeminiPurple.copy(alpha = 0.5f)),
+                                        color = MaterialTheme.colorScheme.surfaceVariant
+                                    ) {
+                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            GeminiSparkle(size = 18.dp)
+                                        }
+                                    }
 
-                                            if (m.actions.isNotEmpty()) {
-                                                Spacer(Modifier.height(8.dp))
-                                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                    m.actions.forEach { act ->
-                                                        Surface(
-                                                            shape = RoundedCornerShape(8.dp),
-                                                            color = Indigo.copy(alpha = 0.12f),
-                                                            border = BorderStroke(0.5.dp, Indigo.copy(alpha = 0.4f))
-                                                        ) {
-                                                            Row(
-                                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                                                verticalAlignment = Alignment.CenterVertically,
-                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    Spacer(Modifier.width(8.dp))
+
+                                    Column(modifier = Modifier.widthIn(max = 300.dp)) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp),
+                                            color = if (m.isError) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface,
+                                            tonalElevation = 2.dp,
+                                            shadowElevation = 2.dp,
+                                            border = BorderStroke(1.dp, if (m.isError) MaterialTheme.colorScheme.error.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                                        ) {
+                                            Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
+                                                Text(
+                                                    text = m.text,
+                                                    color = if (m.isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface,
+                                                    fontSize = 15.sp,
+                                                    lineHeight = 21.sp
+                                                )
+
+                                                if (m.actions.isNotEmpty()) {
+                                                    Spacer(Modifier.height(8.dp))
+                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                        m.actions.forEach { act ->
+                                                            Surface(
+                                                                shape = RoundedCornerShape(8.dp),
+                                                                color = Indigo.copy(alpha = 0.12f),
+                                                                border = BorderStroke(0.5.dp, Indigo.copy(alpha = 0.4f))
                                                             ) {
-                                                                Icon(Icons.Default.Bolt, null, Modifier.size(13.dp), tint = Indigo)
-                                                                Text(act, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Indigo)
+                                                                Row(
+                                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                                ) {
+                                                                    Icon(Icons.Default.Bolt, null, Modifier.size(13.dp), tint = Indigo)
+                                                                    Text(act, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Indigo)
+                                                                }
                                                             }
                                                         }
                                                     }
                                                 }
                                             }
                                         }
-                                    }
 
-                                    Row(
-                                        modifier = Modifier.padding(top = 3.dp, start = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        if (m.time.isNotBlank()) {
-                                            Text(
-                                                text = m.time,
-                                                fontSize = 10.sp,
-                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                                        Row(
+                                            modifier = Modifier.padding(top = 3.dp, start = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            if (m.time.isNotBlank()) {
+                                                Text(
+                                                    text = m.time,
+                                                    fontSize = 10.sp,
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                                                )
+                                            }
+                                            Icon(
+                                                imageVector = Icons.Default.ContentCopy,
+                                                contentDescription = "Copy message",
+                                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                                                modifier = Modifier
+                                                    .size(13.dp)
+                                                    .clickable {
+                                                        copyToClipboard(m.text)
+                                                        Toast.makeText(activity, tr("copy_done"), Toast.LENGTH_SHORT).show()
+                                                    }
                                             )
                                         }
-                                        Icon(
-                                            imageVector = Icons.Default.ContentCopy,
-                                            contentDescription = "Copy message",
-                                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
-                                            modifier = Modifier
-                                                .size(13.dp)
-                                                .clickable {
-                                                    copyToClipboard(m.text)
-                                                    Toast.makeText(activity, tr("copy_done"), Toast.LENGTH_SHORT).show()
-                                                }
-                                        )
                                     }
                                 }
                             }
                         }
-                    }
 
-                    if (thinking) {
-                        item {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Start,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Surface(
-                                    modifier = Modifier.size(30.dp),
-                                    shape = RoundedCornerShape(10.dp),
-                                    border = BorderStroke(1.dp, GeminiPurple.copy(alpha = 0.5f)),
-                                    color = MaterialTheme.colorScheme.surfaceVariant
+                        if (thinking) {
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Start,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        GeminiSparkle(size = 18.dp)
-                                    }
-                                }
-
-                                Spacer(Modifier.width(8.dp))
-
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp),
-                                    color = MaterialTheme.colorScheme.surface,
-                                    tonalElevation = 2.dp,
-                                    shadowElevation = 2.dp,
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    Surface(
+                                        modifier = Modifier.size(30.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(1.dp, GeminiPurple.copy(alpha = 0.5f)),
+                                        color = MaterialTheme.colorScheme.surfaceVariant
                                     ) {
-                                        BouncingDots()
-                                        Spacer(Modifier.width(4.dp))
-                                        Text(tr("thinking"), fontSize = 12.sp, color = Indigo, fontWeight = FontWeight.SemiBold)
+                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            GeminiSparkle(size = 18.dp)
+                                        }
+                                    }
+
+                                    Spacer(Modifier.width(8.dp))
+
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp),
+                                        color = MaterialTheme.colorScheme.surface,
+                                        tonalElevation = 2.dp,
+                                        shadowElevation = 2.dp,
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            BouncingDots()
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(tr("thinking"), fontSize = 12.sp, color = Indigo, fontWeight = FontWeight.SemiBold)
+                                        }
                                     }
                                 }
                             }
@@ -609,183 +692,212 @@ internal fun MainActivity.MainScreen() {
                     }
                 }
             }
-        }
 
-        // Gemini Floating Prompt Capsule & Voice Control Bar
-        val isDarkTheme = if (cfg.darkCustom) cfg.dark else isSystemInDarkTheme()
-        val capsuleBg = if (isDarkTheme) Color(0xFF1E1F20) else Color(0xFFF0F4F9)
+            // Gemini Floating Prompt Capsule & Voice Control Bar
+            val capsuleBg = if (isDark) Color(0xFF1E1F24) else Color(0xFFF0F4F9)
 
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            color = capsuleBg,
-            shape = RoundedCornerShape(30.dp),
-            shadowElevation = if (listening) 10.dp else 3.dp,
-            border = if (listening) {
-                BorderStroke(2.dp, GeminiAuraGradient)
-            } else {
-                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-            }
-        ) {
-            if (listening) {
-                // Gemini Live Voice Listening Mode
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        GeminiLiveWave()
-                        Column {
-                            Text(
-                                text = tr("listening"),
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Gemini Live",
-                                fontSize = 11.sp,
-                                color = GeminiCyan,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-
-                    // Compact modern Stop button (Gemini red circle, 40.dp)
-                    Surface(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .clickable { toggle() },
-                        shape = CircleShape,
-                        color = Color(0xFFEF4444),
-                        shadowElevation = 4.dp
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Default.Stop,
-                                contentDescription = "Stop",
-                                Modifier.size(20.dp),
-                                tint = Color.White
-                            )
-                        }
-                    }
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                color = capsuleBg,
+                shape = RoundedCornerShape(32.dp),
+                shadowElevation = if (listening) 12.dp else 4.dp,
+                border = if (listening) {
+                    BorderStroke(2.dp, GeminiAuraGradient)
+                } else {
+                    BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
                 }
-            } else {
-                // Gemini Modern Capsule: Text & Mic
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    GeminiSparkle(size = 20.dp)
-
-                    OutlinedTextField(
-                        value = input,
-                        onValueChange = {
-                            input = it
-                            if (shortcutManager.isEmergencyUninstall(it)) {
-                                input = ""
-                                triggerEmergencyUninstall()
-                            }
-                        },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(
-                            onSend = {
-                                val t = input.trim()
-                                if (t.isNotBlank()) {
-                                    input = ""
-                                    handleUser(t)
-                                }
-                            }
-                        ),
-                        modifier = Modifier.weight(1f),
-                        placeholder = {
-                            Text(
-                                tr("type_here"),
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                            )
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color.Transparent,
-                            unfocusedBorderColor = Color.Transparent,
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent
-                        )
-                    )
-
-                    if (input.isNotEmpty()) {
-                        IconButton(
-                            onClick = { input = "" },
-                            modifier = Modifier.size(32.dp)
+            ) {
+                if (listening) {
+                    // Gemini Live Voice Listening Mode ("voice start achuna ippo ulla gemini design eh irukanum")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Icon(
-                                Icons.Default.Close,
-                                "Clear",
-                                Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                            )
+                            GeminiLiveWave()
+                            Column {
+                                Text(
+                                    text = tr("listening"),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Gemini Live",
+                                    fontSize = 11.sp,
+                                    color = GeminiCyan,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
 
-                        // Send Button
+                        // Compact modern Stop button (Gemini red circle)
                         Surface(
                             modifier = Modifier
-                                .size(38.dp)
+                                .size(40.dp)
                                 .clip(CircleShape)
-                                .clickable {
-                                    val t = input.trim()
-                                    input = ""
-                                    handleUser(t)
-                                },
+                                .clickable { toggle() },
                             shape = CircleShape,
-                            color = GeminiBlue,
-                            shadowElevation = 3.dp
+                            color = Color(0xFFEF4444),
+                            shadowElevation = 4.dp
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    Icons.AutoMirrored.Filled.Send,
-                                    "Send",
-                                    Modifier.size(18.dp),
+                                    Icons.Default.Stop,
+                                    contentDescription = "Stop",
+                                    Modifier.size(20.dp),
                                     tint = Color.White
                                 )
                             }
                         }
                     }
-
-                    // Compact Gemini Mic Button (40.dp)
-                    Surface(
+                } else {
+                    // Modern Command Capsule: Text + Mic + Bottom Helm Button
+                    Row(
                         modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .clickable { toggle() },
-                        shape = CircleShape,
-                        color = if (isDarkTheme) Color(0xFF2B2D30) else Color(0xFFE2E7EF),
-                        border = BorderStroke(1.dp, GeminiPurple.copy(alpha = 0.4f)),
-                        shadowElevation = 2.dp
+                            .fillMaxWidth()
+                            .padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Default.Mic,
-                                contentDescription = "Voice Input",
-                                Modifier.size(20.dp),
-                                tint = GeminiBlue
+                        GeminiSparkle(size = 20.dp)
+
+                        OutlinedTextField(
+                            value = input,
+                            onValueChange = {
+                                input = it
+                                if (shortcutManager.isEmergencyUninstall(it)) {
+                                    input = ""
+                                    triggerEmergencyUninstall()
+                                }
+                            },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                            keyboardActions = KeyboardActions(
+                                onSend = {
+                                    val t = input.trim()
+                                    if (t.isNotBlank()) {
+                                        input = ""
+                                        handleUser(t)
+                                    }
+                                }
+                            ),
+                            modifier = Modifier.weight(1f),
+                            placeholder = {
+                                Text(
+                                    "give command",
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                )
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent,
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent
                             )
+                        )
+
+                        if (input.isNotEmpty()) {
+                            IconButton(
+                                onClick = { input = "" },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    "Clear",
+                                    Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                )
+                            }
+
+                            // Send Button
+                            Surface(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        val t = input.trim()
+                                        input = ""
+                                        handleUser(t)
+                                    },
+                                shape = CircleShape,
+                                color = GeminiBlue,
+                                shadowElevation = 3.dp
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Send,
+                                        "Send",
+                                        Modifier.size(18.dp),
+                                        tint = Color.White
+                                    )
+                                }
+                            }
                         }
+
+                        // Compact Gemini Mic Button
+                        Surface(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .clickable { toggle() },
+                            shape = CircleShape,
+                            color = if (isDark) Color(0xFF2B2D35) else Color(0xFFE2E7EF),
+                            border = BorderStroke(1.dp, GeminiPurple.copy(alpha = 0.4f)),
+                            shadowElevation = 2.dp
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Mic,
+                                    contentDescription = "Voice Input",
+                                    Modifier.size(20.dp),
+                                    tint = GeminiBlue
+                                )
+                            }
+                        }
+
+                        // Bottom Helm Wheel Trigger Button
+                        CompactHelmButton(
+                            onClick = { showBottomWheel = true },
+                            icon = Icons.Default.Menu,
+                            accentColor = Color(0xFF10B981),
+                            size = 40.dp
+                        )
                     }
                 }
             }
         }
+
+        // Top Helm Wheel Menu (Settings & Preferences)
+        HelmWheelMenu(
+            isExpanded = showTopWheel,
+            onDismissRequest = { showTopWheel = false },
+            position = WheelPosition.TOP_RIGHT,
+            hubIcon = Icons.Default.Settings,
+            hubLabel = "Settings",
+            onHubClick = { showSettingsModal = true },
+            items = topWheelItems
+        )
+
+        // Bottom Helm Wheel Menu (Quick Menu Actions)
+        HelmWheelMenu(
+            isExpanded = showBottomWheel,
+            onDismissRequest = { showBottomWheel = false },
+            position = WheelPosition.BOTTOM_RIGHT,
+            hubIcon = Icons.Default.Hub,
+            hubLabel = "Quick Actions",
+            onHubClick = { showBottomWheel = false },
+            items = bottomWheelItems
+        )
     }
 }

@@ -340,6 +340,107 @@ class MainActivity : FragmentActivity() {
         }, 3000)
     }
 
+    internal var isTorchActive by mutableStateOf(false)
+
+    internal fun toggleTorch() {
+        val next = !isTorchActive
+        lifecycleScope.launch(Dispatchers.IO) {
+            val res = device.execute(JSONObject().put("type", "flashlight").put("on", next))
+            withContext(Dispatchers.Main) {
+                if (res == "OK") {
+                    isTorchActive = next
+                    Toast.makeText(this@MainActivity, if (next) "🔦 Torch ON" else "🔦 Torch OFF", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@MainActivity, res, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    internal fun toggleBluetooth() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val adapter = try { android.bluetooth.BluetoothAdapter.getDefaultAdapter() } catch (e: Exception) { null }
+            val isCurrentlyOn = adapter?.isEnabled == true
+            val next = !isCurrentlyOn
+            val res = device.execute(JSONObject().put("type", "bluetooth").put("on", next))
+            withContext(Dispatchers.Main) {
+                Toast.makeText(this@MainActivity, if (next) "🎧 Bluetooth ON" else "🎧 Bluetooth OFF", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    internal fun quickCall() {
+        val prompt = if (cfg.lang == "ta-IN") "அப்பாவுக்கு கால் பண்ணு" else "Call Contact"
+        handleUser(prompt)
+    }
+
+    internal fun quickAlarm() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            device.execute(JSONObject().put("type", "alarm").put("hour", 7).put("minute", 0).put("label", "Morning Alarm"))
+            withContext(Dispatchers.Main) {
+                Toast.makeText(this@MainActivity, "⏰ Alarm set for 7:00 AM", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    internal fun quickWhatsApp() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val res = device.execute(JSONObject().put("type", "open_app").put("name", "whatsapp"))
+            if (res.startsWith("ERR")) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, res, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    internal fun quickWifi() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            device.execute(JSONObject().put("type", "wifi").put("on", true))
+        }
+    }
+
+    internal fun quickScreenshot() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val res = device.execute(JSONObject().put("type", "system").put("name", "screenshot"))
+            withContext(Dispatchers.Main) {
+                if (res.startsWith("ERR") || res == "NEED_ACCESSIBILITY") {
+                    Toast.makeText(this@MainActivity, tr("need_a11y"), Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this@MainActivity, "📸 Screenshot taken", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    internal fun quickVolume() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            device.execute(JSONObject().put("type", "volume").put("dir", "toggle"))
+            withContext(Dispatchers.Main) {
+                Toast.makeText(this@MainActivity, "🔊 Volume toggled", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    internal fun quickYouTube() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            device.execute(JSONObject().put("type", "youtube").put("query", "trending songs"))
+        }
+    }
+
+    internal fun cycleLanguage() {
+        val langs = listOf("ta-IN", "en-US", "ja-JP")
+        val currentIndex = langs.indexOf(cfg.lang).coerceAtLeast(0)
+        val nextLang = langs[(currentIndex + 1) % langs.size]
+        upd { it.copy(lang = nextLang) }
+        val langName = when (nextLang) {
+            "ta-IN" -> "தமிழ் (Tamil)"
+            "ja-JP" -> "日本語 (Japanese)"
+            else -> "English (US)"
+        }
+        Toast.makeText(this, "Language: $langName", Toast.LENGTH_SHORT).show()
+    }
+
     internal fun handleUser(text: String) {
         val t = text.trim()
         if (t.isBlank()) return
