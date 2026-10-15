@@ -27,6 +27,7 @@ import android.telephony.PhoneStateListener
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
@@ -940,6 +941,9 @@ class MainActivity : FragmentActivity() {
     // ---- Step 0: language
     @Composable
     private fun LangScreen() {
+        BackHandler(enabled = store.isReady()) {
+            screen = Screen.MAIN
+        }
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             GlassCard {
                 Icon(Icons.Default.Language, null, Modifier.size(48.dp), tint = Indigo)
@@ -962,7 +966,9 @@ class MainActivity : FragmentActivity() {
                         if (sel) Icon(Icons.Default.CheckCircle, null, tint = Indigo)
                     }
                 }
-                PrimaryButton(tr("continue")) { screen = Screen.NAME }
+                PrimaryButton(tr("continue")) {
+                    if (store.isReady()) screen = Screen.MAIN else screen = Screen.NAME
+                }
             }
         }
     }
@@ -971,8 +977,15 @@ class MainActivity : FragmentActivity() {
     @Composable
     private fun NameScreen() {
         var n by remember { mutableStateOf(cfg.name) }
+        BackHandler {
+            if (store.isReady()) screen = Screen.MAIN else screen = Screen.LANG
+        }
         Box(Modifier.fillMaxSize()) {
-            Box(Modifier.align(Alignment.TopStart)) { BackButton { screen = Screen.LANG } }
+            Box(Modifier.align(Alignment.TopStart)) { 
+                BackButton { 
+                    if (store.isReady()) screen = Screen.MAIN else screen = Screen.LANG 
+                } 
+            }
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 GlassCard {
                     Surface(
@@ -1004,7 +1017,8 @@ class MainActivity : FragmentActivity() {
                         placeholder = { Text(tr("name_hint"), Modifier.fillMaxWidth(), textAlign = TextAlign.Center) }
                     )
                     PrimaryButton(tr("continue"), enabled = n.isNotBlank()) {
-                        upd { it.copy(name = n.trim()) }; screen = Screen.BRAIN
+                        upd { it.copy(name = n.trim()) }
+                        if (store.isReady()) screen = Screen.MAIN else screen = Screen.BRAIN
                     }
                 }
             }
@@ -1083,9 +1097,25 @@ class MainActivity : FragmentActivity() {
             }
         }
 
+        BackHandler {
+            if (store.isReady()) {
+                changeModel = false
+                screen = Screen.MAIN
+            } else {
+                screen = Screen.NAME
+            }
+        }
+
         Box(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                BackButton { if (changeModel) { changeModel = false; screen = Screen.MAIN } else screen = Screen.NAME }
+                BackButton {
+                    if (store.isReady()) {
+                        changeModel = false
+                        screen = Screen.MAIN
+                    } else {
+                        screen = Screen.NAME
+                    }
+                }
                 GlassCard {
                     Text(tr("brain_title"), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
                     Text(tr("brain_sub"), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f))

@@ -274,13 +274,6 @@ internal fun MainActivity.MainScreen() {
             onClick = { changeModel = true; screen = Screen.BRAIN }
         ),
         WheelItem(
-            id = "name_config",
-            label = tr("name_title"),
-            icon = Icons.Default.Edit,
-            accentColor = Violet,
-            onClick = { screen = Screen.NAME }
-        ),
-        WheelItem(
             id = "auto_wake",
             label = tr("auto_wake"),
             icon = Icons.Default.RecordVoiceOver,
@@ -437,9 +430,7 @@ internal fun MainActivity.MainScreen() {
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
                         border = BorderStroke(1.5.dp, Brush.horizontalGradient(listOf(Indigo, Violet, Cyan))),
                         shadowElevation = 3.dp,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(24.dp))
-                            .clickable { screen = Screen.NAME }
+                        modifier = Modifier.clip(RoundedCornerShape(24.dp))
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
@@ -588,23 +579,27 @@ internal fun MainActivity.MainScreen() {
 
                             // Outer ring card
                             Surface(
-                                modifier = Modifier.size(142.dp),
+                                modifier = Modifier.size(144.dp),
                                 shape = CircleShape,
-                                shadowElevation = 18.dp,
-                                color = MaterialTheme.colorScheme.surface,
+                                shadowElevation = 20.dp,
+                                color = Color.Black,
                                 border = BorderStroke(3.dp, GeminiAuraGradient)
                             ) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .padding(14.dp),
+                                        .clip(CircleShape)
+                                        .background(Color.Black),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Image(
                                         painter = painterResource(id = R.drawable.app_logo),
                                         contentDescription = "NextGen AI Logo",
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Fit
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .scale(1.22f)
+                                            .clip(CircleShape),
+                                        contentScale = ContentScale.Crop
                                     )
                                 }
                             }
