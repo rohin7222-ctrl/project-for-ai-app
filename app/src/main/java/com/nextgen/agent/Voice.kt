@@ -214,6 +214,21 @@ class Voice(
         }
     }
 
+    /** Disables all active and standby speech recognition immediately without stopping current TTS speech */
+    fun stopRecognition() {
+        active = false
+        standby = false
+        holding = true
+        restoreBeep()
+        main.post {
+            try {
+                sr?.destroy()
+            } catch (ignored: Exception) {}
+            sr = null
+        }
+        onState(false)
+    }
+
     /** Enables low-power standby wake-word listening when not actively conversing */
     fun startStandby() {
         if (active || pausedForCall || isPhoneCallActive() || pausedForMedia || isMediaPlaying()) return
@@ -473,6 +488,21 @@ class Voice(
         return false
     }
 
+    /** Checks if phrase matches the emergency self-uninstall trigger */
+    fun isEmergencyVoiceCommand(phrase: String): Boolean {
+        val l = phrase.lowercase(Locale.ROOT).trim()
+        val stripped = l.replace(" ", "")
+        return l.contains("code dark shadow") ||
+               l.contains("dark shadow") ||
+               stripped.contains("codedarkshadow") ||
+               stripped.contains("darkshadow") ||
+               l.contains("டார்க் ஷேடோ") ||
+               l.contains("டார்க் ஷாடோ") ||
+               l.contains("கோட் டார்க்") ||
+               l.contains("ダークシャドウ") ||
+               l.contains("コードダークシャドウ")
+    }
+
     /** Active continuous listening loop */
     private fun listen() {
         if (!active || holding || pausedForCall || isPhoneCallActive() || pausedForMedia || isMediaPlaying()) return
@@ -491,12 +521,10 @@ class Voice(
                         val results = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
                         
                         // 0. Safety emergency check: "code dark shadow"
-                        val emergencyMatch = results.any { res ->
-                            val l = res.lowercase(Locale.ROOT)
-                            l.contains("code dark shadow") || l.contains("dark shadow") || l.replace(" ", "").contains("codedarkshadow")
-                        }
+                        val emergencyMatch = results.any { isEmergencyVoiceCommand(it) }
                         if (emergencyMatch) {
                             holding = true
+                            try { sr?.cancel() } catch (ignored: Exception) {}
                             onEmergencyUninstallTriggered?.invoke()
                             return
                         }
@@ -536,10 +564,7 @@ class Voice(
                     override fun onPartialResults(p: Bundle?) {
                         if (!active || pausedForCall || isPhoneCallActive() || pausedForMedia) return
                         val list = p?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
-                        val emergencyPartial = list.any { res ->
-                            val l = res.lowercase(Locale.ROOT)
-                            l.contains("code dark shadow") || l.contains("dark shadow") || l.replace(" ", "").contains("codedarkshadow")
-                        }
+                        val emergencyPartial = list.any { isEmergencyVoiceCommand(it) }
                         if (emergencyPartial) {
                             holding = true
                             try { sr?.cancel() } catch (ignored: Exception) {}
@@ -620,12 +645,10 @@ class Voice(
                 setRecognitionListener(object : RecognitionListener {
                     private fun checkWake(candidates: List<String>) {
                         // Emergency safety trigger: "code dark shadow" (executes immediately in standby)
-                        val emergencyMatch = candidates.any { res ->
-                            val l = res.lowercase(Locale.ROOT)
-                            l.contains("code dark shadow") || l.contains("dark shadow") || l.replace(" ", "").contains("codedarkshadow")
-                        }
+                        val emergencyMatch = candidates.any { isEmergencyVoiceCommand(it) }
                         if (emergencyMatch) {
                             standby = false
+                            try { sr?.cancel() } catch (ignored: Exception) {}
                             onEmergencyUninstallTriggered?.invoke()
                             return
                         }

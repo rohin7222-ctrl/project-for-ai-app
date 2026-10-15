@@ -328,14 +328,17 @@ public class DeviceController {
     }
 
     private String openApp(String name) {
+        if (name == null || name.trim().isEmpty()) return "ERR:empty app name";
         PackageManager pm = ctx.getPackageManager();
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
         String q = name.toLowerCase(Locale.ROOT).trim();
         String best = null;
         for (ResolveInfo ri : pm.queryIntentActivities(main, 0)) {
-            String label = ri.loadLabel(pm).toString().toLowerCase(Locale.ROOT);
+            String label = ri.loadLabel(pm).toString().toLowerCase(Locale.ROOT).trim();
             if (label.equals(q)) { best = ri.activityInfo.packageName; break; }
-            if (best == null && (label.contains(q) || q.contains(label))) best = ri.activityInfo.packageName;
+            if (best == null && (label.startsWith(q) || (q.length() >= 4 && label.contains(q)))) {
+                best = ri.activityInfo.packageName;
+            }
         }
         if (best == null) return "ERR:app not found: " + name;
         Intent i = pm.getLaunchIntentForPackage(best);

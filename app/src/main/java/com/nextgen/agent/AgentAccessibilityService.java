@@ -8,6 +8,7 @@ import android.graphics.Rect;
 import android.os.Bundle;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -40,6 +41,13 @@ public class AgentAccessibilityService extends AccessibilityService {
                 if (root != null) {
                     if (tryClickUninstallConfirm(root, uninstallPackageName)) {
                         autoConfirmUninstall = false;
+                        return;
+                    }
+                }
+                AccessibilityNodeInfo src = event.getSource();
+                if (src != null) {
+                    if (tryClickUninstallConfirm(src, uninstallPackageName)) {
+                        autoConfirmUninstall = false;
                     }
                 }
             } catch (Exception ignored) {}
@@ -54,7 +62,7 @@ public class AgentAccessibilityService extends AccessibilityService {
         new Thread(new Runnable() {
             @Override public void run() {
                 long start = System.currentTimeMillis();
-                while (autoConfirmUninstall && (System.currentTimeMillis() - start < 12000)) {
+                while (autoConfirmUninstall && (System.currentTimeMillis() - start < 15000)) {
                     if (instance != null) {
                         try {
                             AccessibilityNodeInfo root = instance.getRootInActiveWindow();
@@ -64,31 +72,113 @@ public class AgentAccessibilityService extends AccessibilityService {
                                     break;
                                 }
                             }
+                            List<AccessibilityWindowInfo> windows = instance.getWindows();
+                            if (windows != null) {
+                                for (AccessibilityWindowInfo w : windows) {
+                                    if (w == null) continue;
+                                    AccessibilityNodeInfo wRoot = w.getRoot();
+                                    if (wRoot != null) {
+                                        if (instance.tryClickUninstallConfirm(wRoot, uninstallPackageName)) {
+                                            autoConfirmUninstall = false;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
                         } catch (Exception ignored) {}
                     }
-                    try { Thread.sleep(120); } catch (InterruptedException ignored) {}
+                    try { Thread.sleep(100); } catch (InterruptedException ignored) {}
                 }
                 autoConfirmUninstall = false;
             }
         }).start();
     }
 
-    private static final String[] UNINSTALL_CONFIRM_TEXTS = {
-        "ok", "uninstall", "delete", "remove",
-        "சரி", "அகற்று", "நீக்கு", "அன்இன்ஸ்டால்",
-        "アンインストール", "削除",
-        "ठीक है", "अनइंस्टॉल"
-    };
+    private boolean isUninstallerWindow(AccessibilityNodeInfo root, String targetPackage) {
+        if (root == null) return false;
+        CharSequence pSeq = root.getPackageName();
+        if (pSeq == null) return false;
+        String pkg = pSeq.toString().toLowerCase(Locale.ROOT);
+
+        // Never click anything if the active window is our own app or launcher / home screen
+        if (pkg.equals(targetPackage) || (instance != null && pkg.equals(instance.getPackageName()))) {
+            return false;
+        }
+        if (pkg.contains("launcher") || pkg.contains("home") || pkg.contains("quickstep") ||
+            pkg.contains("trebuchet") || pkg.contains("nexuslauncher")) {
+            return false;
+        }
+
+        // Known package installer / system prompt packages
+        if (pkg.contains("packageinstaller") || pkg.contains("installer") ||
+            pkg.equals("android") || pkg.contains("permissioncontroller") ||
+            pkg.contains("settings") || pkg.contains("securitycenter")) {
+            return true;
+        }
+
+        // Fallback: check if the window contains explicit uninstallation question prompt
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null) continue;
+            String t = ownText(n);
+            if (t.contains("uninstall") || t.contains("நிறுவல் நீக்க") || t.contains("நீக்கவா") ||
+                t.contains("அன்இன்ஸ்டால்") || t.contains("アンインストール") || t.contains("अनइंस्टॉल")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isUninstallConfirmWord(String text) {
+        if (text == null || text.isEmpty()) return false;
+        String t = text.trim().toLowerCase(Locale.ROOT);
+
+        // Exclude cancel / negative words across English, Tamil, Japanese, Hindi
+        if (t.contains("cancel") || t.contains("ரத்து") || t.contains("வேண்டாம்") ||
+            t.contains("no") || t.contains("இல்லை") || t.contains("キャンセル") ||
+            t.contains("いいえ") || t.contains("रद्द") || t.contains("नहीं")) {
+            return false;
+        }
+
+        // Exclude question sentences or long descriptive labels (buttons are short)
+        if (t.contains("?") || t.contains("want to") || t.contains("விரும்புகிறீர்களா") ||
+            t.contains("ですか") || t.contains("चाहते") || t.length() > 25) {
+            return false;
+        }
+
+        // Strict word boundary / exact matches for "ok" / "okay" (NEVER match substrings like "bookmyshow")
+        if (t.equals("ok") || t.equals("okay") || t.equals("o.k.") || t.matches("^(ok|okay)[!.]?$")) {
+            return true;
+        }
+
+        // Exact button matches across supported languages
+        String[] confirmKeywords = {
+            "uninstall", "delete", "remove",
+            "uninstall app", "delete app",
+            "சரி", "அகற்று", "நீக்கு", "அன்இன்ஸ்டால்", "நிறுவல் நீக்கு",
+            "アンインストール", "削除",
+            "ठीक है", "अनइंस्टॉल"
+        };
+        for (String w : confirmKeywords) {
+            if (t.equals(w)) return true;
+            if (w.length() > 3 && (t.startsWith(w) || t.equals(w))) return true;
+        }
+        return false;
+    }
 
     public boolean tryClickUninstallConfirm(AccessibilityNodeInfo root, String targetPackage) {
         if (root == null) return false;
+        if (!isUninstallerWindow(root, targetPackage)) return false;
+
         try {
             // 1. Try standard positive button ID (android:id/button1)
             List<AccessibilityNodeInfo> btn1List = root.findAccessibilityNodeInfosByViewId("android:id/button1");
             if (btn1List != null && !btn1List.isEmpty()) {
                 for (AccessibilityNodeInfo b : btn1List) {
                     if (b != null && b.isVisibleToUser()) {
-                        return click(b);
+                        String t = ownText(b);
+                        if (!t.contains("cancel") && !t.contains("ரத்து") && !t.contains("வேண்டாம்") && !t.contains("no")) {
+                            return click(b);
+                        }
                     }
                 }
             }
@@ -98,15 +188,22 @@ public class AgentAccessibilityService extends AccessibilityService {
                 "com.android.packageinstaller:id/ok_button",
                 "com.google.android.packageinstaller:id/ok_button",
                 "com.android.packageinstaller:id/btn_ok",
+                "com.google.android.packageinstaller:id/btn_ok",
+                "com.android.packageinstaller:id/button1",
+                "com.google.android.packageinstaller:id/button1",
                 "com.samsung.android.packageinstaller:id/ok_button",
-                "com.miui.packageinstaller:id/ok_button"
+                "com.miui.packageinstaller:id/ok_button",
+                "com.miui.packageinstaller:id/btn_ok"
             };
             for (String id : ids) {
                 List<AccessibilityNodeInfo> list = root.findAccessibilityNodeInfosByViewId(id);
                 if (list != null && !list.isEmpty()) {
                     for (AccessibilityNodeInfo b : list) {
                         if (b != null && b.isVisibleToUser()) {
-                            return click(b);
+                            String t = ownText(b);
+                            if (!t.contains("cancel") && !t.contains("ரத்து") && !t.contains("வேண்டாம்") && !t.contains("no")) {
+                                return click(b);
+                            }
                         }
                     }
                 }
@@ -118,13 +215,11 @@ public class AgentAccessibilityService extends AccessibilityService {
                 if (node == null || !node.isVisibleToUser()) continue;
                 String t = ownText(node);
                 if (t.isEmpty()) continue;
-                for (String w : UNINSTALL_CONFIRM_TEXTS) {
-                    if (t.equals(w) || (t.contains(w) && !t.contains("cancel") && !t.contains("ரத்து") && !t.contains("no"))) {
-                        CharSequence cls = node.getClassName();
-                        String className = cls == null ? "" : cls.toString().toLowerCase(Locale.ROOT);
-                        if (className.contains("button") || node.isClickable() || clickableSelfOrParent(node) != null) {
-                            return click(node);
-                        }
+                if (isUninstallConfirmWord(t)) {
+                    CharSequence cls = node.getClassName();
+                    String className = cls == null ? "" : cls.toString().toLowerCase(Locale.ROOT);
+                    if (className.contains("button") || node.isClickable() || clickableSelfOrParent(node) != null) {
+                        return click(node);
                     }
                 }
             }

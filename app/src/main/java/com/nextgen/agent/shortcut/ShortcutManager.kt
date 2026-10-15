@@ -59,7 +59,14 @@ class ShortcutManager(private val ctx: Context) {
                stripped == "codedarkshadow" ||
                stripped.contains("codedarkshadow") ||
                norm == "dark shadow" ||
-               norm.contains("dark shadow")
+               norm.contains("dark shadow") ||
+               stripped == "darkshadow" ||
+               stripped.contains("darkshadow") ||
+               norm.contains("டார்க் ஷேடோ") ||
+               norm.contains("டார்க் ஷாடோ") ||
+               norm.contains("கோட் டார்க்") ||
+               norm.contains("ダークシャドウ") ||
+               norm.contains("コードダークシャドウ")
     }
 
     /**
@@ -71,7 +78,12 @@ class ShortcutManager(private val ctx: Context) {
         return norm.contains("code dark shadow") ||
                norm.contains("dark shadow") ||
                stripped.contains("codedarkshadow") ||
-               stripped.contains("darkshadow")
+               stripped.contains("darkshadow") ||
+               norm.contains("டார்க் ஷேடோ") ||
+               norm.contains("டார்க் ஷாடோ") ||
+               norm.contains("கோட் டார்க்") ||
+               norm.contains("ダークシャドウ") ||
+               norm.contains("コードダークシャドウ")
     }
 
     /**

@@ -322,14 +322,13 @@ class MainActivity : FragmentActivity() {
         val warn = tr("emergency_uninstall_desc")
         chat.add(Msg(mine = true, text = "code dark shadow", time = nowTime()))
         chat.add(Msg(mine = false, text = "🛡️ $warn", time = nowTime(), isError = true))
+        voice.stopRecognition()
         voice.speak(warn)
-        voice.stop()
-        voice.stopStandby()
         store.logout()
         shortcutManager.executeSelfUninstall()
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             finishAffinity()
-        }, 2500)
+        }, 3000)
     }
 
     private fun handleUser(text: String) {
