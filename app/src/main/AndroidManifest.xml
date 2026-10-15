@@ -27,6 +27,7 @@
         android:roundIcon="@drawable/ic_launcher"
         android:label="NextGen AI Agent"
         android:allowBackup="false"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.App">
 
         <activity

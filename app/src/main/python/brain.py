@@ -30,6 +30,19 @@ Your response will be spoken aloud to the user: provide 1-3 concise, helpful, co
 You handle general knowledge, conversation, reasoning, and questions. On-device hardware control actions (launching apps, calls, in-app searches, volume, flashlight, alarms) are handled natively by the local agent engine."""
 
 
+OFFLINE_KEYWORDS = (
+    "getaddrinfo", "unreachable", "network is down", "nodename", "no route",
+    "not known", "no address associated with hostname", "errno 7", "eai_nodata",
+    "name or service not known", "temporary failure in name resolution",
+    "failed to resolve", "connection refused", "network unreachable"
+)
+
+
+def _is_offline(err):
+    s = str(err).lower()
+    return any(w in s for w in OFFLINE_KEYWORDS)
+
+
 class ApiError(Exception):
     def __init__(self, code, text=""):
         Exception.__init__(self, "HTTP %s: %s" % (code, text))
@@ -50,19 +63,18 @@ def _http(url, body=None, headers=None, timeout=45):
         except urllib.error.HTTPError as e:
             raise ApiError(e.code, e.read().decode("utf-8", "ignore")[:300])
         except urllib.error.URLError as e:
-            reason = str(e.reason).lower()
+            if _is_offline(e.reason):
+                raise ApiError(0, "OFFLINE")
             last_err = ApiError(0, str(e.reason))
-            # If offline / airplane mode / DNS unreachable, fail immediately without hanging for 90s!
-            if any(w in reason for w in ("getaddrinfo", "unreachable", "network is down", "nodename", "no route", "not known")):
-                raise ApiError(0, "OFFLINE")
         except (TimeoutError, OSError) as e:
-            err_str = str(e).lower()
-            last_err = ApiError(0, str(e))
-            if any(w in err_str for w in ("getaddrinfo", "unreachable", "network is down", "nodename", "no route", "not known")):
+            if _is_offline(e):
                 raise ApiError(0, "OFFLINE")
+            last_err = ApiError(0, str(e))
         if attempt == 0:
             time.sleep(0.8)
     if last_err:
+        if _is_offline(last_err.text):
+            raise ApiError(0, "OFFLINE")
         raise last_err
     raise ApiError(0, "Network timeout")
 
@@ -74,12 +86,61 @@ def _local_base(url):
     return base
 
 
+DEFAULT_MODELS = {
+    "gemini": [
+        {"id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash (Recommended)"},
+        {"id": "gemini-1.5-flash", "name": "Gemini 1.5 Flash"},
+        {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro"},
+        {"id": "gemini-2.0-flash-lite", "name": "Gemini 2.0 Flash Lite"},
+    ],
+    "groq": [
+        {"id": "llama-3.3-70b-versatile", "name": "Llama 3.3 70B Versatile"},
+        {"id": "llama-3.1-8b-instant", "name": "Llama 3.1 8B Instant"},
+        {"id": "mixtral-8x7b-32768", "name": "Mixtral 8x7B"},
+        {"id": "gemma2-9b-it", "name": "Gemma 2 9B"},
+    ],
+    "openai": [
+        {"id": "gpt-4o-mini", "name": "GPT-4o Mini (Fast & Smart)"},
+        {"id": "gpt-4o", "name": "GPT-4o"},
+        {"id": "gpt-3.5-turbo", "name": "GPT-3.5 Turbo"},
+    ],
+    "anthropic": [
+        {"id": "claude-3-5-sonnet-20241022", "name": "Claude 3.5 Sonnet"},
+        {"id": "claude-3-5-haiku-20241022", "name": "Claude 3.5 Haiku"},
+    ],
+    "deepseek": [
+        {"id": "deepseek-chat", "name": "DeepSeek V3 (Chat)"},
+        {"id": "deepseek-reasoner", "name": "DeepSeek R1 (Reasoner)"},
+    ],
+    "mistral": [
+        {"id": "mistral-small-latest", "name": "Mistral Small"},
+        {"id": "mistral-large-latest", "name": "Mistral Large"},
+        {"id": "codestral-latest", "name": "Codestral"},
+    ],
+    "openrouter": [
+        {"id": "meta-llama/llama-3.3-70b-instruct", "name": "Llama 3.3 70B"},
+        {"id": "google/gemini-2.0-flash-exp:free", "name": "Gemini 2.0 Flash (Free)"},
+        {"id": "deepseek/deepseek-chat", "name": "DeepSeek V3"},
+    ],
+}
+
+
+def default_models(provider):
+    """Returns JSON array of standard default models for provider."""
+    return json.dumps(DEFAULT_MODELS.get(provider, []))
+
+
 def list_models(provider, key, url=""):
-    """Returns JSON: {"ok":true,"models":[{"id":..,"name":..}]} - the live list from the provider."""
+    """Returns JSON: {"ok":true,"models":[{"id":..,"name":..}],"fallback":bool,"error":str}
+    Returns live list from provider if reachable, or standard models on offline/failure."""
+    defaults = DEFAULT_MODELS.get(provider, [])
+    if provider != "local" and (not key or len(key.strip()) < 8):
+        return json.dumps({"ok": True, "models": defaults, "fallback": True})
+
     try:
         out = []
         if provider == "gemini":
-            d = _http(GEMINI + "/models?pageSize=200", headers={"x-goog-api-key": key})
+            d = _http(GEMINI + "/models?pageSize=200", headers={"x-goog-api-key": key.strip()})
             for m in d.get("models", []):
                 if "generateContent" not in m.get("supportedGenerationMethods", []):
                     continue
@@ -89,10 +150,10 @@ def list_models(provider, key, url=""):
                 out.append({"id": mid, "name": m.get("displayName", mid)})
         elif provider == "anthropic":
             d = _http(ANTHROPIC + "/models?limit=100",
-                      headers={"x-api-key": key, "anthropic-version": "2023-06-01"})
+                      headers={"x-api-key": key.strip(), "anthropic-version": "2023-06-01"})
             out = [{"id": m["id"], "name": m.get("display_name", m["id"])} for m in d.get("data", [])]
         elif provider in OPENAI_COMPAT:
-            d = _http(OPENAI_COMPAT[provider] + "/models", headers={"Authorization": "Bearer " + key})
+            d = _http(OPENAI_COMPAT[provider] + "/models", headers={"Authorization": "Bearer " + key.strip()})
             out = [{"id": m["id"], "name": m["id"]} for m in d.get("data", [])
                    if not any(s in m["id"].lower() for s in SKIP)]
             out.sort(key=lambda m: m["id"])
@@ -101,9 +162,23 @@ def list_models(provider, key, url=""):
             out = [{"id": m["name"], "name": m["name"]} for m in d.get("models", [])]
         else:
             raise RuntimeError("Unknown provider: " + provider)
-        return json.dumps({"ok": True, "models": out})
+        if out:
+            return json.dumps({"ok": True, "models": out, "fallback": False})
+        return json.dumps({"ok": True, "models": defaults, "fallback": True})
     except Exception as e:
-        return json.dumps({"ok": False, "error": str(e)})
+        err_msg = str(e)
+        if _is_offline(err_msg) or "OFFLINE" in err_msg:
+            err_code = "OFFLINE"
+        elif any(c in err_msg for c in ("400", "401", "403")):
+            err_code = "INVALID_KEY"
+        else:
+            err_code = err_msg
+        return json.dumps({
+            "ok": True if defaults else False,
+            "models": defaults,
+            "fallback": True,
+            "error": err_code
+        })
 
 
 _cache = {}
@@ -209,7 +284,7 @@ def _complete_resilient(cfg, system, hist):
             except ApiError as e:
                 last = e
                 # Fail immediately if offline / in airplane mode without wasting user time
-                if e.text == "OFFLINE" or any(w in str(e.text).lower() for w in ("offline", "getaddrinfo", "unreachable")):
+                if e.text == "OFFLINE" or _is_offline(e.text):
                     raise
                 if e.code not in (0, 429, 500, 502, 503, 504):
                     raise

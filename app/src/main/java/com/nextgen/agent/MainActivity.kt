@@ -71,6 +71,7 @@ import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Lock
@@ -127,6 +128,44 @@ private val Amber = Color(0xFFF59E0B)
 private val PROVIDERS = listOf(
     "gemini" to "Google Gemini", "groq" to "Groq", "openai" to "OpenAI", "anthropic" to "Claude",
     "openrouter" to "OpenRouter", "mistral" to "Mistral", "deepseek" to "DeepSeek"
+)
+
+private val DEFAULT_MODELS_MAP = mapOf(
+    "gemini" to listOf(
+        "gemini-2.0-flash" to "Gemini 2.0 Flash (Recommended)",
+        "gemini-1.5-flash" to "Gemini 1.5 Flash",
+        "gemini-1.5-pro" to "Gemini 1.5 Pro",
+        "gemini-2.0-flash-lite" to "Gemini 2.0 Flash Lite"
+    ),
+    "groq" to listOf(
+        "llama-3.3-70b-versatile" to "Llama 3.3 70B Versatile",
+        "llama-3.1-8b-instant" to "Llama 3.1 8B Instant",
+        "mixtral-8x7b-32768" to "Mixtral 8x7B",
+        "gemma2-9b-it" to "Gemma 2 9B"
+    ),
+    "openai" to listOf(
+        "gpt-4o-mini" to "GPT-4o Mini (Fast & Smart)",
+        "gpt-4o" to "GPT-4o",
+        "gpt-3.5-turbo" to "GPT-3.5 Turbo"
+    ),
+    "anthropic" to listOf(
+        "claude-3-5-sonnet-20241022" to "Claude 3.5 Sonnet",
+        "claude-3-5-haiku-20241022" to "Claude 3.5 Haiku"
+    ),
+    "deepseek" to listOf(
+        "deepseek-chat" to "DeepSeek V3 (Chat)",
+        "deepseek-reasoner" to "DeepSeek R1 (Reasoner)"
+    ),
+    "mistral" to listOf(
+        "mistral-small-latest" to "Mistral Small",
+        "mistral-large-latest" to "Mistral Large",
+        "codestral-latest" to "Codestral"
+    ),
+    "openrouter" to listOf(
+        "meta-llama/llama-3.3-70b-instruct" to "Llama 3.3 70B",
+        "google/gemini-2.0-flash-exp:free" to "Gemini 2.0 Flash (Free)",
+        "deepseek/deepseek-chat" to "DeepSeek V3"
+    )
 )
 
 class MainActivity : FragmentActivity() {
@@ -708,23 +747,68 @@ class MainActivity : FragmentActivity() {
         var type by remember { mutableStateOf(cfg.type) }
         var provider by remember { mutableStateOf(cfg.provider) }
         var key by remember { mutableStateOf(cfg.key) }          // kept when changing model from settings (empty after logout)
-        var model by remember { mutableStateOf("") }
+        var model by remember { mutableStateOf(if (cfg.type == "api") cfg.model else "") }
         var url by remember { mutableStateOf(cfg.url) }
         var lmodel by remember { mutableStateOf(if (cfg.type == "local") cfg.model else "") }
-        var models by remember { mutableStateOf(listOf<Pair<String, String>>()) }
+        var models by remember { mutableStateOf(DEFAULT_MODELS_MAP[provider] ?: emptyList()) }
         var loading by remember { mutableStateOf(false) }
         var err by remember { mutableStateOf("") }
+        var isCustom by remember { mutableStateOf(false) }
+        var customModelInput by remember { mutableStateOf("") }
         var tick by remember { mutableStateOf(0) }
 
-        // Real, live model list from the provider (so retired models never show up).
+        // When provider changes, immediately populate default standard models
+        LaunchedEffect(provider) {
+            val defs = DEFAULT_MODELS_MAP[provider] ?: emptyList()
+            models = defs
+            if (model.isEmpty() || defs.none { it.first == model }) {
+                model = if (cfg.provider == provider && cfg.model.isNotEmpty()) cfg.model
+                        else defs.firstOrNull()?.first ?: ""
+            }
+            err = ""
+        }
+
+        // Live model list from provider
         LaunchedEffect(provider, key, tick) {
-            models = emptyList(); model = ""; err = ""
             if (key.trim().length >= 8) {
                 if (tick == 0) delay(700)
                 loading = true
                 try {
                     withContext(Dispatchers.IO) { Brain.models(provider, key.trim()) }
-                        .onSuccess { models = it }.onFailure { err = it.message ?: "error" }
+                        .onSuccess { res ->
+                            if (res.models.isNotEmpty()) {
+                                models = res.models
+                                if (model.isEmpty() || models.none { it.first == model }) {
+                                    model = models.firstOrNull()?.first ?: ""
+                                }
+                            }
+                            if (res.isFallback && res.error.isNotEmpty()) {
+                                err = if (res.error == "OFFLINE") tr("net_offline_warning")
+                                      else if (res.error == "INVALID_KEY") tr("api_key_invalid")
+                                      else res.error
+                            } else {
+                                err = ""
+                            }
+                        }
+                        .onFailure {
+                            val msg = it.message ?: ""
+                            err = if (msg.contains("OFFLINE", ignoreCase = true) ||
+                                      msg.contains("hostname", ignoreCase = true) ||
+                                      msg.contains("network", ignoreCase = true) ||
+                                      msg.contains("errno 7", ignoreCase = true)) {
+                                tr("net_offline_warning")
+                            } else if (msg.contains("400") || msg.contains("401") || msg.contains("403")) {
+                                tr("api_key_invalid")
+                            } else {
+                                msg.ifEmpty { "Error fetching models" }
+                            }
+                            if (models.isEmpty()) {
+                                models = DEFAULT_MODELS_MAP[provider] ?: emptyList()
+                            }
+                            if (model.isEmpty()) {
+                                model = models.firstOrNull()?.first ?: ""
+                            }
+                        }
                 } finally { loading = false }
             }
         }
@@ -763,20 +847,41 @@ class MainActivity : FragmentActivity() {
                             modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
                             visualTransformation = PasswordVisualTransformation(), label = { Text(tr("api_key")) })
                         OutlinedButton(onClick = { tick++ }, enabled = key.isNotBlank() && !loading,
-                            modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) { Text(tr("fetch")) }
+                            modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                            if (loading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(8.dp))
+                            }
+                            Text(tr("fetch"))
+                        }
+                        if (err.isNotEmpty()) {
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFFE53935).copy(alpha = 0.12f))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(err, fontSize = 12.sp, color = Color(0xFFE53935), lineHeight = 16.sp)
+                            }
+                        }
                         Text(tr("models"), fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Start))
-                        if (loading) CircularProgressIndicator()
+                        if (loading && models.isEmpty()) CircularProgressIndicator()
                         else if (models.isEmpty()) Text(if (err.isNotEmpty()) err else tr("no_models"), fontSize = 13.sp,
                             color = if (err.isNotEmpty()) Color(0xFFE53935) else MaterialTheme.colorScheme.onSurface.copy(alpha = .6f))
-                        else Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState()),
+                        else Column(Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState()),
                             verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             models.forEach { (id, name) ->
-                                val sel = model == id
+                                val sel = !isCustom && model == id
                                 val shape = RoundedCornerShape(16.dp)
                                 Row(Modifier.fillMaxWidth().clip(shape)
                                     .background(if (sel) Indigo.copy(alpha = .12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f))
                                     .border(2.dp, if (sel) Indigo else Color.Transparent, shape)
-                                    .clickable { model = id }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    .clickable {
+                                        isCustom = false
+                                        model = id
+                                    }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
                                         Text(name, fontWeight = FontWeight.Bold)
                                         if (name != id) Text(id, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .5f))
@@ -785,6 +890,27 @@ class MainActivity : FragmentActivity() {
                                 }
                             }
                         }
+
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                .clickable { isCustom = !isCustom }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(checked = isCustom, onCheckedChange = { isCustom = it })
+                            Spacer(Modifier.width(4.dp))
+                            Text(tr("use_custom_model"), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        }
+                        if (isCustom) {
+                            OutlinedTextField(
+                                value = customModelInput,
+                                onValueChange = { customModelInput = it },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                placeholder = { Text(tr("custom_model_hint"), fontSize = 12.sp) }
+                            )
+                        }
                     } else {
                         OutlinedTextField(value = url, onValueChange = { url = it }, singleLine = true,
                             modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), label = { Text(tr("local_url")) })
@@ -792,11 +918,12 @@ class MainActivity : FragmentActivity() {
                             modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), label = { Text(tr("model_name")) })
                     }
 
-                    val ready = if (type == "api") model.isNotEmpty() else url.isNotBlank() && lmodel.isNotBlank()
+                    val chosenModel = if (isCustom) customModelInput.trim() else model
+                    val ready = if (type == "api") (chosenModel.isNotEmpty() && key.isNotBlank()) else url.isNotBlank() && lmodel.isNotBlank()
                     PrimaryButton(tr("ok"), enabled = ready) {
                         upd {
                             it.copy(type = type, provider = provider, key = key.trim(),
-                                model = if (type == "api") model else lmodel.trim(), url = url.trim())
+                                model = if (type == "api") chosenModel else lmodel.trim(), url = url.trim())
                         }
                         store.setReady(true); Brain.reset(); changeModel = false; screen = Screen.MAIN
                     }

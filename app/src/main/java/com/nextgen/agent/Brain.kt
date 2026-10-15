@@ -12,13 +12,22 @@ object Brain {
         val error: String = ""
     )
 
+    data class ModelResult(
+        val models: List<Pair<String, String>>,
+        val isFallback: Boolean = false,
+        val error: String = ""
+    )
+
     private fun py() = Python.getInstance().getModule("brain")
 
-    fun models(provider: String, key: String, url: String = ""): Result<List<Pair<String, String>>> = runCatching {
+    fun models(provider: String, key: String, url: String = ""): Result<ModelResult> = runCatching {
         val j = JSONObject(py().callAttr("list_models", provider, key, url).toString())
-        if (!j.getBoolean("ok")) error(j.getString("error"))
-        val a = j.getJSONArray("models")
-        (0 until a.length()).map { a.getJSONObject(it).let { o -> o.getString("id") to o.getString("name") } }
+        val isFallback = j.optBoolean("fallback", false)
+        val err = j.optString("error", "")
+        if (!j.getBoolean("ok") && !j.has("models")) error(err.ifEmpty { "Failed to list models" })
+        val a = j.optJSONArray("models") ?: org.json.JSONArray()
+        val list = (0 until a.length()).map { a.getJSONObject(it).let { o -> o.getString("id") to o.getString("name") } }
+        ModelResult(list, isFallback, err)
     }
 
     fun chat(c: Config, text: String): Reply = try {

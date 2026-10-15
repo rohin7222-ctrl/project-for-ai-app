@@ -16,6 +16,26 @@ object S {
         "fetch" to listOf("மாடல்களைப் பெறு", "Fetch models", "モデルを取得"),
         "models" to listOf("கிடைக்கும் மாடல்கள்", "Available models", "利用可能なモデル"),
         "no_models" to listOf("API Key கொடுத்தால் மாடல்கள் தோன்றும்", "Enter a key to see models", "キーを入力するとモデルが表示されます"),
+        "net_offline_warning" to listOf(
+            "⚠️ இணைய இணைப்பு இல்லை. நிலையான மாடல்கள் காட்டப்படுகின்றன. (லைவ் மாடல்களுக்கு Wi-Fi அல்லது மொபைல் டேட்டாவை இயக்கவும்)",
+            "⚠️ No internet connection. Standard models shown. (Enable Wi-Fi or Mobile Data to fetch live models)",
+            "⚠️ インターネット接続がありません。標準モデルを表示しています。(最新モデル取得にはWi-Fiまたはモバイル通信をオンにしてください)"
+        ),
+        "api_key_invalid" to listOf(
+            "API Key தவறானது அல்லது அனுமதி இல்லை. சரியான கீ-ஐ உள்ளிடவும்.",
+            "API key is invalid or rejected by provider. Please verify your key.",
+            "APIキーが無効または許可されていません。キーを確認してください。"
+        ),
+        "use_custom_model" to listOf(
+            "வேறு மாடல் பெயரை உள்ளிட (Custom Model ID)",
+            "Enter custom model ID",
+            "カスタムモデルIDを入力"
+        ),
+        "custom_model_hint" to listOf(
+            "எ.கா: gemini-2.0-flash",
+            "e.g. gemini-2.0-flash",
+            "例: gemini-2.0-flash"
+        ),
         "ok" to listOf("சரி", "OK", "OK"),
         "local_url" to listOf("Local URL (எ.கா: http://192.168.1.5:11434)", "Local URL (e.g. http://192.168.1.5:11434)", "ローカルURL (例: http://192.168.1.5:11434)"),
         "model_name" to listOf("மாடல் பெயர் (எ.கா: llama3)", "Model name (e.g. llama3)", "モデル名 (例: llama3)"),
