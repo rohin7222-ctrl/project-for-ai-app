@@ -410,21 +410,22 @@ class Voice(
         }
     }
 
-    /** Active recognition intent with fast responsive thresholds and bilingual support */
+    /** Active recognition intent with fast responsive thresholds and multilingual support */
     private fun buildRecognizerIntent(): Intent {
         return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, lang)
-            // Enable additional English language recognition so English/Tamil mixed speech works accurately
+            // Enable bilingual recognition so English/Tamil mixed speech works accurately
             if (lang == "ta-IN") {
-                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-IN", "en-US"))
+                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-IN", "en-US", "ta-IN"))
             } else if (lang != "en-US") {
-                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-US"))
+                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-US", "en-IN"))
             }
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 10)
+            putExtra("android.speech.extra.DICTATION_MODE", true)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1000L)
@@ -434,20 +435,20 @@ class Voice(
         }
     }
 
-    /** Standby intent with quiet thresholds */
+    /** Standby intent with quiet thresholds and multilingual support */
     private fun buildStandbyIntent(): Intent {
         return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, lang)
             if (lang == "ta-IN") {
-                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-IN", "en-US"))
+                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-IN", "en-US", "ta-IN"))
             } else if (lang != "en-US") {
-                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-US"))
+                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-US", "en-IN"))
             }
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 10)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2200L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1600L)
@@ -457,7 +458,7 @@ class Voice(
         }
     }
 
-    /** Checks whether a spoken phrase is a stop command - STRICTLY uses user settings commandingStopWord */
+    /** Checks whether a spoken phrase is a stop command - Supports user settings, colloquial Tamil, English, and Japanese */
     fun isStopCommand(text: String): Boolean {
         val t = text.trim().lowercase(Locale.ROOT)
         if (t.isBlank()) return false
@@ -469,7 +470,6 @@ class Voice(
         if (t == customStop) return true
 
         // 2. Exact phrase matching user setting command with conversational affixes
-        // (e.g. "Stop", "Stop pannu", "please Stop"). NEVER match substrings like "unstop"!
         val escaped = Regex.escape(customStop)
         val stopRegex = Regex("^(?:hey\\s+|ok\\s+|please\\s+)?$escaped(?:\\s+(?:please|pannu|panu|podu|now|pa|da))?$", RegexOption.IGNORE_CASE)
         if (stopRegex.matches(t)) return true
@@ -479,6 +479,38 @@ class Voice(
         if (cmdWord.isNotBlank()) {
             val wakeStopRegex = Regex("^${Regex.escape(cmdWord)}\\s+$escaped(?:\\s+(?:please|pannu|panu|now))?$", RegexOption.IGNORE_CASE)
             if (wakeStopRegex.matches(t)) return true
+        }
+
+        // 4. Universal Tamil stop phrases & colloquial variants
+        val tamilStopWords = listOf(
+            "நிறுத்து", "நிறுத்துங்க", "போதும்", "நில்", "ஸ்டாப்", "நிறுத்துப்பா",
+            "நிறுத்துடா", "பேசாத", "அமைதியா இரு", "வாயை மூடு", "போதும் நிறுத்து",
+            "niruthu", "niruthunga", "pothum", "stop pannu", "stop panu", "stop podu"
+        )
+        for (w in tamilStopWords) {
+            if (t == w || t.startsWith("$w ") || t.endsWith(" $w") || t.contains(" $w ") ||
+                t.startsWith("ஜார்விஸ் $w") || t.startsWith("ஹே ஜார்விஸ் $w") ||
+                t.startsWith("jarvis $w") || t.startsWith("hey jarvis $w")) {
+                return true
+            }
+        }
+
+        // 5. Universal English stop words & colloquial variants
+        val englishStopWords = listOf(
+            "stop", "stop it", "shut up", "be quiet", "cancel", "pause", "enough",
+            "halt", "stop talking", "stop now", "please stop", "quit", "silence", "shutup"
+        )
+        for (w in englishStopWords) {
+            if (t == w || t.startsWith("$w ") || t.endsWith(" $w") || t.contains(" $w ") ||
+                t.startsWith("jarvis $w") || t.startsWith("hey jarvis $w")) {
+                return true
+            }
+        }
+
+        // 6. Japanese stop words
+        val jaStopWords = listOf("ストップ", "止めて", "やめて", "静かに", "終了")
+        for (w in jaStopWords) {
+            if (t.contains(w)) return true
         }
 
         return false
@@ -627,6 +659,23 @@ class Voice(
         }
     }
 
+    /** Returns list of accepted phonetic aliases for the user's wake word */
+    fun getWakeWordAliases(): List<String> {
+        val word = commandingWord.trim().lowercase(Locale.ROOT)
+        if (word.isBlank()) return emptyList()
+        val list = mutableListOf(word, "hey $word", "hi $word", "ok $word")
+        if (word == "jarvis") {
+            list.addAll(listOf(
+                "jarvish", "jarves", "javis", "charvis",
+                "ஜார்விஸ்", "ஜார்வி", "சார்விஸ்", "ஜார்வீஸ்",
+                "ஹே ஜார்விஸ்", "ஹே ஜார்வி",
+                "hey jarvis", "hi jarvis", "ok jarvis",
+                "ジャーヴィス", "ジャービス"
+            ))
+        }
+        return list.distinct()
+    }
+
     /** Standby wake-word listening loop */
     private fun listenStandby() {
         if (active || !standby || !autoWakeEnabled || holding || pausedForCall || isPhoneCallActive() || pausedForMedia || isMediaPlaying()) return
@@ -649,11 +698,12 @@ class Voice(
                             return
                         }
 
-                        val word = commandingWord.trim().lowercase(Locale.ROOT)
-                        if (word.isBlank()) return
+                        val aliases = getWakeWordAliases()
+                        if (aliases.isEmpty()) return
                         for (raw in candidates) {
                             val lower = raw.lowercase(Locale.ROOT)
-                            if (lower.contains(word)) {
+                            val matchedAlias = aliases.firstOrNull { lower.contains(it) }
+                            if (matchedAlias != null) {
                                 if (voiceMatchEnabled && voiceProfile != null && voiceProfile!!.isEnrolled) {
                                     if (pitchSamples.isNotEmpty()) {
                                         val avg = pitchSamples.average().toFloat()
@@ -664,8 +714,8 @@ class Voice(
                                     }
                                 }
 
-                                val idx = lower.indexOf(word)
-                                val after = raw.substring(idx + word.length).trim(' ', ',', '.', '?')
+                                val idx = lower.indexOf(matchedAlias)
+                                val after = raw.substring(idx + matchedAlias.length).trim(' ', ',', '.', '?')
                                 val cmd = after.ifBlank { null }
 
                                 // Check if user said "Jarvis stop"

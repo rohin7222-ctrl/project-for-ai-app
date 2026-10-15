@@ -75,6 +75,9 @@ object S {
         "chip_alarm" to listOf("7 மணிக்கு அலாரம்", "7 AM Alarm", "朝7時アラーム"),
         "chip_torch" to listOf("டார்ச் ஆன்", "Turn on Torch", "ライト点灯"),
         "chip_screenshot" to listOf("ஸ்கிரீன்ஷாட்", "Screenshot", "スクリーンショット"),
+        "chip_hotspot" to listOf("ஹாட்ஸ்பாட்", "Hotspot", "テザリング"),
+        "chip_insta" to listOf("Instagram திற", "Open Instagram", "Instagramを開く"),
+        "chip_google" to listOf("Google தேடு", "Google Search", "Google検索"),
         "copy_done" to listOf("நகலெடுக்கப்பட்டது", "Copied", "コピーしました"),
         "cmd_word" to listOf("கட்டளை சொல் (Commanding Word)", "Commanding Word (Wake Word)", "起動ワード (ウェイクワード)"),
         "cmd_word_sub" to listOf("இந்த வார்த்தையைச் சொன்னால் தானாக குரல் பயன்முறை ஆன் ஆகும்", "Say this word to turn on voice mode automatically", "この言葉を話すと音声モードが自動で起動します"),
@@ -131,7 +134,8 @@ object S {
         "shortcut_deleted" to listOf("குறுக்குவழி நீக்கப்பட்டது", "Shortcut deleted", "ショートカットを削除しました"),
         "emergency_uninstall_desc" to listOf("பாதுகாப்புக்காக ஆப் உடனடியாக அன்இன்ஸ்டால் செய்யப்படுகிறது…", "App is being uninstalled for safety…", "アプリをアンインストールしています…"),
         "raise_to_answer" to listOf("காதில் வைத்தால் அழைப்பை ஏற்கவும் (Raise to Ear)", "Raise to Ear to Answer Call", "耳に当てて通話に応答"),
-        "raise_to_answer_sub" to listOf("போன் அடிக்கும்போது காதின் அருகே கொண்டு சென்றால் அழைப்பு தானாக ஏற்கப்படும்", "Automatically answer incoming calls when brought near your ear", "着信時にスマホを耳に近づけると自動的に通話を開始")
+        "raise_to_answer_sub" to listOf("போன் அடிக்கும்போது காதின் அருகே கொண்டு சென்றால் அழைப்பு தானாக ஏற்கப்படும்", "Automatically answer incoming calls when brought near your ear", "着信時にスマホを耳に近づけると自動的に通話を開始"),
+        "raise_to_ear_wheel" to listOf("காதில் ஏற்க", "Raise to Ear", "耳で応答")
     )
 
     fun t(lang: String, k: String): String {

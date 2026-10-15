@@ -15,6 +15,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.provider.Settings
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -445,6 +447,32 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    internal fun quickHotspot() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            device.execute(JSONObject().put("type", "hotspot").put("on", true))
+            withContext(Dispatchers.Main) {
+                Toast.makeText(this@MainActivity, "📶 Hotspot settings", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    internal fun quickInstagram() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val res = device.execute(JSONObject().put("type", "instagram"))
+            if (res.startsWith("ERR")) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, res, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    internal fun quickGoogleSearch() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            device.execute(JSONObject().put("type", "google_search").put("query", "trending news"))
+        }
+    }
+
     internal fun cycleLanguage() {
         val langs = listOf("ta-IN", "en-US", "ja-JP")
         val currentIndex = langs.indexOf(cfg.lang).coerceAtLeast(0)
@@ -614,6 +642,16 @@ class MainActivity : FragmentActivity() {
             }
 
             if (answered) {
+                try {
+                    val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        vibrator?.vibrate(VibrationEffect.createOneShot(150, VibrationEffect.DEFAULT_AMPLITUDE))
+                    } else {
+                        @Suppress("DEPRECATION")
+                        vibrator?.vibrate(150)
+                    }
+                } catch (ignored: Exception) {}
+
                 val msg = if (cfg.lang == "ta-IN") "📞 காதில் வைத்ததால் அழைப்பு ஏற்கப்பட்டது" else "📞 Call answered automatically"
                 Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
             }

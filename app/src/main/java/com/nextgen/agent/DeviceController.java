@@ -28,6 +28,7 @@ import androidx.core.content.ContextCompat;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 /** Everything the assistant can do on the phone. execute() returns "OK", "ERR:<reason>" or "NEED_ACCESSIBILITY". */
@@ -56,6 +57,42 @@ public class DeviceController {
         RELATION_ALIASES.put("home", new String[]{"veedu", "வீடு"});
     }
 
+    private static final java.util.Map<String, String[]> KNOWN_PACKAGES = new java.util.HashMap<>();
+    static {
+        KNOWN_PACKAGES.put("whatsapp", new String[]{"com.whatsapp", "com.whatsapp.w4b"});
+        KNOWN_PACKAGES.put("instagram", new String[]{"com.instagram.android"});
+        KNOWN_PACKAGES.put("youtube", new String[]{"com.google.android.youtube"});
+        KNOWN_PACKAGES.put("chrome", new String[]{"com.android.chrome"});
+        KNOWN_PACKAGES.put("gmail", new String[]{"com.google.android.gm"});
+        KNOWN_PACKAGES.put("maps", new String[]{"com.google.android.apps.maps"});
+        KNOWN_PACKAGES.put("camera", new String[]{"com.google.android.GoogleCamera", "com.sec.android.app.camera", "com.android.camera", "com.android.camera2"});
+        KNOWN_PACKAGES.put("gallery", new String[]{"com.google.android.apps.photos", "com.sec.android.gallery3d", "com.android.gallery3d", "com.miui.gallery"});
+        KNOWN_PACKAGES.put("photos", new String[]{"com.google.android.apps.photos"});
+        KNOWN_PACKAGES.put("spotify", new String[]{"com.spotify.music"});
+        KNOWN_PACKAGES.put("telegram", new String[]{"org.telegram.messenger", "org.telegram.messenger.web"});
+        KNOWN_PACKAGES.put("twitter", new String[]{"com.twitter.android"});
+        KNOWN_PACKAGES.put("x", new String[]{"com.twitter.android"});
+        KNOWN_PACKAGES.put("facebook", new String[]{"com.facebook.katana", "com.facebook.lite"});
+        KNOWN_PACKAGES.put("snapchat", new String[]{"com.snapchat.android"});
+        KNOWN_PACKAGES.put("settings", new String[]{"com.android.settings"});
+        KNOWN_PACKAGES.put("play store", new String[]{"com.android.vending"});
+        KNOWN_PACKAGES.put("playstore", new String[]{"com.android.vending"});
+        KNOWN_PACKAGES.put("calculator", new String[]{"com.google.android.calculator", "com.sec.android.app.popupcalculator", "com.android.calculator2"});
+        KNOWN_PACKAGES.put("clock", new String[]{"com.google.android.deskclock", "com.sec.android.app.clockpackage", "com.android.deskclock"});
+        KNOWN_PACKAGES.put("files", new String[]{"com.google.android.apps.nbu.files", "com.sec.android.app.myfiles", "com.android.documentsui"});
+        KNOWN_PACKAGES.put("netflix", new String[]{"com.netflix.mediaclient"});
+        KNOWN_PACKAGES.put("amazon", new String[]{"in.amazon.mShop.android.shopping", "com.amazon.mShop.android.shopping"});
+        KNOWN_PACKAGES.put("flipkart", new String[]{"com.flipkart.android"});
+        KNOWN_PACKAGES.put("zomato", new String[]{"com.application.zomato"});
+        KNOWN_PACKAGES.put("swiggy", new String[]{"in.swiggy.android"});
+        KNOWN_PACKAGES.put("paytm", new String[]{"net.one97.paytm"});
+        KNOWN_PACKAGES.put("gpay", new String[]{"com.google.android.apps.nbu.paisa.user"});
+        KNOWN_PACKAGES.put("google pay", new String[]{"com.google.android.apps.nbu.paisa.user"});
+        KNOWN_PACKAGES.put("phonepe", new String[]{"com.phonepe.app"});
+        KNOWN_PACKAGES.put("uber", new String[]{"com.ubercab"});
+        KNOWN_PACKAGES.put("ola", new String[]{"com.olacabs.customer"});
+    }
+
     /** Actions that cost money / affect other people: the UI asks the user to confirm first. */
     public static boolean isSensitive(String type) {
         return "sms".equals(type) || "end_call".equals(type);
@@ -68,14 +105,17 @@ public class DeviceController {
                 case "call": return call(a.optString("target"));
                 case "sms": return sms(a.optString("target"), a.optString("text"));
                 case "open_app": return openApp(a.optString("name"));
+                case "chat": return openChat(a.optString("app"), a.optString("target"));
                 case "google_search":
-                case "web_search": return view("https://www.google.com/search?q=" + Uri.encode(a.optString("query")));
-                case "youtube": return view("https://www.youtube.com/results?search_query=" + Uri.encode(a.optString("query")));
+                case "web_search": return webSearch(a.optString("query"));
+                case "youtube": return openYouTube(a.optString("query"), false);
+                case "youtube_play": return openYouTube(a.optString("query"), true);
+                case "instagram": return openApp("instagram");
+                case "instagram_reels": return openInstagramReels();
+                case "instagram_dm": return openInstagramDirect(a.optString("target"));
                 case "navigate": return view("geo:0,0?q=" + Uri.encode(a.optString("query")));
-                case "open_url": {
-                    String u = a.optString("url");
-                    return u.startsWith("http") ? view(u) : "ERR:invalid url";
-                }
+                case "open_url": return openUrl(a.optString("url"));
+                case "hotspot": return hotspot(a.optBoolean("on", true));
                 case "alarm": {
                     Intent i = new Intent(AlarmClock.ACTION_SET_ALARM)
                             .putExtra(AlarmClock.EXTRA_HOUR, a.optInt("hour"))
@@ -327,22 +367,236 @@ public class DeviceController {
         }
     }
 
-    private String openApp(String name) {
+    public String openApp(String name) {
         if (name == null || name.trim().isEmpty()) return "ERR:empty app name";
         PackageManager pm = ctx.getPackageManager();
-        Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
         String q = name.toLowerCase(Locale.ROOT).trim();
-        String best = null;
-        for (ResolveInfo ri : pm.queryIntentActivities(main, 0)) {
-            String label = ri.loadLabel(pm).toString().toLowerCase(Locale.ROOT).trim();
-            if (label.equals(q)) { best = ri.activityInfo.packageName; break; }
-            if (best == null && (label.startsWith(q) || (q.length() >= 4 && label.contains(q)))) {
-                best = ri.activityInfo.packageName;
+        q = q.replaceAll("^(open|launch|start|run|the)\\s+", "");
+        q = q.replaceAll("\\s+(app|application|செயலி|ஆப்)$", "");
+
+        // 1. Check known packages
+        String[] pkgs = KNOWN_PACKAGES.get(q);
+        if (pkgs != null) {
+            for (String pkg : pkgs) {
+                Intent i = pm.getLaunchIntentForPackage(pkg);
+                if (i != null) return start(i);
             }
         }
-        if (best == null) return "ERR:app not found: " + name;
-        Intent i = pm.getLaunchIntentForPackage(best);
-        return i == null ? "ERR:cannot launch " + name : start(i);
+
+        // Special system handlers
+        if ("camera".equals(q)) {
+            try { return start(new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)); } catch (Exception ignored) {}
+        } else if ("phone".equals(q) || "dialer".equals(q)) {
+            try { return start(new Intent(Intent.ACTION_DIAL)); } catch (Exception ignored) {}
+        } else if ("messages".equals(q) || "sms".equals(q)) {
+            try {
+                Intent smsApp = pm.getLaunchIntentForPackage(android.provider.Telephony.Sms.getDefaultSmsPackage(ctx));
+                if (smsApp != null) return start(smsApp);
+            } catch (Exception ignored) {}
+        } else if ("settings".equals(q)) {
+            try { return start(new Intent(Settings.ACTION_SETTINGS)); } catch (Exception ignored) {}
+        }
+
+        // 2. Search all launcher activities
+        Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        List<ResolveInfo> list = pm.queryIntentActivities(main, 0);
+        String best = null;
+        int bestScore = -1;
+
+        for (ResolveInfo ri : list) {
+            if (ri == null || ri.activityInfo == null) continue;
+            String pkg = ri.activityInfo.packageName;
+            String label = ri.loadLabel(pm).toString().toLowerCase(Locale.ROOT).trim();
+
+            if (label.equals(q) || pkg.toLowerCase(Locale.ROOT).endsWith("." + q)) {
+                best = pkg;
+                bestScore = 1000;
+                break;
+            }
+            if (label.startsWith(q)) {
+                int sc = 800 - (label.length() - q.length());
+                if (sc > bestScore) { best = pkg; bestScore = sc; }
+            } else if (label.contains(q) && q.length() >= 3) {
+                int sc = 600 - (label.length() - q.length());
+                if (sc > bestScore) { best = pkg; bestScore = sc; }
+            } else {
+                int dist = levenshtein(q, label);
+                if (dist <= 2 && label.length() >= 4) {
+                    int sc = 400 - dist * 50;
+                    if (sc > bestScore) { best = pkg; bestScore = sc; }
+                }
+            }
+        }
+
+        if (best != null) {
+            Intent i = pm.getLaunchIntentForPackage(best);
+            if (i != null) return start(i);
+        }
+
+        // 3. Fallback: Search in Google Play Store
+        try {
+            Intent play = new Intent(Intent.ACTION_VIEW, Uri.parse("market://search?q=" + Uri.encode(name)));
+            play.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(play);
+            return "OK";
+        } catch (Exception e) {
+            return view("https://www.google.com/search?q=" + Uri.encode(name + " app"));
+        }
+    }
+
+    public String openChat(String app, String target) {
+        String a = (app == null) ? "whatsapp" : app.toLowerCase(Locale.ROOT).trim();
+        if (a.contains("insta")) {
+            return openInstagramDirect(target);
+        }
+        if (a.contains("telegram")) {
+            try {
+                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?domain=" + Uri.encode(target)));
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(i);
+                return "OK";
+            } catch (Exception e) {
+                return openApp("telegram");
+            }
+        }
+        // WhatsApp chat
+        String num = resolveNumber(target);
+        if (num != null) {
+            String digits = num.replaceAll("[^0-9]", "");
+            try {
+                Intent wa = new Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=" + digits));
+                wa.setPackage("com.whatsapp");
+                wa.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(wa);
+                return "OK";
+            } catch (Exception ignored) {
+                return view("https://api.whatsapp.com/send?phone=" + digits);
+            }
+        } else {
+            // Open WhatsApp and search contact
+            String res = openApp("whatsapp");
+            if ("OK".equals(res) && target != null && !target.isEmpty()) {
+                new Thread(() -> {
+                    try { Thread.sleep(1200); } catch (Exception ignored) {}
+                    AgentAccessibilityService s = AgentAccessibilityService.instance;
+                    if (s != null) {
+                        s.uiSearch(target, true);
+                    }
+                }).start();
+            }
+            return res;
+        }
+    }
+
+    public String openInstagramDirect(String target) {
+        try {
+            if (target != null && !target.trim().isEmpty() && !target.equalsIgnoreCase("chat") && !target.equalsIgnoreCase("direct")) {
+                String cleanUser = target.trim().replace("@", "");
+                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://instagram.com/_u/" + Uri.encode(cleanUser)));
+                i.setPackage("com.instagram.android");
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(i);
+                return "OK";
+            } else {
+                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://instagram.com/direct/inbox/"));
+                i.setPackage("com.instagram.android");
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(i);
+                return "OK";
+            }
+        } catch (Exception ignored) {
+            return openApp("instagram");
+        }
+    }
+
+    public String openInstagramReels() {
+        try {
+            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://instagram.com/reels/"));
+            i.setPackage("com.instagram.android");
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(i);
+            return "OK";
+        } catch (Exception ignored) {
+            return openApp("instagram");
+        }
+    }
+
+    public String openYouTube(String query, boolean autoPlayFirst) {
+        String q = (query == null) ? "" : query.trim();
+        try {
+            Intent yt = new Intent(Intent.ACTION_SEARCH);
+            yt.setPackage("com.google.android.youtube");
+            yt.putExtra("query", q);
+            yt.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(yt);
+        } catch (Exception ignored) {
+            view("https://www.youtube.com/results?search_query=" + Uri.encode(q));
+        }
+
+        if (autoPlayFirst) {
+            // Background worker to auto-click top video in search results
+            new Thread(() -> {
+                try { Thread.sleep(1500); } catch (Exception ignored) {}
+                AgentAccessibilityService s = AgentAccessibilityService.instance;
+                if (s != null) {
+                    s.uiOpenNth(1);
+                }
+            }).start();
+        }
+        return "OK";
+    }
+
+    public String hotspot(boolean on) {
+        try {
+            Intent i = new Intent();
+            i.setClassName("com.android.settings", "com.android.settings.TetherSettings");
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(i);
+
+            new Thread(() -> {
+                try { Thread.sleep(600); } catch (Exception ignored) {}
+                AgentAccessibilityService s = AgentAccessibilityService.instance;
+                if (s != null) {
+                    s.uiClick("Hotspot");
+                    s.uiClick("Wi‑Fi hotspot");
+                    s.uiClick("ஹாட்ஸ்பாட்");
+                }
+            }).start();
+            return "OK";
+        } catch (Exception e) {
+            try {
+                Intent tether = new Intent("android.settings.WIFI_TETHER_SETTINGS");
+                tether.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(tether);
+                return "OK";
+            } catch (Exception ex) {
+                return start(new Intent(Settings.ACTION_WIRELESS_SETTINGS));
+            }
+        }
+    }
+
+    public String openUrl(String url) {
+        if (url == null || url.trim().isEmpty()) return "ERR:empty url";
+        String u = url.trim();
+        if (!u.startsWith("http://") && !u.startsWith("https://")) {
+            u = "https://" + u;
+        }
+        return view(u);
+    }
+
+    public String webSearch(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return openUrl("https://www.google.com");
+        }
+        try {
+            Intent i = new Intent(Intent.ACTION_WEB_SEARCH);
+            i.putExtra(android.app.SearchManager.QUERY, query);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(i);
+            return "OK";
+        } catch (Exception ignored) {
+            return view("https://www.google.com/search?q=" + Uri.encode(query));
+        }
     }
 
     private String flashlight(boolean on) throws Exception {

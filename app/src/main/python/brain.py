@@ -431,13 +431,23 @@ APPS = {  # spoken name (any language) -> name searched in the phone's app list
     "google": "Google", "கூகுள்": "Google", "கூகிள்": "Google", "グーグル": "Google",
     "facebook": "Facebook", "face book": "Facebook", "ஃபேஸ்புக்": "Facebook", "பேஸ்புக்": "Facebook",
     "முகநூல்": "Facebook", "フェイスブック": "Facebook",
-    "instagram": "Instagram", "insta": "Instagram", "இன்ஸ்டாகிராம்": "Instagram", "インスタ": "Instagram",
+    "instagram": "Instagram", "insta": "Instagram", "இன்ஸ்டாகிராம்": "Instagram", "இன்ஸ்டா": "Instagram", "インスタ": "Instagram",
     "telegram": "Telegram", "டெலிகிராம்": "Telegram", "chrome": "Chrome", "குரோம்": "Chrome",
     "camera": "Camera", "கேமரா": "Camera", "カメラ": "Camera", "gallery": "Gallery", "கேலரி": "Gallery",
-    "photos": "Photos", "maps": "Maps", "map": "Maps", "மேப்ஸ்": "Maps", "gmail": "Gmail", "ஜிமெயில்": "Gmail",
-    "settings": "Settings", "setting": "Settings", "செட்டிங்ஸ்": "Settings", "play store": "Play Store",
-    "spotify": "Spotify", "twitter": "X", "snapchat": "Snapchat", "messages": "Messages",
-    "phone": "Phone", "contacts": "Contacts", "clock": "Clock", "calculator": "Calculator",
+    "photos": "Photos", "போட்டோஸ்": "Photos", "maps": "Maps", "map": "Maps", "மேப்ஸ்": "Maps", "gmail": "Gmail", "ஜிமெயில்": "Gmail",
+    "settings": "Settings", "setting": "Settings", "செட்டிங்ஸ்": "Settings", "play store": "Play Store", "playstore": "Play Store",
+    "ப்ளே ஸ்டோர்": "Play Store", "ப்ளேஸ்டோர்": "Play Store",
+    "spotify": "Spotify", "ஸ்பாட்டிஃபை": "Spotify", "twitter": "X", "x": "X", "ட்விட்டர்": "X", "snapchat": "Snapchat",
+    "messages": "Messages", "message": "Messages", "sms": "Messages", "மெசேஜ்": "Messages", "எஸ்எம்எஸ்": "Messages",
+    "phone": "Phone", "dialer": "Phone", "டயலர்": "Phone", "contacts": "Contacts", "தொடர்புகள்": "Contacts",
+    "clock": "Clock", "கடிகாரம்": "Clock", "calculator": "Calculator", "கால்குலேட்டர்": "Calculator",
+    "notes": "Notes", "keep": "Notes", "நோட்ஸ்": "Notes", "files": "Files", "file manager": "Files", "ஃபைல்ஸ்": "Files",
+    "netflix": "Netflix", "நெட்ஃபிளிக்ஸ்": "Netflix", "amazon": "Amazon", "அமேசான்": "Amazon",
+    "flipkart": "Flipkart", "பிளிப்கார்ட்": "Flipkart", "zomato": "Zomato", "ஜொமாட்டோ": "Zomato",
+    "swiggy": "Swiggy", "ஸ்விக்கி": "Swiggy", "paytm": "Paytm", "பேடிஎம்": "Paytm",
+    "gpay": "Google Pay", "google pay": "Google Pay", "கூகுள் பே": "Google Pay", "phonepe": "PhonePe", "போன்பே": "PhonePe",
+    "uber": "Uber", "ஊபர்": "Uber", "ola": "Ola", "ஓலா": "Ola",
+    "hotspot": "Hotspot", "ஹாட்ஸ்பாட்": "Hotspot",
 }
 ORD = {1: ("first", "1st", "one", "mudhal", "mudhalavadhu", "mudhalavathu", "mudhalaavadhu", "muthal", "muthalavathu", "முதல்", "முதலாவது", "முதலாம்", "1வது", "ஒன்று", "最初", "1番目"),
        2: ("second", "2nd", "two", "rendavathu", "irandavathu", "rendavadhu", "irandavadhu", "randavadhu", "rendam", "irandam", "இரண்டாவது", "இரண்டாம்", "2வது", "ரெண்டு", "இரண்டு", "2番目"),
@@ -572,9 +582,35 @@ def _parse_one(p, last_app):
     if any(w in t for w in ("mobile data", "data on", "data off", "மொபைல் டேட்டா")):
         return [{"type": "settings", "page": "data", "desc": "Mobile Data"}], "ok"
     if any(w in t for w in ("hotspot", "ஹாட்ஸ்பாட்")):
-        return [{"type": "settings", "page": "hotspot", "desc": "Hotspot"}], "ok"
+        is_off = any(w in t for w in ("off", "aff", "நிறுத்து", "அணை", "ஆஃப்", "ஆப்", "மூடு", "disable"))
+        return [{"type": "hotspot", "on": not is_off, "desc": "Hotspot Off" if is_off else "Hotspot On"}], "hotspot_off" if is_off else "hotspot_on"
     if any(w in t for w in ("airplane mode", "flight mode", "ஏரோப்ளேன் மோட்")):
         return [{"type": "settings", "page": "airplane", "desc": "Airplane Mode"}], "ok"
+
+    # --- Instagram special actions: reels, dm
+    if any(w in t for w in ("reels", "reel", "ரீல்ஸ்")):
+        return [{"type": "instagram_reels", "desc": "Instagram Reels"}], "ok"
+    if any(w in t for w in ("instagram dm", "insta dm", "instagram message", "insta chat", "இன்ஸ்டா மெசேஜ்", "இன்ஸ்டா சாட்")):
+        return [{"type": "instagram_dm", "desc": "Instagram Messages"}], "ok"
+
+    # --- Direct Chat opening (WhatsApp, Instagram, Telegram)
+    m_chat = re.match(r"^(?:open\s+)?(?:chat\s+(?:with\s+)?(?P<t1>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)\s+(?:in|on)\s+(?P<app1>whatsapp|instagram|insta|telegram))", t) or \
+             re.match(r"^(?:open\s+)?(?P<app2>whatsapp|instagram|insta|telegram)\s+(?:la|le|ல|இல்|-la)?\s*(?:chat\s+(?:with\s+)?)?(?P<t2>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)\s*(?:chat|சாட்)?\s*(?:open|thira|திற|போடு|vai)?$", t)
+    if m_chat:
+        a_name = m_chat.group("app1") or m_chat.group("app2")
+        t_name = m_chat.group("t1") or m_chat.group("t2")
+        if a_name and t_name:
+            t_name = t_name.strip()
+            if t_name not in ("open", "thira", "app", "chat", "la"):
+                return [{"type": "chat", "app": a_name, "target": t_name, "desc": f"Chat with {t_name}"}], "chat"
+
+    # --- YouTube direct video play
+    m_yt_play = re.match(r"^(?:play|போடு|பாடல் போடு|வீடியோ போடு)\s+(?P<q1>.+?)\s+(?:in|on)\s+youtube$", t) or \
+                re.match(r"^(?:youtube|யூடியூப்)\s+(?:la|le|ல|இல்)?\s*(?P<q2>.+?)\s*(?:nu|ன்னு|னு)?\s*(?:play|podu|போடு|பாடல் போடு|video open pannu|வீடியோ திற|வீடியோ போடு)$", t)
+    if m_yt_play:
+        q_yt = (m_yt_play.group("q1") or m_yt_play.group("q2") or "").strip()
+        if q_yt:
+            return [{"type": "youtube_play", "query": q_yt, "desc": f"Play on YouTube: {q_yt}"}], "yt:" + q_yt
 
     # --- volume
     if any(w in t for w in ("volume", "வால்யூம்", "சத்தம்", "ஒலி", "mute", "silent", "மியூட்", "சைலன்ட்")):
@@ -641,10 +677,10 @@ def _parse_one(p, last_app):
         txt = m.group("x").strip()
         return [{"type": "clipboard", "text": txt, "desc": f"Copy '{txt[:20]}'"}], "clipboard"
 
-    # --- direct URL / website
-    m = re.match(r"^(?:open|go to|browse)\s+(?P<u>(?:https?://)?[\w\-]+(?:\.[\w\-]+)+(?:/\S*)?)$", t)
-    if m:
-        u = m.group("u").strip()
+    # --- direct URL / website (e.g. "open google.com", "open youtube.com", "open amazon.in", "cricbuzz.com open pannu")
+    m_url = re.search(r"\b(?P<u>[a-zA-Z0-9\-]+\.(?:com|in|org|net|ai|co|io|gov|edu|info)(?:/[^\s]*)?)\b", t)
+    if m_url and (any(w in t for w in ("open", "go to", "browse", "view", "thira", "thiranga", "திற", "site", "website")) or t.startswith(m_url.group("u")) or t.endswith(m_url.group("u"))):
+        u = m_url.group("u").strip()
         if not u.startswith("http"):
             u = "https://" + u
         return [{"type": "open_url", "url": u, "desc": f"Open {u}"}], "ok"
@@ -782,36 +818,42 @@ def _parse_one(p, last_app):
 
 SAY = {  # spoken confirmation per language
     "ta-IN": {"app": "%s திறக்கிறேன்.", "search": "%s தேடுகிறேன்.", "call": "%s-க்கு இப்போது அழைக்கிறேன்.",
-              "nth": "%d-வது ஐ திறக்கிறேன்.", "ok": "சரி.", "yt": "YouTube-ல %s தேடுகிறேன்.",
+              "nth": "%d-வது ஐ திறக்கிறேன்.", "ok": "சரி.", "yt": "YouTube-ல %s திறக்கிறேன்.",
               "google": "Google-ல %s தேடுகிறேன்.", "google_page": "Google-ஐ திறக்கிறேன்.",
               "last_file": "கடைசியாக வந்த கோப்பைத் திறக்கிறேன்.",
               "torch_on": "டார்ச் ஆன் செய்துள்ளேன்.", "torch_off": "டார்ச் ஆஃப் செய்துள்ளேன்.",
               "wifi_on": "வைஃபை ஆன் செய்கிறேன்.", "wifi_off": "வைஃபை ஆஃப் செய்கிறேன்.",
               "bt_on": "ப்ளூடூத் ஆன் செய்கிறேன்.", "bt_off": "ப்ளூடூத் ஆஃப் செய்கிறேன்.",
+              "hotspot_on": "ஹாட்ஸ்பாட் திறக்கப்பட்டுள்ளது.", "hotspot_off": "ஹாட்ஸ்பாட் ஆஃப் செய்யப்பட்டுள்ளது.",
+              "chat": "சாட் திறக்கிறேன்.",
               "screenshot": "ஸ்கிரீன்ஷாட் எடுக்கப்பட்டது.", "media": "இசை மாற்றப்பட்டது.", "clipboard": "நகலெடுக்கப்பட்டது.",
               "stop": "சரி, நிறுத்துகிறேன்.",
               "type": "'%s' என தட்டச்சு செய்துள்ளேன். அனுப்ப 'send' அல்லது அழிக்க 'cancel' என சொல்லுங்கள்.",
               "erased": "செய்தி அழிக்கப்பட்டது.",
               "sent": "செய்தி அனுப்பப்பட்டது."},
     "en-US": {"app": "Opening %s.", "search": "Searching %s.", "call": "Calling %s right now.",
-              "nth": "Opening number %d.", "ok": "Done.", "yt": "Searching %s on YouTube.",
+              "nth": "Opening number %d.", "ok": "Done.", "yt": "Playing %s on YouTube.",
               "google": "Searching %s on Google.", "google_page": "Opening Google.",
               "last_file": "Opening the last received file.",
               "torch_on": "Flashlight turned on.", "torch_off": "Flashlight turned off.",
               "wifi_on": "Turning on Wi-Fi.", "wifi_off": "Turning off Wi-Fi.",
               "bt_on": "Turning on Bluetooth.", "bt_off": "Turning off Bluetooth.",
+              "hotspot_on": "Hotspot opened.", "hotspot_off": "Hotspot turned off.",
+              "chat": "Opening chat.",
               "screenshot": "Screenshot captured.", "media": "Media updated.", "clipboard": "Copied to clipboard.",
               "stop": "Stopping assistant.",
               "type": "Typed '%s'. Say 'send' to send, or 'cancel' to erase.",
               "erased": "Message erased.",
               "sent": "Message sent."},
     "ja-JP": {"app": "%sを開きます。", "search": "%sを検索します。", "call": "%sに電話をかけています。",
-              "nth": "%d番目を開きます。", "ok": "はい。", "yt": "YouTubeで%sを検索します。",
+              "nth": "%d番目を開きます。", "ok": "はい。", "yt": "YouTubeで%sを再生します。",
               "google": "Googleで%sを検索します。", "google_page": "Googleを開きます。",
               "last_file": "最後に受信したファイルを開きます。",
               "torch_on": "ライトをつけました。", "torch_off": "ライトを消しました。",
               "wifi_on": "Wi-Fiをオンにします。", "wifi_off": "Wi-Fiをオフにします。",
               "bt_on": "Bluetoothをオンにします。", "bt_off": "Bluetoothをオフにします。",
+              "hotspot_on": "テザリングを開きました。", "hotspot_off": "テザリングをオフにしました。",
+              "chat": "チャットを開きます。",
               "screenshot": "スクリーンショットを撮影しました。", "media": "メディアを更新しました。", "clipboard": "コピーしました。",
               "stop": "わかりました。停止します。",
               "type": "'%s'と入力しました。送信するには'send'、消去するには'cancel'と言ってください。",
@@ -840,6 +882,7 @@ def local_command(text, lang="en-US"):
         if kind.startswith("app:"): said.append(s["app"] % kind[4:])
         elif kind == "call": said.append(s["call"] % acts[0]["target"])
         elif kind == "nth": said.append(s["nth"] % acts[-1]["n"])
+        elif kind.startswith("yt:"): said.append(s.get("yt", "Opening %s on YouTube.") % kind[3:])
         elif kind.startswith("google:"): said.append(s.get("google", "Searching %s on Google.") % kind[7:])
         elif kind == "google_page": said.append(s.get("google_page", "Opening Google."))
         elif kind == "last_file": said.append(s.get("last_file", "Opening the last received file."))
@@ -854,6 +897,9 @@ def local_command(text, lang="en-US"):
         elif kind == "wifi_off": said.append(s["wifi_off"])
         elif kind == "bt_on": said.append(s["bt_on"])
         elif kind == "bt_off": said.append(s["bt_off"])
+        elif kind == "hotspot_on": said.append(s.get("hotspot_on", "Hotspot opened."))
+        elif kind == "hotspot_off": said.append(s.get("hotspot_off", "Hotspot turned off."))
+        elif kind == "chat": said.append(s.get("chat", "Opening chat."))
         elif kind == "screenshot": said.append(s["screenshot"])
         elif kind == "media": said.append(s["media"])
         elif kind == "clipboard": said.append(s["clipboard"])

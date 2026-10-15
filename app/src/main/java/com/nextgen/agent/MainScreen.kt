@@ -51,13 +51,17 @@ import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.PhoneInTalk
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.WifiTethering
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -223,6 +227,22 @@ internal fun MainActivity.MainScreen() {
             onClick = { showClearDialog = true }
         ),
         WheelItem(
+            id = "raise_to_ear",
+            label = tr("raise_to_ear_wheel"),
+            icon = Icons.Default.PhoneInTalk,
+            accentColor = if (cfg.raiseToAnswer) Color(0xFF10B981) else Color(0xFF94A3B8),
+            onClick = {
+                val next = !cfg.raiseToAnswer
+                upd { it.copy(raiseToAnswer = next) }
+                val msg = if (next) {
+                    if (cfg.lang == "ta-IN") "காதுக்கு கொண்டுவா இயக்கம்: ஆன்" else "Raise to Ear Answer: ON"
+                } else {
+                    if (cfg.lang == "ta-IN") "காதுக்கு கொண்டுவா இயக்கம்: ஆஃப்" else "Raise to Ear Answer: OFF"
+                }
+                Toast.makeText(activity, msg, Toast.LENGTH_SHORT).show()
+            }
+        ),
+        WheelItem(
             id = "theme_toggle",
             label = if (isDark) "Light Mode" else "Dark Mode",
             icon = if (isDark) Icons.Default.LightMode else Icons.Default.DarkMode,
@@ -335,6 +355,27 @@ internal fun MainActivity.MainScreen() {
             icon = Icons.Default.PlayCircle,
             accentColor = Color(0xFFEF4444),
             onClick = { quickYouTube() }
+        ),
+        WheelItem(
+            id = "quick_instagram",
+            label = tr("chip_insta"),
+            icon = Icons.Default.CameraAlt,
+            accentColor = Color(0xFFE1306C),
+            onClick = { quickInstagram() }
+        ),
+        WheelItem(
+            id = "quick_hotspot",
+            label = tr("chip_hotspot"),
+            icon = Icons.Default.WifiTethering,
+            accentColor = Color(0xFFF59E0B),
+            onClick = { quickHotspot() }
+        ),
+        WheelItem(
+            id = "quick_google",
+            label = tr("chip_google"),
+            icon = Icons.Default.Search,
+            accentColor = Color(0xFF4285F4),
+            onClick = { quickGoogleSearch() }
         )
     )
 
