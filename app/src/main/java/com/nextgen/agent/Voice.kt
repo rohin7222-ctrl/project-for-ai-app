@@ -279,7 +279,8 @@ class Voice(
     }
 
     private fun applyVoiceAndPitch(t: TextToSpeech, loc: Locale, isFemale: Boolean) {
-        val allVoices = t.voices?.filter { it.locale.language == loc.language }
+        val langCode = loc.language.lowercase(Locale.ROOT)
+        val allVoices = t.voices?.filter { it.locale.language.equals(langCode, ignoreCase = true) }
             ?.filter { !it.isNetworkConnectionRequired || isOnline() }
             .orEmpty()
 
@@ -291,22 +292,34 @@ class Voice(
             if (n.contains("female") || n.contains("#female") || n.contains("-f-") || n.contains("-fem-") || n.contains("_female")) return true
             if (n.contains("male") || n.contains("#male") || n.contains("-m-") || n.contains("_male")) return false
 
-            // Language-specific Google TTS female codes
-            // Tamil: taf | Japanese: jab, htm, jaf | English: sfg, iof, tpf, iol, tpd, htf
-            // Cloud/Neural: standard-a/b, wavenet-a/b, neural2-b, chirp3-hd female voices
-            if (n.contains("taf") || n.contains("jab") || n.contains("htm") || n.contains("jaf") ||
-                n.contains("sfg") || n.contains("iof") || n.contains("tpf") || n.contains("iol") ||
-                n.contains("tpd") || n.contains("htf") || n.contains("standard-a") || n.contains("standard-b") ||
-                n.contains("wavenet-a") || n.contains("wavenet-b") || n.contains("neural2-b") ||
-                n.contains("achernar") || n.contains("callirrhoe") || n.contains("zephyr")) return true
-
-            // Known male codes that must NOT be treated as female
-            if (n.contains("tam") || n.contains("jad") || n.contains("jac") || n.contains("jam") ||
-                n.contains("iom") || n.contains("tpc") || n.contains("iob") ||
-                n.contains("standard-c") || n.contains("standard-d") || n.contains("wavenet-c") ||
-                n.contains("wavenet-d") || n.contains("neural2-c") || n.contains("neural2-d") ||
-                n.contains("achird") || n.contains("iapetus") || n.contains("rasalgethi")) return false
-
+            when (langCode) {
+                "ja" -> {
+                    // Japanese: jab, htm, jaf, standard-a/b, wavenet-a/b, neural2-b are female
+                    if (n.contains("jab") || n.contains("htm") || n.contains("jaf") ||
+                        n.contains("standard-a") || n.contains("standard-b") ||
+                        n.contains("wavenet-a") || n.contains("wavenet-b") || n.contains("neural2-b") ||
+                        n.contains("achernar") || n.contains("callirrhoe") || n.contains("zephyr")) return true
+                    if (n.contains("jad") || n.contains("jac") || n.contains("jam") ||
+                        n.contains("standard-c") || n.contains("standard-d") ||
+                        n.contains("wavenet-c") || n.contains("wavenet-d") ||
+                        n.contains("neural2-c") || n.contains("neural2-d") ||
+                        n.contains("achird") || n.contains("iapetus") || n.contains("rasalgethi")) return false
+                }
+                "ta" -> {
+                    // Tamil: taf is female, tam is male
+                    if (n.contains("taf")) return true
+                    if (n.contains("tam")) return false
+                }
+                "en" -> {
+                    // English: iof, tpf, iol, tpd, htf are female
+                    if (n.contains("iof") || n.contains("tpf") || n.contains("iol") || n.contains("tpd") || n.contains("htf")) return true
+                    if (n.contains("iom") || n.contains("sfg") || n.contains("tpc") || n.contains("iob")) return false
+                }
+                else -> {
+                    if (n.contains("taf") || n.contains("jab") || n.contains("htm") || n.contains("iof") || n.contains("tpf") || n.contains("tpd")) return true
+                    if (n.contains("tam") || n.contains("jad") || n.contains("jac") || n.contains("iom") || n.contains("sfg") || n.contains("tpc")) return false
+                }
+            }
             return false
         }
 
@@ -315,37 +328,47 @@ class Voice(
             val f = v.features.map { it.lowercase(Locale.ROOT) }
             if (f.any { it.contains("male") && !it.contains("female") }) return true
             if (f.any { it.contains("female") }) return false
-            if (n.contains("male") && !n.contains("female") && !n.contains("#female")) return true
+            if (n.contains("male") && !n.contains("female") && !n.contains("#female") && !n.contains("_female")) return true
             if (n.contains("#male") || n.contains("-m-") || n.contains("_male")) return true
             if (n.contains("female") || n.contains("#female") || n.contains("-f-") || n.contains("_female")) return false
 
-            // Language-specific Google TTS male codes
-            // Tamil: tam | Japanese: jad, jac, jam | English: iom, tpc, iob
-            // Cloud/Neural: standard-c/d, wavenet-c/d, neural2-c/d, chirp3-hd male voices
-            if (n.contains("tam") || n.contains("jad") || n.contains("jac") || n.contains("jam") ||
-                n.contains("iom") || n.contains("tpc") || n.contains("iob") ||
-                n.contains("standard-c") || n.contains("standard-d") || n.contains("wavenet-c") ||
-                n.contains("wavenet-d") || n.contains("neural2-c") || n.contains("neural2-d") ||
-                n.contains("achird") || n.contains("iapetus") || n.contains("rasalgethi")) return true
-
-            // Known female codes that must NOT be treated as male (htm, jab, sfg are female!)
-            if (n.contains("taf") || n.contains("jab") || n.contains("htm") || n.contains("jaf") ||
-                n.contains("sfg") || n.contains("iof") || n.contains("tpf") || n.contains("iol") ||
-                n.contains("tpd") || n.contains("htf") || n.contains("standard-a") || n.contains("standard-b") ||
-                n.contains("wavenet-a") || n.contains("wavenet-b") || n.contains("neural2-b") ||
-                n.contains("achernar") || n.contains("callirrhoe") || n.contains("zephyr")) return false
-
+            when (langCode) {
+                "ja" -> {
+                    // Japanese: jad, jac, jam, standard-c/d, wavenet-c/d, neural2-c/d are male
+                    if (n.contains("jad") || n.contains("jac") || n.contains("jam") ||
+                        n.contains("standard-c") || n.contains("standard-d") ||
+                        n.contains("wavenet-c") || n.contains("wavenet-d") ||
+                        n.contains("neural2-c") || n.contains("neural2-d") ||
+                        n.contains("achird") || n.contains("iapetus") || n.contains("rasalgethi")) return true
+                    if (n.contains("jab") || n.contains("htm") || n.contains("jaf") ||
+                        n.contains("standard-a") || n.contains("standard-b") ||
+                        n.contains("wavenet-a") || n.contains("wavenet-b") || n.contains("neural2-b") ||
+                        n.contains("achernar") || n.contains("callirrhoe") || n.contains("zephyr")) return false
+                }
+                "ta" -> {
+                    // Tamil: tam is male, taf is female
+                    if (n.contains("tam")) return true
+                    if (n.contains("taf")) return false
+                }
+                "en" -> {
+                    // English: iom, sfg, tpc, iob are male
+                    if (n.contains("iom") || n.contains("sfg") || n.contains("tpc") || n.contains("iob")) return true
+                    if (n.contains("iof") || n.contains("tpf") || n.contains("iol") || n.contains("tpd") || n.contains("htf")) return false
+                }
+                else -> {
+                    if (n.contains("tam") || n.contains("jad") || n.contains("jac") || n.contains("iom") || n.contains("sfg") || n.contains("tpc")) return true
+                    if (n.contains("taf") || n.contains("jab") || n.contains("htm") || n.contains("iof") || n.contains("tpf") || n.contains("tpd")) return false
+                }
+            }
             return false
         }
 
         val chosenVoice = if (isFemale) {
-            allVoices.firstOrNull { !it.isNetworkConnectionRequired && isVoiceFemale(it) }
-                ?: allVoices.firstOrNull { isVoiceFemale(it) }
+            allVoices.firstOrNull { isVoiceFemale(it) }
                 ?: allVoices.firstOrNull { !isVoiceMale(it) }
                 ?: allVoices.firstOrNull()
         } else {
-            allVoices.firstOrNull { !it.isNetworkConnectionRequired && isVoiceMale(it) }
-                ?: allVoices.firstOrNull { isVoiceMale(it) }
+            allVoices.firstOrNull { isVoiceMale(it) }
                 ?: allVoices.firstOrNull { !isVoiceFemale(it) }
                 ?: allVoices.lastOrNull()
         }
@@ -357,13 +380,7 @@ class Voice(
         // Distinct acoustic pitch:
         // Female: 1.18f (crisp, pleasant, feminine)
         // Male: 0.82f (deep, distinctly masculine)
-        // If falling back to a female voice when male was requested, use 0.74f to pitch down deeper
-        val pitch = if (isFemale) {
-            1.18f
-        } else {
-            if (chosenVoice != null && !isVoiceMale(chosenVoice)) 0.74f else 0.82f
-        }
-        t.setPitch(pitch)
+        t.setPitch(if (isFemale) 1.18f else 0.82f)
         t.setSpeechRate(1.0f)
     }
 
