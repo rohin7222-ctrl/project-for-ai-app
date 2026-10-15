@@ -491,10 +491,40 @@ public class DeviceController {
         return "OK";
     }
 
-    private String telecom(boolean answer) {
-        if (!has(Manifest.permission.ANSWER_PHONE_CALLS)) return "ERR:call permission not granted";
-        TelecomManager tm = (TelecomManager) ctx.getSystemService(Context.TELECOM_SERVICE);
-        if (answer) tm.acceptRingingCall(); else tm.endCall();
-        return "OK";
+    public String telecom(boolean answer) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (has(Manifest.permission.ANSWER_PHONE_CALLS)) {
+                try {
+                    TelecomManager tm = (TelecomManager) ctx.getSystemService(Context.TELECOM_SERVICE);
+                    if (tm != null) {
+                        if (answer) tm.acceptRingingCall(); else tm.endCall();
+                        return "OK";
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        AgentAccessibilityService s = AgentAccessibilityService.instance;
+        if (s != null) {
+            if (answer) {
+                if ("OK".equals(s.uiClick("Answer")) || "OK".equals(s.uiClick("Accept")) ||
+                    "OK".equals(s.uiClick("ஏற்கவும்")) || "OK".equals(s.uiClick("பதில்"))) {
+                    return "OK";
+                }
+            } else {
+                if ("OK".equals(s.uiClick("Decline")) || "OK".equals(s.uiClick("Reject")) ||
+                    "OK".equals(s.uiClick("End call")) || "OK".equals(s.uiClick("நிராகரி"))) {
+                    return "OK";
+                }
+            }
+        }
+        return "ERR:call action failed";
+    }
+
+    public String answerCall() {
+        return telecom(true);
+    }
+
+    public String endCall() {
+        return telecom(false);
     }
 }

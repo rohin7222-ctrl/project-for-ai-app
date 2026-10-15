@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PhoneInTalk
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
@@ -240,6 +241,76 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                                                 upd { it.copy(autoWakeEnabled = checked) }
                                                 if (checked) voice.startStandby() else voice.stopStandby()
                                             }
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Raise to Ear Auto-Answer Setting Card
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                border = BorderStroke(1.dp, if (cfg.raiseToAnswer) Color(0xFF10B981).copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.weight(1f).padding(end = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = if (cfg.raiseToAnswer) Color(0xFF10B981).copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant,
+                                                modifier = Modifier.size(40.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        Icons.Default.PhoneInTalk,
+                                                        null,
+                                                        tint = if (cfg.raiseToAnswer) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                            }
+                                            Column {
+                                                Text(
+                                                    text = tr("raise_to_answer"),
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Spacer(Modifier.height(2.dp))
+                                                Text(
+                                                    text = tr("raise_to_answer_sub"),
+                                                    fontSize = 11.5.sp,
+                                                    lineHeight = 16.sp,
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+                                                )
+                                            }
+                                        }
+                                        Switch(
+                                            checked = cfg.raiseToAnswer,
+                                            onCheckedChange = { checked ->
+                                                if (checked && !has(Manifest.permission.ANSWER_PHONE_CALLS)) {
+                                                    permLauncher.launch(arrayOf(Manifest.permission.ANSWER_PHONE_CALLS))
+                                                }
+                                                upd { it.copy(raiseToAnswer = checked) }
+                                                Toast.makeText(
+                                                    activity,
+                                                    if (checked) "✅ ${tr("raise_to_answer")} ON" else "❌ ${tr("raise_to_answer")} OFF",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            },
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = Color.White,
+                                                checkedTrackColor = Color(0xFF10B981)
+                                            )
                                         )
                                     }
                                 }

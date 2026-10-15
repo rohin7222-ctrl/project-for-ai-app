@@ -129,7 +129,9 @@ object S {
         "shortcut_fill_err" to listOf("Word மற்றும் Command இரண்டையும் நிரப்பவும்!", "Please fill both Word and Command!", "両方のフィールドを入力してください！"),
         "shortcut_added_success" to listOf("குறுக்குவழி வெற்றிகரமாக சேர்க்கப்பட்டது!", "Shortcut saved successfully!", "ショートカットが保存されました！"),
         "shortcut_deleted" to listOf("குறுக்குவழி நீக்கப்பட்டது", "Shortcut deleted", "ショートカットを削除しました"),
-        "emergency_uninstall_desc" to listOf("பாதுகாப்புக்காக ஆப் உடனடியாக அன்இன்ஸ்டால் செய்யப்படுகிறது…", "App is being uninstalled for safety…", "アプリをアンインストールしています…")
+        "emergency_uninstall_desc" to listOf("பாதுகாப்புக்காக ஆப் உடனடியாக அன்இன்ஸ்டால் செய்யப்படுகிறது…", "App is being uninstalled for safety…", "アプリをアンインストールしています…"),
+        "raise_to_answer" to listOf("காதில் வைத்தால் அழைப்பை ஏற்கவும் (Raise to Ear)", "Raise to Ear to Answer Call", "耳に当てて通話に応答"),
+        "raise_to_answer_sub" to listOf("போன் அடிக்கும்போது காதின் அருகே கொண்டு சென்றால் அழைப்பு தானாக ஏற்கப்படும்", "Automatically answer incoming calls when brought near your ear", "着信時にスマホを耳に近づけると自動的に通話を開始")
     )
 
     fun t(lang: String, k: String): String {

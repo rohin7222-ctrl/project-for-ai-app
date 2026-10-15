@@ -16,6 +16,11 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.telecom.TelecomManager
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
@@ -194,7 +199,11 @@ class MainActivity : FragmentActivity() {
     internal val chat = mutableStateListOf<Msg>()
 
     internal val perms = arrayOf(
-        Manifest.permission.RECORD_AUDIO, Manifest.permission.CALL_PHONE, Manifest.permission.READ_CONTACTS, Manifest.permission.READ_PHONE_STATE
+        Manifest.permission.RECORD_AUDIO,
+        Manifest.permission.CALL_PHONE,
+        Manifest.permission.READ_CONTACTS,
+        Manifest.permission.READ_PHONE_STATE,
+        Manifest.permission.ANSWER_PHONE_CALLS
     )
     internal val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         if (has(Manifest.permission.RECORD_AUDIO)) startVoice()
@@ -205,6 +214,14 @@ class MainActivity : FragmentActivity() {
     internal var isInPhoneCall = false
     private var telephonyCallback: Any? = null
     private var phoneStateReceiver: BroadcastReceiver? = null
+
+    // Proximity Sensor for "Raise to Ear to Auto-Answer Call"
+    private var sensorManager: SensorManager? = null
+    private var proximitySensor: Sensor? = null
+    private var proximityListener: SensorEventListener? = null
+    private var isProximityListening = false
+    private var proximityWasFar = false
+    private var ringingStartTime = 0L
 
     private var wasActiveBeforeMedia = false
     private var wasStandbyBeforeMedia = false
@@ -520,7 +537,91 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    // ------------------------------------------------------------------ Proximity Sensor for Auto-Answer
+    private fun initProximitySensor() {
+        if (sensorManager == null) {
+            sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+            proximitySensor = sensorManager?.getDefaultSensor(Sensor.TYPE_PROXIMITY)
+        }
+    }
+
+    private fun startProximityListeningForCall() {
+        if (!cfg.raiseToAnswer) return
+        initProximitySensor()
+        val sensor = proximitySensor ?: return
+        if (isProximityListening) return
+
+        proximityWasFar = false
+        ringingStartTime = System.currentTimeMillis()
+
+        proximityListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent?) {
+                if (event == null || event.sensor.type != Sensor.TYPE_PROXIMITY) return
+                val distance = event.values[0]
+                val max = sensor.maximumRange
+                val threshold = if (max > 5f) 5f else max
+                val isNear = distance < threshold
+
+                if (!isNear) {
+                    proximityWasFar = true
+                } else if (isNear && proximityWasFar) {
+                    val elapsed = System.currentTimeMillis() - ringingStartTime
+                    if (elapsed >= 300) {
+                        stopProximityListening()
+                        answerIncomingCall()
+                    }
+                }
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+
+        try {
+            sensorManager?.registerListener(proximityListener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+            isProximityListening = true
+        } catch (ignored: Exception) {}
+    }
+
+    private fun stopProximityListening() {
+        if (!isProximityListening) return
+        try {
+            proximityListener?.let { sensorManager?.unregisterListener(it) }
+        } catch (ignored: Exception) {}
+        proximityListener = null
+        isProximityListening = false
+        proximityWasFar = false
+    }
+
+    internal fun answerIncomingCall() {
+        lifecycleScope.launch(Dispatchers.Main) {
+            var answered = false
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val tm = getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+                    if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED) {
+                        @Suppress("DEPRECATION")
+                        tm?.acceptRingingCall()
+                        answered = true
+                    }
+                }
+            } catch (ignored: Exception) {}
+
+            if (!answered) {
+                val res = withContext(Dispatchers.IO) {
+                    device.answerCall()
+                }
+                answered = (res == "OK")
+            }
+
+            if (answered) {
+                val msg = if (cfg.lang == "ta-IN") "📞 காதில் வைத்ததால் அழைப்பு ஏற்கப்பட்டது" else "📞 Call answered automatically"
+                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     private fun setupCallStateMonitoring() {
+        initProximitySensor()
         val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val cb = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
@@ -569,6 +670,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun teardownCallStateMonitoring() {
+        stopProximityListening()
         try {
             phoneStateReceiver?.let { unregisterReceiver(it) }
             phoneStateReceiver = null
@@ -585,7 +687,19 @@ class MainActivity : FragmentActivity() {
 
     private fun onPhoneCallStateChanged(state: Int) {
         when (state) {
-            TelephonyManager.CALL_STATE_RINGING, TelephonyManager.CALL_STATE_OFFHOOK -> {
+            TelephonyManager.CALL_STATE_RINGING -> {
+                if (!isInPhoneCall) {
+                    isInPhoneCall = true
+                    wasActiveBeforeCall = voice.active
+                    wasStandbyBeforeCall = voice.standby
+                    voice.pauseForCall()
+                }
+                if (cfg.raiseToAnswer) {
+                    startProximityListeningForCall()
+                }
+            }
+            TelephonyManager.CALL_STATE_OFFHOOK -> {
+                stopProximityListening()
                 if (!isInPhoneCall) {
                     isInPhoneCall = true
                     wasActiveBeforeCall = voice.active
@@ -594,6 +708,7 @@ class MainActivity : FragmentActivity() {
                 }
             }
             TelephonyManager.CALL_STATE_IDLE -> {
+                stopProximityListening()
                 if (isInPhoneCall) {
                     isInPhoneCall = false
                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({

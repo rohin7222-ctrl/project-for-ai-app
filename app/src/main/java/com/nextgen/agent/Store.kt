@@ -21,7 +21,8 @@ data class Config(
     val voicePitchMean: Float = 0f,
     val voicePitchStd: Float = 0f,
     val voiceEnrolled: Boolean = false,
-    val darkCustom: Boolean = false
+    val darkCustom: Boolean = false,
+    val raiseToAnswer: Boolean = false
 )
 
 /** All settings (including the API key) live in AES-256 encrypted preferences backed by the Android Keystore. */
@@ -43,7 +44,8 @@ class Store(ctx: Context) {
         sp.getBoolean("auto_wake", true),
         sp.getBoolean("voice_match", false), sp.getFloat("pitch_mean", 0f),
         sp.getFloat("pitch_std", 0f), sp.getBoolean("voice_enrolled", false),
-        sp.getBoolean("dark_custom", false)
+        sp.getBoolean("dark_custom", false),
+        sp.getBoolean("raise_to_answer", false)
     )
 
     fun save(c: Config) {
@@ -55,7 +57,8 @@ class Store(ctx: Context) {
             .putString("commanding_stop_word", c.commandingStopWord)
             .putBoolean("auto_wake", c.autoWakeEnabled)
             .putBoolean("voice_match", c.voiceMatchEnabled).putFloat("pitch_mean", c.voicePitchMean)
-            .putFloat("pitch_std", c.voicePitchStd).putBoolean("voice_enrolled", c.voiceEnrolled).apply()
+            .putFloat("pitch_std", c.voicePitchStd).putBoolean("voice_enrolled", c.voiceEnrolled)
+            .putBoolean("raise_to_answer", c.raiseToAnswer).apply()
     }
 
     fun isReady() = sp.getBoolean("ready", false)
