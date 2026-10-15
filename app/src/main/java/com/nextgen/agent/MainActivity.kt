@@ -39,6 +39,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -90,6 +91,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -125,6 +127,13 @@ private val Indigo = Color(0xFF6366F1)
 private val Violet = Color(0xFF8B5CF6)
 private val Cyan = Color(0xFF06B6D4)
 private val Amber = Color(0xFFF59E0B)
+
+private val GeminiBlue = Color(0xFF4285F4)
+private val GeminiPurple = Color(0xFF9B51E0)
+private val GeminiCyan = Color(0xFF24C8F0)
+private val GeminiPink = Color(0xFFFF6D00)
+private val GeminiGradient = Brush.linearGradient(listOf(GeminiBlue, GeminiPurple, GeminiCyan))
+private val GeminiAuraGradient = Brush.horizontalGradient(listOf(GeminiBlue, GeminiPurple, GeminiCyan, GeminiPink))
 private val PROVIDERS = listOf(
     "gemini" to "Google Gemini", "groq" to "Groq", "openai" to "OpenAI", "anthropic" to "Claude",
     "openrouter" to "OpenRouter", "mistral" to "Mistral", "deepseek" to "DeepSeek"
@@ -967,6 +976,56 @@ class MainActivity : FragmentActivity() {
                         .height(h.dp)
                         .clip(RoundedCornerShape(2.dp))
                         .background(Brush.verticalGradient(listOf(Cyan, Indigo)))
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun GeminiSparkle(modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 20.dp) {
+        Canvas(modifier = modifier.size(size)) {
+            val w = this.size.width
+            val h = this.size.height
+            val cx = w / 2f
+            val cy = h / 2f
+            val path = Path().apply {
+                moveTo(cx, 0f)
+                quadraticBezierTo(cx, cy, w, cy)
+                quadraticBezierTo(cx, cy, cx, h)
+                quadraticBezierTo(cx, cy, 0f, cy)
+                quadraticBezierTo(cx, cy, cx, 0f)
+                close()
+            }
+            drawPath(path, GeminiGradient)
+        }
+    }
+
+    @Composable
+    private fun GeminiLiveWave() {
+        val inf = rememberInfiniteTransition(label = "gemini_wave")
+        val h1 by inf.animateFloat(4f, 18f, infiniteRepeatable(tween(300, 0, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh1")
+        val h2 by inf.animateFloat(6f, 26f, infiniteRepeatable(tween(340, 60, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh2")
+        val h3 by inf.animateFloat(8f, 30f, infiniteRepeatable(tween(280, 120, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh3")
+        val h4 by inf.animateFloat(10f, 34f, infiniteRepeatable(tween(320, 180, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh4")
+        val h5 by inf.animateFloat(8f, 28f, infiniteRepeatable(tween(360, 240, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh5")
+        val h6 by inf.animateFloat(6f, 22f, infiniteRepeatable(tween(290, 100, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh6")
+        val h7 by inf.animateFloat(4f, 16f, infiniteRepeatable(tween(310, 40, FastOutSlowInEasing), RepeatMode.Reverse), label = "gh7")
+
+        val colors = listOf(GeminiBlue, GeminiPurple, GeminiCyan, GeminiPink, GeminiCyan, GeminiPurple, GeminiBlue)
+        val heights = listOf(h1, h2, h3, h4, h5, h6, h7)
+
+        Row(
+            modifier = Modifier.height(34.dp).padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            heights.forEachIndexed { i, h ->
+                Box(
+                    Modifier
+                        .width(3.dp)
+                        .height(h.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(colors[i % colors.size])
                 )
             }
         }
@@ -1887,6 +1946,7 @@ class MainActivity : FragmentActivity() {
                                 fontWeight = FontWeight.ExtraBold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
+                            GeminiSparkle(size = 18.dp)
                             // Standby toggle pill
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
@@ -1969,21 +2029,18 @@ class MainActivity : FragmentActivity() {
                                     .size(132.dp)
                                     .scale(logoPulse)
                                     .clip(RoundedCornerShape(44.dp))
-                                    .background(Brush.radialGradient(listOf(Indigo.copy(alpha = 0.35f), Color.Transparent)))
+                                    .background(Brush.radialGradient(listOf(GeminiBlue.copy(alpha = 0.28f), GeminiPurple.copy(alpha = 0.18f), Color.Transparent)))
                             )
                             Surface(
                                 modifier = Modifier.size(110.dp),
                                 shape = RoundedCornerShape(36.dp),
                                 shadowElevation = 16.dp,
                                 color = MaterialTheme.colorScheme.surface,
-                                border = BorderStroke(2.5.dp, Brush.linearGradient(listOf(Indigo, Violet, Cyan)))
+                                border = BorderStroke(2.dp, GeminiGradient)
                             ) {
-                                Image(
-                                    painter = painterResource(id = R.drawable.app_logo),
-                                    contentDescription = "NextGen AI Agent Logo",
-                                    modifier = Modifier.fillMaxSize().padding(8.dp),
-                                    contentScale = ContentScale.Fit
-                                )
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    GeminiSparkle(size = 54.dp)
+                                }
                             }
                         }
 
@@ -2129,15 +2186,12 @@ class MainActivity : FragmentActivity() {
                                             .padding(top = 2.dp)
                                             .size(30.dp),
                                         shape = RoundedCornerShape(10.dp),
-                                        border = BorderStroke(1.5.dp, Indigo),
+                                        border = BorderStroke(1.dp, GeminiPurple.copy(alpha = 0.5f)),
                                         color = MaterialTheme.colorScheme.surfaceVariant
                                     ) {
-                                        Image(
-                                            painter = painterResource(id = R.drawable.app_logo),
-                                            contentDescription = "AI",
-                                            modifier = Modifier.fillMaxSize().padding(2.dp),
-                                            contentScale = ContentScale.Fit
-                                        )
+                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            GeminiSparkle(size = 18.dp)
+                                        }
                                     }
 
                                     Spacer(Modifier.width(8.dp))
@@ -2221,15 +2275,12 @@ class MainActivity : FragmentActivity() {
                                     Surface(
                                         modifier = Modifier.size(30.dp),
                                         shape = RoundedCornerShape(10.dp),
-                                        border = BorderStroke(1.5.dp, Indigo),
+                                        border = BorderStroke(1.dp, GeminiPurple.copy(alpha = 0.5f)),
                                         color = MaterialTheme.colorScheme.surfaceVariant
                                     ) {
-                                        Image(
-                                            painter = painterResource(id = R.drawable.app_logo),
-                                            contentDescription = "AI",
-                                            modifier = Modifier.fillMaxSize().padding(2.dp),
-                                            contentScale = ContentScale.Fit
-                                        )
+                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            GeminiSparkle(size = 18.dp)
+                                        }
                                     }
 
                                     Spacer(Modifier.width(8.dp))
@@ -2258,38 +2309,85 @@ class MainActivity : FragmentActivity() {
                 }
             }
 
-            // Upgraded Voice & Input Control Bar
+            // Gemini Floating Prompt Capsule & Voice Control Bar
+            val isDarkTheme = if (cfg.darkCustom) cfg.dark else isSystemInDarkTheme()
+            val capsuleBg = if (isDarkTheme) Color(0xFF1E1F20) else Color(0xFFF0F4F9)
+
             Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                tonalElevation = 4.dp,
-                shadowElevation = 14.dp,
-                shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                color = capsuleBg,
+                shape = RoundedCornerShape(30.dp),
+                shadowElevation = if (listening) 10.dp else 3.dp,
+                border = if (listening) {
+                    BorderStroke(2.dp, GeminiAuraGradient)
+                } else {
+                    BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                }
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    if (listening) {
+                if (listening) {
+                    // Gemini Live Voice Listening Mode
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
                         ) {
-                            EqualizerWave()
-                            Spacer(Modifier.width(8.dp))
-                            Text(tr("listening"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Indigo)
+                            GeminiLiveWave()
+                            Column {
+                                Text(
+                                    text = tr("listening"),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Gemini Live",
+                                    fontSize = 11.sp,
+                                    color = GeminiCyan,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
-                        Spacer(Modifier.height(6.dp))
-                    }
 
+                        // Compact modern Stop button (Gemini red circle, 40.dp)
+                        Surface(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .clickable { toggle() },
+                            shape = CircleShape,
+                            color = Color(0xFFEF4444),
+                            shadowElevation = 4.dp
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Stop,
+                                    contentDescription = "Stop",
+                                    Modifier.size(20.dp),
+                                    tint = Color.White
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // Gemini Modern Capsule: Text & Mic
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        GeminiSparkle(size = 20.dp)
+
                         OutlinedTextField(
                             value = input,
                             onValueChange = {
@@ -2311,100 +2409,80 @@ class MainActivity : FragmentActivity() {
                                 }
                             ),
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(26.dp),
-                            placeholder = { Text(tr("type_here"), fontSize = 14.sp) },
+                            placeholder = {
+                                Text(
+                                    tr("type_here"),
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                )
+                            },
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Indigo,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-                            ),
-                            trailingIcon = {
-                                if (input.isNotEmpty()) {
-                                    IconButton(onClick = { input = "" }) {
-                                        Icon(Icons.Default.Close, "Clear", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-                                    }
-                                }
-                            }
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent,
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent
+                            )
                         )
 
-                        Surface(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .clickable(enabled = input.isNotBlank()) {
-                                    val t = input.trim()
-                                    input = ""
-                                    handleUser(t)
-                                },
-                            shape = CircleShape,
-                            color = if (input.isNotBlank()) Indigo else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            shadowElevation = if (input.isNotBlank()) 4.dp else 0.dp
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
+                        if (input.isNotEmpty()) {
+                            IconButton(
+                                onClick = { input = "" },
+                                modifier = Modifier.size(32.dp)
+                            ) {
                                 Icon(
-                                    Icons.AutoMirrored.Filled.Send,
-                                    "Send",
-                                    Modifier.size(20.dp),
-                                    tint = if (input.isNotBlank()) Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                                    Icons.Default.Close,
+                                    "Clear",
+                                    Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                                 )
                             }
+
+                            // Send Button
+                            Surface(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        val t = input.trim()
+                                        input = ""
+                                        handleUser(t)
+                                    },
+                                shape = CircleShape,
+                                color = GeminiBlue,
+                                shadowElevation = 3.dp
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Send,
+                                        "Send",
+                                        Modifier.size(18.dp),
+                                        tint = Color.White
+                                    )
+                                }
+                            }
                         }
-                    }
 
-                    Spacer(Modifier.height(10.dp))
-
-                    val pulse1 by rememberInfiniteTransition(label = "p1").animateFloat(
-                        initialValue = 1f, targetValue = 1.35f,
-                        animationSpec = infiniteRepeatable(tween(1000, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-                        label = "pulse1"
-                    )
-                    val pulse2 by rememberInfiniteTransition(label = "p2").animateFloat(
-                        initialValue = 1f, targetValue = 1.6f,
-                        animationSpec = infiniteRepeatable(tween(1300, 200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-                        label = "pulse2"
-                    )
-
-                    Box(contentAlignment = Alignment.Center) {
-                        if (listening) {
-                            Box(Modifier.size(76.dp).scale(pulse2).clip(CircleShape).background(Indigo.copy(alpha = 0.12f)))
-                            Box(Modifier.size(76.dp).scale(pulse1).clip(CircleShape).background(Violet.copy(alpha = 0.22f)))
-                        }
+                        // Compact Gemini Mic Button (40.dp)
                         Surface(
                             modifier = Modifier
-                                .size(72.dp)
-                                .shadow(12.dp, CircleShape)
+                                .size(40.dp)
                                 .clip(CircleShape)
                                 .clickable { toggle() },
                             shape = CircleShape,
-                            color = Color.Transparent
+                            color = if (isDarkTheme) Color(0xFF2B2D30) else Color(0xFFE2E7EF),
+                            border = BorderStroke(1.dp, GeminiPurple.copy(alpha = 0.4f)),
+                            shadowElevation = 2.dp
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        if (listening) Brush.linearGradient(listOf(Color(0xFFEF4444), Color(0xFFF43F5E)))
-                                        else Brush.linearGradient(listOf(Indigo, Violet))
-                                    ),
-                                    contentAlignment = Alignment.Center
-                            ) {
+                            Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    if (listening) Icons.Default.Stop else Icons.Default.Mic,
-                                    contentDescription = "Voice",
-                                    Modifier.size(34.dp),
-                                    tint = Color.White
+                                    Icons.Default.Mic,
+                                    contentDescription = "Voice Input",
+                                    Modifier.size(20.dp),
+                                    tint = GeminiBlue
                                 )
                             }
                         }
                     }
-
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = if (listening) tr("stop") else tr("start"),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (listening) Color(0xFFEF4444) else Indigo
-                    )
                 }
             }
         }

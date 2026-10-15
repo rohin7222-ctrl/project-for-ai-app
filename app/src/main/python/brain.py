@@ -490,7 +490,7 @@ LEAD = re.compile(r"^(?:(?:hey|hi|hello|ok|okay|bro|da|dei|machi|sir|please|plz|
                   r"can you|could you|would you|will you|can u|could u|can i|i want you to|i want to|i would like to|"
                   r"i need to|i need you to|let's|lets|go ahead and|try to|nee|neenga)\s+)+")
 TAIL = re.compile(r"(?:\s+(?:please|plz|pls|now|for me|bro|da|pa|ok|okay|quickly|thanks|thank you))+$")
-_assistant = {"name": ""}
+_assistant = {"name": "", "stop_word": "stop"}
 
 
 def _norm(p):
@@ -540,10 +540,10 @@ def _parse_one(p, last_app):
     if "quick settings" in t:
         return [{"type": "system", "name": "quick_settings", "desc": "Quick Settings"}], "ok"
 
-    # --- assistant stop command
-    stop_words = ("stop", "exit", "pause", "sleep", "shut down", "shutdown", "stop assistant", "bye", "goodbye",
-                  "போதும்", "நிறுத்து", "நில்", "ஸ்டாப்", "முடி", "தூங்கு", "stop pannu", "stop panu", "off pannu")
-    if t in stop_words or any(t == s for s in stop_words) or re.search(r"^(?:stop|exit|sleep|shut down|quit|pause|stop assistant|bye|goodbye|போதும்|நிறுத்து|நில்|ஸ்டாப்)(?:\s+(?:pannu|panu|podu|vai|seiy|pa|da))?$", t):
+    # --- assistant stop command: strictly match user settings stop command (never match words like "unstop")
+    custom_stop = (_assistant.get("stop_word") or "stop").strip().lower()
+    stop_pat = r"^(?:hey\s+|ok\s+|please\s+)?(?:" + re.escape(custom_stop) + r")(?:\\s+(?:please|pannu|panu|podu|vai|seiy|pa|da))?$"
+    if t == custom_stop or re.match(stop_pat, t, re.IGNORECASE):
         return [{"type": "stop_assistant", "desc": "Stop Assistant"}], "stop"
 
     # --- torch / flashlight
@@ -870,6 +870,7 @@ def chat(cfg_json, user_text):
     cfg = json.loads(cfg_json)
     lang = cfg.get("lang", "en-US")
     _assistant["name"] = (cfg.get("name") or "").strip().lower()
+    _assistant["stop_word"] = (cfg.get("stop_word") or "stop").strip().lower()
     try:
         cmd = local_command(user_text, lang)
         if cmd:

@@ -33,6 +33,7 @@ object Brain {
     fun chat(c: Config, text: String): Reply = try {
         val cfg = JSONObject().put("lang", c.lang).put("name", c.name).put("type", c.type)
             .put("provider", c.provider).put("key", c.key).put("model", c.model).put("url", c.url)
+            .put("stop_word", c.commandingStopWord)
         val j = JSONObject(py().callAttr("chat", cfg.toString(), text).toString())
         if (j.getBoolean("ok")) {
             val arr = j.getJSONArray("actions")

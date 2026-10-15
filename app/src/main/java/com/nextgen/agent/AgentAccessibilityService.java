@@ -279,6 +279,23 @@ public class AgentAccessibilityService extends AccessibilityService {
     // ------------------------------------------------------------------ public UI actions (return "OK" / "ERR:...")
     private static final String[] SEARCH_WORDS = {"search", "find", "thedu", "theduga", "தேடு", "தேடல்", "தேடுங்கள்", "தேடுதல்", "検索", "query"};
 
+    private static boolean isAccountOrSettingsElement(AccessibilityNodeInfo n) {
+        if (n == null) return false;
+        String own = ownText(n);
+        String vId = n.getViewIdResourceName();
+        String idEntry = (vId != null && vId.contains(":id/")) ? vId.substring(vId.indexOf(":id/") + 4).toLowerCase(Locale.ROOT) : "";
+        if (own.contains("account") || own.contains("profile") || own.contains("avatar") ||
+            own.contains("sign in") || own.contains("signed in") || own.contains("google account") ||
+            own.contains("manage your google account") || own.contains("கணக்கு") ||
+            own.contains("அக்கவுண்ட்") || own.contains("அமைப்புகள்") ||
+            idEntry.contains("account") || idEntry.contains("avatar") || idEntry.contains("profile") ||
+            idEntry.contains("og_apd") || idEntry.contains("user_icon") || idEntry.contains("overflow") ||
+            idEntry.contains("menu_item") || idEntry.contains("more_options")) {
+            return true;
+        }
+        return false;
+    }
+
     public String uiSearch(String query, boolean submit) {
         AccessibilityNodeInfo root = waitRoot(3000);
         if (root == null) return "ERR:cannot read the screen";
@@ -301,7 +318,20 @@ public class AgentAccessibilityService extends AccessibilityService {
         if (submit) {
             sleep(500);
             edit.refresh();
-            edit.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.getId());
+            boolean enterSent = edit.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.getId());
+            if (!enterSent) {
+                AccessibilityNodeInfo curRoot = getRootInActiveWindow();
+                if (curRoot != null) {
+                    for (AccessibilityNodeInfo n : all(curRoot)) {
+                        if (n == null || !n.isVisibleToUser() || isAccountOrSettingsElement(n)) continue;
+                        String l = label(n);
+                        if ((l.contains("search") || l.contains("தேடு") || l.contains("go")) && (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                            click(n);
+                            break;
+                        }
+                    }
+                }
+            }
         }
         sleep(1500);                                              // let results load
         return "OK";
@@ -566,7 +596,15 @@ public class AgentAccessibilityService extends AccessibilityService {
         StringBuilder sb = new StringBuilder();
         if (n.getText() != null) sb.append(n.getText()).append(' ');
         if (n.getContentDescription() != null) sb.append(n.getContentDescription()).append(' ');
-        if (n.getViewIdResourceName() != null) sb.append(n.getViewIdResourceName());
+        if (n.getViewIdResourceName() != null) {
+            String vId = n.getViewIdResourceName();
+            int idx = vId.indexOf(":id/");
+            if (idx != -1) {
+                sb.append(vId.substring(idx + 4)).append(' ');
+            } else {
+                sb.append(vId).append(' ');
+            }
+        }
         return sb.toString().toLowerCase(Locale.ROOT);
     }
 
@@ -601,8 +639,62 @@ public class AgentAccessibilityService extends AccessibilityService {
     }
 
     private AccessibilityNodeInfo findSearchTrigger(AccessibilityNodeInfo root) {
+        if (root == null) return null;
+        CharSequence rootPkgSeq = root.getPackageName();
+        String rootPkg = rootPkgSeq == null ? "" : rootPkgSeq.toString().toLowerCase(Locale.ROOT);
+
+        // 1. Google App fast path: find the real Google Search widget (NOT the account avatar!)
+        if (rootPkg.contains("googlequicksearchbox")) {
+            String[] googleSearchIds = {
+                "com.google.android.googlequicksearchbox:id/googleapp_search_box",
+                "com.google.android.googlequicksearchbox:id/search_box",
+                "com.google.android.googlequicksearchbox:id/search_edit_frame",
+                "com.google.android.googlequicksearchbox:id/search_plate",
+                "com.google.android.googlequicksearchbox:id/open_search_view_edit_text",
+                "com.google.android.googlequicksearchbox:id/search_text",
+                "com.google.android.googlequicksearchbox:id/search_box_container",
+                "com.google.android.googlequicksearchbox:id/search_widget"
+            };
+            for (String gId : googleSearchIds) {
+                List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByViewId(gId);
+                if (hits != null && !hits.isEmpty()) {
+                    for (AccessibilityNodeInfo h : hits) {
+                        if (h != null && h.isVisibleToUser() && !isAccountOrSettingsElement(h)) {
+                            AccessibilityNodeInfo target = clickableSelfOrParent(h);
+                            if (target != null) return target;
+                            return h;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Exact text or contentDescription match for search trigger across all apps (ignoring account elements)
         for (AccessibilityNodeInfo n : all(root)) {
-            if (n.isEditable() || !n.isVisibleToUser()) continue;
+            if (n == null || n.isEditable() || !n.isVisibleToUser() || isAccountOrSettingsElement(n)) continue;
+            String own = ownText(n);
+            if (own.equals("search") || own.equals("search...") || own.equals("தேடு") || own.equals("தேடல்") || own.equals("検索")) {
+                AccessibilityNodeInfo target = clickableSelfOrParent(n);
+                if (target != null) return target;
+            }
+        }
+
+        // 3. View ID entry match (checking only resource entry name, not package)
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null || n.isEditable() || !n.isVisibleToUser() || isAccountOrSettingsElement(n)) continue;
+            String vId = n.getViewIdResourceName();
+            if (vId != null && vId.contains(":id/")) {
+                String idEntry = vId.substring(vId.indexOf(":id/") + 4).toLowerCase(Locale.ROOT);
+                if (idEntry.contains("search") && !idEntry.contains("account") && !idEntry.contains("avatar") && !idEntry.contains("profile")) {
+                    AccessibilityNodeInfo target = clickableSelfOrParent(n);
+                    if (target != null) return target;
+                }
+            }
+        }
+
+        // 4. Broader search words in label, strictly excluding accounts and settings
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null || n.isEditable() || !n.isVisibleToUser() || isAccountOrSettingsElement(n)) continue;
             String l = label(n);
             for (String w : SEARCH_WORDS) {
                 if (l.contains(w) && clickableSelfOrParent(n) != null) return n;

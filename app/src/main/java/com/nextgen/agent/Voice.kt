@@ -457,34 +457,30 @@ class Voice(
         }
     }
 
-    /** Checks whether a spoken phrase is a stop command */
+    /** Checks whether a spoken phrase is a stop command - STRICTLY uses user settings commandingStopWord */
     fun isStopCommand(text: String): Boolean {
         val t = text.trim().lowercase(Locale.ROOT)
         if (t.isBlank()) return false
 
-        // 1. User-configured custom stop command
-        val customStop = commandingStopWord.trim().lowercase(Locale.ROOT)
-        if (customStop.isNotBlank()) {
-            if (t == customStop || t.contains(customStop)) return true
+        // User-configured stop command from user settings (default: "Stop")
+        val customStop = commandingStopWord.trim().lowercase(Locale.ROOT).ifEmpty { "stop" }
+
+        // 1. Exact command match
+        if (t == customStop) return true
+
+        // 2. Exact phrase matching user setting command with conversational affixes
+        // (e.g. "Stop", "Stop pannu", "please Stop"). NEVER match substrings like "unstop"!
+        val escaped = Regex.escape(customStop)
+        val stopRegex = Regex("^(?:hey\\s+|ok\\s+|please\\s+)?$escaped(?:\\s+(?:please|pannu|panu|podu|now|pa|da))?$", RegexOption.IGNORE_CASE)
+        if (stopRegex.matches(t)) return true
+
+        // 3. Wake word + stop command: e.g. "Jarvis stop"
+        val cmdWord = commandingWord.trim().lowercase(Locale.ROOT)
+        if (cmdWord.isNotBlank()) {
+            val wakeStopRegex = Regex("^${Regex.escape(cmdWord)}\\s+$escaped(?:\\s+(?:please|pannu|panu|now))?$", RegexOption.IGNORE_CASE)
+            if (wakeStopRegex.matches(t)) return true
         }
 
-        // 2. Universal stop phrases across Tamil, English, and Japanese
-        val stopPhrases = listOf(
-            // English
-            "stop", "exit", "pause", "sleep", "shut down", "shutdown", "quit", "cancel",
-            "go to sleep", "stop listening", "stop assistant", "bye", "goodbye", "good night",
-            // Tamil
-            "நிறுத்து", "போதும்", "நில்", "ஸ்டாப்", "முடி", "தூங்கு",
-            "stop pannu", "stop panu", "stop pannunga", "stop panunga",
-            "off pannu", "off panu", "off pannunga", "close pannu", "podhum",
-            // Japanese
-            "ストップ", "止めて", "おやすみ", "終了", "やめて"
-        )
-        for (p in stopPhrases) {
-            if (t == p || t.startsWith("$p ") || t.endsWith(" $p") || t.contains(" $p ") || t.contains(p)) {
-                return true
-            }
-        }
         return false
     }
 
