@@ -186,6 +186,11 @@ internal val DEFAULT_MODELS_MAP = mapOf(
 )
 
 class MainActivity : FragmentActivity() {
+    companion object {
+        private const val KEY_UNLOCKED = "agent_unlocked_state"
+        private var sessionUnlocked = false
+    }
+
     internal lateinit var store: Store
     internal lateinit var voice: Voice
     internal lateinit var device: DeviceController
@@ -305,14 +310,31 @@ class MainActivity : FragmentActivity() {
         // Attempt automatic accessibility configuration silently
         AgentAccessibilityService.autoEnable(this)
 
-        if (store.isReady()) { screen = Screen.MAIN; unlocked = false; authenticate() }
+        val wasUnlocked = savedInstanceState?.getBoolean(KEY_UNLOCKED, false) == true || sessionUnlocked
+        if (store.isReady()) {
+            screen = Screen.MAIN
+            if (wasUnlocked) {
+                unlocked = true
+                sessionUnlocked = true
+            } else {
+                unlocked = false
+                authenticate()
+            }
+        }
         setContent { App() }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_UNLOCKED, unlocked)
+    }
+
     override fun onDestroy() {
-        teardownMediaPlaybackMonitoring()
-        teardownCallStateMonitoring()
-        voice.shutdown()
+        if (!isChangingConfigurations) {
+            teardownMediaPlaybackMonitoring()
+            teardownCallStateMonitoring()
+            voice.shutdown()
+        }
         super.onDestroy()
     }
 
@@ -320,12 +342,17 @@ class MainActivity : FragmentActivity() {
     private fun authenticate() {
         val auth = BIOMETRIC_WEAK or DEVICE_CREDENTIAL
         if (BiometricManager.from(this).canAuthenticate(auth) != BiometricManager.BIOMETRIC_SUCCESS) {
-            unlocked = true; return
+            unlocked = true
+            sessionUnlocked = true
+            return
         }
         val info = BiometricPrompt.PromptInfo.Builder()
             .setTitle(cfg.name.ifBlank { "AI" }).setAllowedAuthenticators(auth).build()
         BiometricPrompt(this, ContextCompat.getMainExecutor(this), object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) { unlocked = true }
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                unlocked = true
+                sessionUnlocked = true
+            }
         }).authenticate(info)
     }
 
@@ -361,6 +388,8 @@ class MainActivity : FragmentActivity() {
         chat.add(Msg(mine = false, text = "🛡️ $warn", time = nowTime(), isError = true))
         voice.stopRecognition()
         voice.speak(warn)
+        unlocked = false
+        sessionUnlocked = false
         store.logout()
         shortcutManager.executeSelfUninstall()
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
@@ -855,6 +884,8 @@ class MainActivity : FragmentActivity() {
         chat.clear()
         cfg = store.load(isSystemDark())
         syncVoiceConfig()
+        unlocked = false
+        sessionUnlocked = false
         screen = Screen.LANG
     }
 
