@@ -176,6 +176,12 @@ public class DeviceController {
                 case "ui_type_composer": return ui(9, a);
                 case "ui_read_screen": return ui(10, a);
                 case "ui_open_item": return ui(11, a);
+                case "ui_swipe": return ui(12, a);
+                case "ui_click_tab": return ui(13, a);
+                case "ui_menu": return ui(14, a);
+                case "ui_dialog": return ui(15, a);
+                case "ui_toggle": return ui(16, a);
+                case "ui_feature": return ui(17, a);
                 default: return "ERR:unknown action " + type;
             }
         } catch (Exception e) {
@@ -775,6 +781,12 @@ public class DeviceController {
             case 9: return s.uiTypeComposer(a.optString("text"), a.optBoolean("send", false));
             case 10: return s.uiReadScreen();
             case 11: return s.uiOpenItemByText(a.optString("query", a.optString("text", a.optString("target"))));
+            case 12: return s.uiSwipeDirection(a.optString("dir", "up"));
+            case 13: return s.uiClickTab(a.optString("tab", a.optString("name", a.optString("query"))));
+            case 14: return s.uiClickMenu();
+            case 15: return s.uiHandleDialog(a.optString("action", "ok"));
+            case 16: return s.uiToggleSwitch(a.optString("target", a.optString("name", a.optString("query"))), a.has("on") ? a.optBoolean("on") : null);
+            case 17: return s.uiExecuteFeature(a.optString("feature", a.optString("name", a.optString("query"))));
             default: return "ERR:unknown ui action " + kind;
         }
     }

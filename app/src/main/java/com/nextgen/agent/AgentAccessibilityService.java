@@ -861,6 +861,269 @@ public class AgentAccessibilityService extends AccessibilityService {
         return "ERR:item not found: " + query;
     }
 
+    /**
+     * Universal directional swipe (left, right, up, down) for stories, carousels, cards, tabs, and feeds.
+     */
+    public String uiSwipeDirection(String dir) {
+        if (dir == null || dir.isEmpty()) dir = "up";
+        String d = dir.toLowerCase(Locale.ROOT).trim();
+        try {
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            int screenW = dm.widthPixels > 0 ? dm.widthPixels : 1080;
+            int screenH = dm.heightPixels > 0 ? dm.heightPixels : 2400;
+
+            float startX, startY, endX, endY;
+            if ("left".equals(d)) {
+                startX = screenW * 0.85f; endX = screenW * 0.15f;
+                startY = screenH * 0.50f; endY = screenH * 0.50f;
+            } else if ("right".equals(d)) {
+                startX = screenW * 0.15f; endX = screenW * 0.85f;
+                startY = screenH * 0.50f; endY = screenH * 0.50f;
+            } else if ("down".equals(d)) {
+                startX = screenW * 0.50f; endX = screenW * 0.50f;
+                startY = screenH * 0.25f; endY = screenH * 0.75f;
+            } else {
+                startX = screenW * 0.50f; endX = screenW * 0.50f;
+                startY = screenH * 0.75f; endY = screenH * 0.25f;
+            }
+
+            Path p = new Path();
+            p.moveTo(startX, startY);
+            p.lineTo(endX, endY);
+            GestureDescription g = new GestureDescription.Builder()
+                    .addStroke(new GestureDescription.StrokeDescription(p, 0, 250)).build();
+            return dispatchGesture(g, null, null) ? "OK" : "ERR:swipe failed";
+        } catch (Exception e) {
+            return "ERR:" + e.getMessage();
+        }
+    }
+
+    /**
+     * Selects and clicks any tab on the navigation bar (home, search, reels, notifications, profile, orders, library, settings).
+     */
+    public String uiClickTab(String tabName) {
+        if (tabName == null || tabName.trim().isEmpty()) return "ERR:empty tab name";
+        String q = tabName.toLowerCase(Locale.ROOT).trim();
+
+        for (int attempt = 0; attempt < 10; attempt++) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null && !isOwnApp(root)) {
+                DisplayMetrics dm = getResources().getDisplayMetrics();
+                int screenH = dm.heightPixels > 0 ? dm.heightPixels : 2400;
+                Rect r = new Rect();
+
+                // Search in bottom bar (top > 70% of screen) or top bar (bottom < 35% of screen)
+                for (AccessibilityNodeInfo n : all(root)) {
+                    if (n == null || !n.isVisibleToUser()) continue;
+                    n.getBoundsInScreen(r);
+                    boolean isNavRegion = r.top > (screenH * 0.70f) || r.bottom < (screenH * 0.35f);
+                    if (!isNavRegion) continue;
+
+                    String l = label(n);
+                    if (isTabMatch(l, q) && (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                        return click(n) ? "OK" : "ERR:cannot click tab";
+                    }
+                }
+            }
+            sleep(150);
+        }
+        return "ERR:tab not found: " + tabName;
+    }
+
+    private static boolean isTabMatch(String l, String q) {
+        if (q.contains("home") || q.contains("ஹோம்")) {
+            return l.contains("home") || l.contains("feed") || l.contains("main") || l.contains("ஹோம்") || l.contains("முகப்பு");
+        } else if (q.contains("search") || q.contains("explore") || q.contains("தேடு")) {
+            return l.contains("search") || l.contains("explore") || l.contains("discover") || l.contains("தேடு");
+        } else if (q.contains("reel") || q.contains("short") || q.contains("video") || q.contains("ரீல்ஸ்")) {
+            return l.contains("reel") || l.contains("clips") || l.contains("shorts") || l.contains("video") || l.contains("ரீல்ஸ்");
+        } else if (q.contains("notif") || q.contains("activity") || q.contains("அறிவிப்பு")) {
+            return l.contains("notification") || l.contains("activity") || l.contains("inbox") || l.contains("updates") || l.contains("அறிவிப்பு");
+        } else if (q.contains("profile") || q.contains("account") || q.contains("me") || q.contains("சுயவிவரம்") || q.contains("கணக்கு")) {
+            return l.contains("profile") || l.contains("account") || l.contains("me") || l.contains("avatar") || l.contains("சுயவிவரம்") || l.contains("கணக்கு");
+        } else if (q.contains("order") || q.contains("cart") || q.contains("ஆர்டர்") || q.contains("கார்ட்")) {
+            return l.contains("order") || l.contains("cart") || l.contains("bag") || l.contains("basket") || l.contains("கார்ட்");
+        } else if (q.contains("lib") || q.contains("subscript") || q.contains("நூலகம்")) {
+            return l.contains("library") || l.contains("subscription") || l.contains("playlists");
+        }
+        return l.contains(q);
+    }
+
+    /**
+     * Opens the 3-dots overflow menu or hamburger navigation drawer in any app.
+     */
+    public String uiClickMenu() {
+        for (int attempt = 0; attempt < 10; attempt++) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null && !isOwnApp(root)) {
+                // 1. Known overflow menu / drawer IDs
+                String[] menuIds = {
+                    "android:id/action_menu_presenter",
+                    "com.android.internal:id/more_options",
+                    "id/more_options",
+                    "id/menu_button",
+                    "id/overflow_button",
+                    "id/action_overflow",
+                    "id/btn_more",
+                    "id/action_more",
+                    "id/navigation_drawer",
+                    "id/drawer_layout"
+                };
+                for (String mId : menuIds) {
+                    List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByViewId(mId);
+                    if (hits != null && !hits.isEmpty()) {
+                        for (AccessibilityNodeInfo h : hits) {
+                            if (h != null && h.isVisibleToUser() && click(h)) return "OK";
+                        }
+                    }
+                }
+
+                // 2. Scan labels matching "more options", "menu", "overflow", "drawer"
+                for (AccessibilityNodeInfo n : all(root)) {
+                    if (n == null || !n.isVisibleToUser()) continue;
+                    String l = label(n);
+                    if (l.contains("more options") || l.contains("more_options") ||
+                        l.contains("open navigation drawer") || l.contains("main menu") ||
+                        l.equals("menu") || l.contains("overflow")) {
+                        if (click(n)) return "OK";
+                    }
+                }
+            }
+            sleep(150);
+        }
+        return "ERR:menu not found";
+    }
+
+    /**
+     * Automatically handles popups, permission dialogs, bottom sheets, and confirmation dialogs
+     * (allow, deny, confirm, ok, cancel, yes, no, dismiss, save, apply).
+     */
+    public String uiHandleDialog(String action) {
+        if (action == null || action.trim().isEmpty()) action = "ok";
+        String a = action.toLowerCase(Locale.ROOT).trim();
+        boolean isPositive = a.contains("allow") || a.contains("ok") || a.contains("yes") ||
+                             a.contains("confirm") || a.contains("save") || a.contains("apply") ||
+                             a.contains("அனுமதி") || a.contains("சரி") || a.contains("ஆம்") ||
+                             a.contains("permit") || a.contains("continue");
+
+        for (int attempt = 0; attempt < 10; attempt++) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                // Try standard button1 (positive) or button2 (negative)
+                List<AccessibilityNodeInfo> btnList = root.findAccessibilityNodeInfosByViewId(
+                        isPositive ? "android:id/button1" : "android:id/button2");
+                if (btnList != null && !btnList.isEmpty()) {
+                    for (AccessibilityNodeInfo b : btnList) {
+                        if (b != null && b.isVisibleToUser() && click(b)) return "OK";
+                    }
+                }
+
+                // Scan dialog buttons
+                for (AccessibilityNodeInfo n : all(root)) {
+                    if (n == null || !n.isVisibleToUser()) continue;
+                    String l = label(n);
+                    if (isPositive) {
+                        if ((l.contains("allow") || l.contains("while using") || l.contains("only this time") ||
+                             l.contains("confirm") || l.contains("yes") || l.equals("ok") || l.equals("okay") ||
+                             l.contains("அனுமதி") || l.contains("சரி") || l.contains("ஆம்") || l.contains("save")) &&
+                            (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                            return click(n) ? "OK" : "ERR:cannot click dialog button";
+                        }
+                    } else {
+                        if ((l.contains("deny") || l.contains("don't allow") || l.contains("cancel") ||
+                             l.contains("no") || l.contains("dismiss") || l.contains("மறு") ||
+                             l.contains("இல்லை") || l.contains("ரத்து") || l.contains("not now") || l.contains("later")) &&
+                            (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                            return click(n) ? "OK" : "ERR:cannot click dialog button";
+                        }
+                    }
+                }
+            }
+            sleep(150);
+        }
+        return "ERR:dialog action failed: " + action;
+    }
+
+    /**
+     * Toggles a Switch or CheckBox for a setting inside any app.
+     */
+    public String uiToggleSwitch(String targetName, Boolean turnOn) {
+        if (targetName == null || targetName.trim().isEmpty()) return "ERR:target required";
+        String q = targetName.toLowerCase(Locale.ROOT).trim();
+
+        for (int attempt = 0; attempt < 10; attempt++) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null && !isOwnApp(root)) {
+                for (AccessibilityNodeInfo n : all(root)) {
+                    if (n == null || !n.isVisibleToUser()) continue;
+                    String l = label(n);
+                    if (l.contains(q)) {
+                        // Look for switch/checkbox in self, children, or parent row
+                        AccessibilityNodeInfo sw = findCheckableNode(n);
+                        if (sw == null && n.getParent() != null) {
+                            sw = findCheckableNode(n.getParent());
+                        }
+                        if (sw != null) {
+                            boolean current = sw.isChecked();
+                            if (turnOn == null || current != turnOn) {
+                                return click(sw) ? "OK" : "ERR:cannot toggle";
+                            }
+                            return "OK";
+                        } else {
+                            // If no separate switch child, clicking the row itself often toggles it
+                            if (click(n)) return "OK";
+                        }
+                    }
+                }
+            }
+            sleep(150);
+        }
+        return "ERR:switch not found for: " + targetName;
+    }
+
+    private AccessibilityNodeInfo findCheckableNode(AccessibilityNodeInfo root) {
+        if (root == null) return null;
+        if (root.isCheckable()) return root;
+        for (AccessibilityNodeInfo ch : all(root)) {
+            if (ch != null && ch.isCheckable() && ch.isVisibleToUser()) return ch;
+        }
+        return null;
+    }
+
+    /**
+     * Master Feature Runner: Executes ANY button, tab, card, or menu feature in the active app.
+     * Automatically inspects screen, overflow menu, and scrolls if needed.
+     */
+    public String uiExecuteFeature(String query) {
+        if (query == null || query.trim().isEmpty()) return "ERR:nothing to execute";
+        String q = query.toLowerCase(Locale.ROOT).trim();
+
+        // 1. Direct screen click check
+        String res = uiSmartClick(q);
+        if ("OK".equals(res)) return "OK";
+
+        // 2. Check if feature is in 3-dots overflow menu
+        uiClickMenu();
+        sleep(350);
+        AccessibilityNodeInfo menuRoot = getRootInActiveWindow();
+        if (menuRoot != null) {
+            for (AccessibilityNodeInfo n : all(menuRoot)) {
+                if (n == null || !n.isVisibleToUser()) continue;
+                String l = label(n);
+                if (l.contains(q) && (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                    return click(n) ? "OK" : "ERR:cannot click menu item";
+                }
+            }
+            performGlobalAction(GLOBAL_ACTION_BACK); // dismiss menu if not found
+            sleep(250);
+        }
+
+        // 3. Scroll down once and re-check
+        uiScroll(true);
+        sleep(500);
+        return uiSmartClick(q);
+    }
+
     // ------------------------------------------------------------------ Smart Button Helpers
     private static boolean isLikeQuery(String q) {
         return q.equals("like") || q.equals("love") || q.equals("favorite") || q.equals("heart") ||

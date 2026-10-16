@@ -609,10 +609,20 @@ def _parse_one(p, last_app):
         return [{"type": "ui_read_screen", "desc": "Read Screen"}], "read_screen"
 
     # --- Reels, Shorts, and Vertical Feeds (Instagram, YouTube Shorts, TikTok)
-    if any(w in t for w in ("next reel", "next reels", "adutha reel", "அடுத்த ரீல்ஸ்", "next shorts", "next video in reels", "swipe up", "keela swipe", "அடுத்த வீடியோ", "reels maathu")):
+    if any(w in t for w in ("next reel", "next reels", "adutha reel", "அடுத்த ரீல்ஸ்", "next shorts", "next video in reels", "reels maathu")):
         return [{"type": "ui_swipe_reels", "next": True, "desc": "Next Reel"}], "reels_next"
-    if any(w in t for w in ("previous reel", "prev reel", "munthaiya reel", "முந்தைய ரீல்ஸ்", "prev shorts", "swipe down", "mela swipe", "முந்தைய வீடியோ")):
+    if any(w in t for w in ("previous reel", "prev reel", "munthaiya reel", "முந்தைய ரீல்ஸ்", "prev shorts", "முந்தைய வீடியோ")):
         return [{"type": "ui_swipe_reels", "next": False, "desc": "Previous Reel"}], "reels_prev"
+
+    # --- Universal Directional Swipes (Stories, Carousels, Tabs, Feeds)
+    if any(w in t for w in ("swipe left", "left swipe", "left la swipe", "இடதுபுறம் ஸ்வைப்", "next story", "story maathu", "அடுத்த ஸ்டோரி", "left swipe pannu")):
+        return [{"type": "ui_swipe", "dir": "left", "desc": "Swipe Left"}], "swipe_left"
+    if any(w in t for w in ("swipe right", "right swipe", "right la swipe", "வலதுபுறம் ஸ்வைப்", "prev story", "previous story", "முந்தைய ஸ்டோரி", "right swipe pannu")):
+        return [{"type": "ui_swipe", "dir": "right", "desc": "Swipe Right"}], "swipe_right"
+    if any(w in t for w in ("swipe up", "mela swipe", "மேலே ஸ்வைப்", "swipe up pannu")):
+        return [{"type": "ui_swipe", "dir": "up", "desc": "Swipe Up"}], "swipe_up"
+    if any(w in t for w in ("swipe down", "keela swipe", "கீழே ஸ்வைப்", "swipe down pannu")):
+        return [{"type": "ui_swipe", "dir": "down", "desc": "Swipe Down"}], "swipe_down"
     if any(w in t for w in ("open reels", "reels open", "reels போடு", "reels பாரு", "ரீல்ஸ் போடு", "ரீல்ஸ் பாரு")) or t in ("reels", "reel", "ரீல்ஸ்"):
         return [{"type": "instagram_reels", "desc": "Instagram Reels"}], "ok"
     if any(w in t for w in ("instagram dm", "insta dm", "instagram message", "insta chat", "இன்ஸ்டா மெசேஜ்", "இன்ஸ்டா சாட்")):
@@ -882,6 +892,69 @@ def _parse_one(p, last_app):
         if q_item and q_item not in ("the", "first", "second", "last", "any"):
             return [{"type": "ui_open_item", "query": q_item, "desc": f"Open '{q_item}'"}], "ok"
 
+    # --- App Menu / 3-Dots / Overflow / Drawer
+    if any(w in t for w in ("open menu", "menu open", "three dots", "3 dots", "overflow menu", "more options", "மெனு திற", "மெனுவை திற", "மெனு போடு", "drawer open")) or t in ("menu", "மெனு"):
+        return [{"type": "ui_menu", "desc": "Open Menu"}], "menu"
+
+    # --- Dialogs, Popups & Permissions (Allow, Deny, Confirm, Cancel, Dismiss)
+    if any(w in t for w in ("allow permission", "allow it", "click allow", "அனுமதி கொடு", "அனுமதிக்கு")) or t in ("allow", "அனுமதி"):
+        return [{"type": "ui_dialog", "action": "allow", "desc": "Allow"}], "dialog_allow"
+    if any(w in t for w in ("deny permission", "don't allow", "dont allow", "click deny", "மறுக்கவும்", "அனுமதிக்காதே")) or t in ("deny", "மறு"):
+        return [{"type": "ui_dialog", "action": "deny", "desc": "Deny"}], "dialog_deny"
+    if any(w in t for w in ("confirm dialog", "confirm pannu", "உறுதிப்படுத்து")) or t in ("confirm", "உறுதி செய்"):
+        return [{"type": "ui_dialog", "action": "confirm", "desc": "Confirm"}], "ok"
+    if any(w in t for w in ("dismiss popup", "dismiss dialog", "cancel popup", "close popup", "விலக்கு")):
+        return [{"type": "ui_dialog", "action": "cancel", "desc": "Dismiss Popup"}], "ok"
+
+    # --- App Navigation Tabs (Profile, Home, Search, Reels, Orders, Cart, Library, Notifications)
+    m_tab = re.match(r"^(?:open|go\s+to|switch\s+to|select)\s+(?P<tab>home|profile|search|explore|reels|shorts|notifications?|activity|orders?|cart|library|settings?)\s+tab$", t) or \
+            re.match(r"^(?P<tab>home|profile|search|explore|reels|shorts|notifications?|activity|orders?|cart|library|settings?)\s+tab(?:\s+(?:open|thira|select|போடு))?$", t) or \
+            re.match(r"^(?:go\s+to|open)\s+(?P<tab>profile|my\s+orders?|my\s+cart|my\s+library)(?:\s+page|\s+screen)?$", t) or \
+            re.match(r"^(?P<tab>profile|orders?|cart|library)\s*(?:ku|kku|க்கு)\s*(?:po|போ|open|thira|திற)$", t)
+    if m_tab:
+        tb = m_tab.group("tab").strip()
+        return [{"type": "ui_click_tab", "tab": tb, "desc": f"Tab: {tb}"}], "tab:" + tb
+
+    # --- Universal Switch & CheckBox Toggles inside any app
+    m_toggle = re.match(r"^(?:turn\s+on|enable|activate|ஆன் பண்ணு)\s+(?P<feat>.+?)(?:\s+(?:switch|toggle|setting))?$", t) or \
+               re.match(r"^(?P<feat>.+?)\s*(?:ah|a|ஐ)?\s*(?:on|enable|ஆன்)(?:\s+(?:switch|toggle|setting))?$", t)
+    if m_toggle:
+        feat = m_toggle.group("feat").strip()
+        feat = re.sub(r"^(?:the|my)\s+", "", feat)
+        if feat and not any(w in feat for w in ("torch", "flashlight", "wifi", "bluetooth", "hotspot", "data", "screen", "app")):
+            return [{"type": "ui_toggle", "target": feat, "on": True, "desc": f"Turn on {feat}"}], "toggle_on:" + feat
+
+    m_toggle_off = re.match(r"^(?:turn\s+off|disable|deactivate|ஆஃப் பண்ணு)\s+(?P<feat>.+?)(?:\s+(?:switch|toggle|setting))?$", t) or \
+                   re.match(r"^(?P<feat>.+?)\s*(?:ah|a|ஐ)?\s*(?:off|disable|ஆஃப்)(?:\s+(?:switch|toggle|setting))?$", t)
+    if m_toggle_off:
+        feat = m_toggle_off.group("feat").strip()
+        feat = re.sub(r"^(?:the|my)\s+", "", feat)
+        if feat and not any(w in feat for w in ("torch", "flashlight", "wifi", "bluetooth", "hotspot", "data", "screen", "app")):
+            return [{"type": "ui_toggle", "target": feat, "on": False, "desc": f"Turn off {feat}"}], "toggle_off:" + feat
+
+    # --- Universal App Feature Execution (Checkout, Apply Coupon, Filter, Sort, Track Order, etc.)
+    feat_triggers = (
+        "apply coupon", "coupon apply", "apply promo", "கூப்பன் பயன்படுத்து",
+        "checkout", "proceed to checkout", "place order", "ஆர்டர் செய்",
+        "track order", "order track", "ஆர்டரை டிராக் பண்ணு",
+        "filter", "apply filter", "வடிகட்டு",
+        "sort by price", "sort", "வரிசைப்படுத்து",
+        "download video", "download", "பதிவிறக்கு",
+        "save post", "save video", "சேமி",
+        "add address", "முகவரி சேர்",
+        "view details", "details பாரு"
+    )
+    for ft in feat_triggers:
+        if ft in t:
+            return [{"type": "ui_feature", "feature": ft, "desc": f"Feature: {ft}"}], "feature:" + ft
+
+    m_feat = re.match(r"^(?:execute|run|open\s+feature|use\s+feature)\s+(?P<f>.+)$", t) or \
+             re.match(r"^(?P<f>.+?)\s*(?:feature|option)\s*(?:ah|a|ஐ)?\s*(?:open|run|use|போடு|திற)$", t)
+    if m_feat:
+        f_name = m_feat.group("f").strip()
+        if f_name:
+            return [{"type": "ui_feature", "feature": f_name, "desc": f"Feature: {f_name}"}], "feature:" + f_name
+
     m = re.match(r"^(?:click|tap|press|select)\s+(?:on\s+)?(?P<x>.+)$", t) or \
         re.match(r"^(?P<x>.+?)\s*" + PART + r"?\s*(?:click|tap|press|thotta|thodu|தொடு|கிளிக்|タップ|押).*$", t)
     if m:
@@ -916,7 +989,12 @@ SAY = {  # spoken confirmation per language
               "like": "விருப்பம் (Liked).", "share": "பகிர்வு திறக்கப்பட்டது.",
               "subscribe": "பின்தொடரப்பட்டது (Subscribed).", "comment": "கமெண்ட் பகுதி திறக்கப்பட்டது.",
               "cart": "கூடையில் சேர்க்கப்பட்டது.", "read_screen": "திரையில் உள்ளவற்றை பார்க்கிறேன்.",
-              "send_to": "%s-க்கு செய்தி அனுப்பப்படுகிறது.", "music": "%s பாடல் இயக்கப்படுகிறது."},
+              "send_to": "%s-க்கு செய்தி அனுப்பப்படுகிறது.", "music": "%s பாடல் இயக்கப்படுகிறது.",
+              "swipe_left": "இடதுபுறம் ஸ்வைப் செய்கிறேன்.", "swipe_right": "வலதுபுறம் ஸ்வைப் செய்கிறேன்.",
+              "swipe_up": "மேலே ஸ்வைப் செய்கிறேன்.", "swipe_down": "கீழே ஸ்வைப் செய்கிறேன்.",
+              "menu": "மெனு திறக்கப்படுகிறது.", "dialog_allow": "அனுமதிக்கப்பட்டது.", "dialog_deny": "நிராகரிக்கப்பட்டது.",
+              "tab": "%s பகுதிக்கு செல்கிறேன்.", "toggle_on": "%s ஆன் செய்யப்பட்டது.", "toggle_off": "%s ஆஃப் செய்யப்பட்டது.",
+              "feature": "%s செய்யப்படுகிறது."},
     "en-US": {"app": "Opening %s.", "search": "Searching %s.", "call": "Calling %s right now.",
               "nth": "Opening number %d.", "ok": "Done.", "yt": "Playing %s on YouTube.",
               "google": "Searching %s on Google.", "google_page": "Opening Google.",
@@ -935,7 +1013,12 @@ SAY = {  # spoken confirmation per language
               "like": "Liked.", "share": "Share opened.",
               "subscribe": "Subscribed / Followed.", "comment": "Comments opened.",
               "cart": "Added to cart.", "read_screen": "Reading screen.",
-              "send_to": "Sending message to %s.", "music": "Playing %s."},
+              "send_to": "Sending message to %s.", "music": "Playing %s.",
+              "swipe_left": "Swiping left.", "swipe_right": "Swiping right.",
+              "swipe_up": "Swiping up.", "swipe_down": "Swiping down.",
+              "menu": "Menu opened.", "dialog_allow": "Allowed.", "dialog_deny": "Denied.",
+              "tab": "Opening %s tab.", "toggle_on": "Turned on %s.", "toggle_off": "Turned off %s.",
+              "feature": "Executing %s."},
     "ja-JP": {"app": "%sを開きます。", "search": "%sを検索します。", "call": "%sに電話をかけています。",
               "nth": "%d番目を開きます。", "ok": "はい。", "yt": "YouTubeで%sを再生します。",
               "google": "Googleで%sを検索します。", "google_page": "Googleを開きます。",
@@ -954,7 +1037,12 @@ SAY = {  # spoken confirmation per language
               "like": "いいねしました。", "share": "共有を開きました。",
               "subscribe": "登録しました。", "comment": "コメントを開きました。",
               "cart": "カートに追加しました。", "read_screen": "画面を確認しています。",
-              "send_to": "%sにメッセージを送信しています。", "music": "%sを再生します。"},
+              "send_to": "%sにメッセージを送信しています。", "music": "%sを再生します。",
+              "swipe_left": "左にスワイプします。", "swipe_right": "右にスワイプします。",
+              "swipe_up": "上にスワイプします。", "swipe_down": "下にスワイプします。",
+              "menu": "メニューを開きました。", "dialog_allow": "許可しました。", "dialog_deny": "拒否しました。",
+              "tab": "%sタブを開きます。", "toggle_on": "%sをオンにしました。", "toggle_off": "%sをオフにしました。",
+              "feature": "%sを実行します。"},
 }
 
 
@@ -1010,6 +1098,17 @@ def local_command(text, lang="en-US"):
         elif kind.startswith("send_to:"): said.append(s.get("send_to", "Sending message to %s.") % kind[8:])
         elif kind.startswith("music:"): said.append(s.get("music", "Playing %s.") % kind[6:])
         elif kind == "stop": said.append(s.get("stop", "OK"))
+        elif kind == "swipe_left": said.append(s.get("swipe_left", "Swiping left."))
+        elif kind == "swipe_right": said.append(s.get("swipe_right", "Swiping right."))
+        elif kind == "swipe_up": said.append(s.get("swipe_up", "Swiping up."))
+        elif kind == "swipe_down": said.append(s.get("swipe_down", "Swiping down."))
+        elif kind == "menu": said.append(s.get("menu", "Menu opened."))
+        elif kind == "dialog_allow": said.append(s.get("dialog_allow", "Allowed."))
+        elif kind == "dialog_deny": said.append(s.get("dialog_deny", "Denied."))
+        elif kind.startswith("tab:"): said.append(s.get("tab", "Opening %s tab.") % kind[4:])
+        elif kind.startswith("toggle_on:"): said.append(s.get("toggle_on", "Turned on %s.") % kind[10:])
+        elif kind.startswith("toggle_off:"): said.append(s.get("toggle_off", "Turned off %s.") % kind[11:])
+        elif kind.startswith("feature:"): said.append(s.get("feature", "Executing %s.") % kind[8:])
         else: said.append(s["ok"])
     return {"speech": " ".join(said), "actions": actions}
 
