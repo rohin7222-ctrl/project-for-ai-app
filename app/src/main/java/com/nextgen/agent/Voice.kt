@@ -2,9 +2,12 @@ package com.nextgen.agent
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
 import android.media.AudioManager
+import android.media.AudioPlaybackConfiguration
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -13,6 +16,7 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.telephony.TelephonyManager
 import android.util.Log
 import java.util.Locale
 
@@ -40,6 +44,8 @@ class Voice(
         private set
     var active = false; private set
     var standby = false; private set
+    @Volatile private var lastTtsEndTime: Long = 0L
+    private var ttsWatchdogRunnable: Runnable? = null
 
     var lang = "ta-IN"
     var female = true
@@ -120,17 +126,53 @@ class Voice(
 
     /** Returns true if active phone call is ringing or ongoing */
     fun isPhoneCallActive(): Boolean {
+        if (pausedForCall) return true
+        val tm = ctx.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+        if (tm != null) {
+            try {
+                @Suppress("DEPRECATION")
+                if (tm.callState != TelephonyManager.CALL_STATE_IDLE) {
+                    return true
+                }
+            } catch (ignored: Exception) {}
+        }
         val am = audioManager ?: return false
         val mode = am.mode
-        return mode == AudioManager.MODE_IN_CALL ||
-               mode == AudioManager.MODE_IN_COMMUNICATION ||
-               mode == AudioManager.MODE_RINGTONE
+        return mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_RINGTONE
     }
 
     /** Returns true if third-party media or video is currently playing audio */
     fun isMediaPlaying(): Boolean {
         if (holding) return false // Assistant's own speech should not count as external media
+        if (System.currentTimeMillis() - lastTtsEndTime < 1500L) return false // Trailing TTS AudioTrack grace period
         val am = audioManager ?: return false
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val configs = try { am.activePlaybackConfigurations } catch (e: Exception) { null }
+            if (configs != null) {
+                val hasActive = configs.any { c ->
+                    val usage = c.audioAttributes?.usage ?: return@any false
+                    val isMedia = usage == AudioAttributes.USAGE_MEDIA || usage == AudioAttributes.USAGE_GAME
+                    if (!isMedia) return@any false
+
+                    val str = c.toString().lowercase(Locale.ROOT)
+                    if (str.contains("paused") || str.contains("stopped") || str.contains("idle") || str.contains("released")) {
+                        return@any false
+                    }
+                    if (str.contains("started")) {
+                        return@any true
+                    }
+                    try {
+                        val field = c.javaClass.getDeclaredField("mPlayerState").apply { isAccessible = true }
+                        val state = field.getInt(c)
+                        return@any state == 2 // 2 = PLAYER_STATE_STARTED
+                    } catch (ignored: Exception) {}
+
+                    true
+                }
+                return hasActive
+            }
+        }
         return am.isMusicActive
     }
 
@@ -148,9 +190,17 @@ class Voice(
     /** Resume voice engine after a phone call has ended */
     fun resumeAfterCall(wasActive: Boolean, wasStandby: Boolean) {
         pausedForCall = false
+        try {
+            audioManager?.let { am ->
+                if (am.mode != AudioManager.MODE_NORMAL) {
+                    am.mode = AudioManager.MODE_NORMAL
+                }
+            }
+        } catch (ignored: Exception) {}
+
         if (wasActive) {
             start()
-        } else if (wasStandby && autoWakeEnabled) {
+        } else if (wasStandby || autoWakeEnabled) {
             startStandby()
         }
     }
@@ -171,18 +221,24 @@ class Voice(
         if (pausedForCall || isPhoneCallActive()) return
         if (wasActive) {
             start()
-        } else if (wasStandby && autoWakeEnabled) {
+        } else if (wasStandby || autoWakeEnabled) {
             startStandby()
         }
     }
 
     private fun release() {
+        ttsWatchdogRunnable?.let { main.removeCallbacks(it) }
+        ttsWatchdogRunnable = null
         holding = false
-        if (pausedForCall || isPhoneCallActive() || pausedForMedia || isMediaPlaying()) return
+        lastTtsEndTime = System.currentTimeMillis()
+        if (pausedForCall || isPhoneCallActive()) return
+        if (pausedForMedia || isMediaPlaying()) return
         if (active) {
             listen()
         } else if (standby && autoWakeEnabled) {
             listenStandby()
+        } else if (autoWakeEnabled && !active && !standby) {
+            startStandby()
         }
     }
 
@@ -232,7 +288,16 @@ class Voice(
 
     /** Enables low-power standby wake-word listening when not actively conversing */
     fun startStandby() {
-        if (active || pausedForCall || isPhoneCallActive() || pausedForMedia || isMediaPlaying()) return
+        if (active) return
+        if (pausedForCall || isPhoneCallActive()) {
+            main.postDelayed({
+                if (!active && !standby && autoWakeEnabled && !pausedForCall && !isPhoneCallActive()) {
+                    startStandby()
+                }
+            }, 500)
+            return
+        }
+        if (pausedForMedia || isMediaPlaying()) return
         standby = true
         holding = false
         listenStandby()
@@ -252,6 +317,8 @@ class Voice(
     }
 
     fun shutdown() {
+        ttsWatchdogRunnable?.let { main.removeCallbacks(it) }
+        ttsWatchdogRunnable = null
         active = false
         standby = false
         holding = false
@@ -266,7 +333,15 @@ class Voice(
     }
 
     fun speak(text: String) {
-        val t = tts ?: return
+        val t = tts ?: run {
+            release()
+            return
+        }
+        val clean = text.trim()
+        if (clean.isBlank()) {
+            release()
+            return
+        }
         holding = true
         restoreBeep()
         main.post {
@@ -274,6 +349,17 @@ class Voice(
                 sr?.cancel()
             } catch (ignored: Exception) {}
         }
+
+        ttsWatchdogRunnable?.let { main.removeCallbacks(it) }
+        val maxDurationMs = (clean.length * 120L + 4000L).coerceIn(4000L, 20000L)
+        val watchdog = Runnable {
+            if (holding) {
+                Log.w("VoiceEngine", "TTS watchdog triggered after ${maxDurationMs}ms")
+                release()
+            }
+        }
+        ttsWatchdogRunnable = watchdog
+        main.postDelayed(watchdog, maxDurationMs)
 
         // Guarantee media stream volume is audible so the speech isn't silent
         try {
@@ -289,7 +375,8 @@ class Voice(
         val loc = Locale.forLanguageTag(lang)
         t.language = loc
         applyVoiceAndPitch(t, loc, female)
-        if (t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "u" + System.nanoTime()) != TextToSpeech.SUCCESS) {
+        val utteranceId = "u" + System.nanoTime()
+        if (t.speak(clean, TextToSpeech.QUEUE_FLUSH, null, utteranceId) != TextToSpeech.SUCCESS) {
             release()
         }
     }

@@ -787,13 +787,15 @@ class MainActivity : FragmentActivity() {
                 stopProximityListening()
                 if (isInPhoneCall) {
                     isInPhoneCall = false
+                    val wasActive = wasActiveBeforeCall
+                    val wasStandby = wasStandbyBeforeCall
+                    wasActiveBeforeCall = false
+                    wasStandbyBeforeCall = false
                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                         if (!isInPhoneCall) {
-                            voice.resumeAfterCall(wasActiveBeforeCall, wasStandbyBeforeCall)
-                            wasActiveBeforeCall = false
-                            wasStandbyBeforeCall = false
+                            voice.resumeAfterCall(wasActive, wasStandby)
                         }
-                    }, 1000)
+                    }, 350)
                 }
             }
         }
@@ -814,10 +816,10 @@ class MainActivity : FragmentActivity() {
             } catch (ignored: Exception) {}
         }
 
-        // Active background monitor: polls every 1s to detect media play/pause across all apps
+        // Active background monitor: polls every 500ms to detect media play/pause across all apps
         mediaMonitorJob = lifecycleScope.launch {
             while (isActive) {
-                delay(1000)
+                delay(500)
                 checkMediaState()
             }
         }
@@ -864,7 +866,7 @@ class MainActivity : FragmentActivity() {
                     }
                 }
                 mediaStopRunnable = r
-                mediaStopHandler?.postDelayed(r, 1200)
+                mediaStopHandler?.postDelayed(r, 300)
             }
         }
     }
