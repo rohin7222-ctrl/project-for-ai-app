@@ -84,6 +84,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -557,7 +558,10 @@ internal fun MainActivity.MainScreen() {
                                 Box(
                                     modifier = Modifier
                                         .size(16.dp)
-                                        .scale(beaconPulse)
+                                        .graphicsLayer {
+                                            scaleX = beaconPulse
+                                            scaleY = beaconPulse
+                                        }
                                         .clip(CircleShape)
                                         .background(dotColor.copy(alpha = 0.28f))
                                 )
@@ -684,7 +688,10 @@ internal fun MainActivity.MainScreen() {
                             Box(
                                 Modifier
                                     .size(175.dp)
-                                    .scale(logoPulse)
+                                    .graphicsLayer {
+                                        scaleX = logoPulse
+                                        scaleY = logoPulse
+                                    }
                                     .clip(CircleShape)
                                     .background(
                                         Brush.radialGradient(
@@ -773,15 +780,7 @@ internal fun MainActivity.MainScreen() {
                                             shadowElevation = 4.dp,
                                             modifier = Modifier.widthIn(max = 300.dp)
                                         ) {
-                                            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                                                Text(
-                                                    text = "// USER",
-                                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFF00E5FF).copy(alpha = 0.85f),
-                                                    modifier = Modifier.padding(bottom = 2.dp)
-                                                )
+                                            Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                                                 Text(
                                                     text = m.text,
                                                     color = Color.White,
@@ -846,9 +845,8 @@ internal fun MainActivity.MainScreen() {
                                             BouncingDots()
                                             Spacer(Modifier.width(4.dp))
                                             Text(
-                                                text = "// QUANTUM REASONING...",
-                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                                fontSize = 11.5.sp,
+                                                text = "Thinking...",
+                                                fontSize = 12.sp,
                                                 color = Color(0xFF00E5FF),
                                                 fontWeight = FontWeight.Bold
                                             )
@@ -895,26 +893,17 @@ internal fun MainActivity.MainScreen() {
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 GeminiLiveWave()
-                                Column {
-                                    Text(
-                                        text = if (liveSpeechText.isNotBlank()) liveSpeechText else tr("listening"),
-                                        fontSize = 13.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        text = if (liveSpeechText.isNotBlank()) "[ VOICE STREAMING ]" else "[ GEMINI LIVE // READY ]",
-                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                        fontSize = 10.sp,
-                                        color = Color(0xFF00E5FF),
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
+                                Text(
+                                    text = if (liveSpeechText.isNotBlank()) liveSpeechText else tr("listening"),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1
+                                )
                             }
 
                             // Compact Stop button

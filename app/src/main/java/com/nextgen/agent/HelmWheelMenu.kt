@@ -263,6 +263,96 @@ fun CornerHelmWheel(
                     if (!isSpinning) onDismissRequest()
                 }
         ) {
+            // Active Floating Tooltip Label Chip (High Contrast in both Light & Dark modes)
+            activeItem?.let { act ->
+                val chipAlignment = when (position) {
+                    WheelPosition.TOP_RIGHT -> Alignment.TopStart
+                    WheelPosition.BOTTOM_RIGHT -> Alignment.BottomStart
+                }
+                val chipPadding = when (position) {
+                    WheelPosition.TOP_RIGHT -> Modifier.padding(start = 20.dp, top = 80.dp)
+                    WheelPosition.BOTTOM_RIGHT -> Modifier.padding(start = 20.dp, bottom = 125.dp)
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(22.dp),
+                    color = if (isDark) Color(0xFF0F172A).copy(alpha = 0.96f) else Color.White,
+                    border = BorderStroke(2.dp, Brush.horizontalGradient(listOf(act.accentColor, act.accentColor.copy(alpha = 0.65f)))),
+                    shadowElevation = 10.dp,
+                    modifier = Modifier
+                        .align(chipAlignment)
+                        .then(chipPadding)
+                        .clip(RoundedCornerShape(22.dp))
+                        .clickable(enabled = !isSpinning) {
+                            isSpinning = true
+                            spinningItemId = act.id
+                            try {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            } catch (ignored: Exception) {}
+                            coroutineScope.launch {
+                                shockwaveAnim.snapTo(0f)
+                                launch { shockwaveAnim.animateTo(1f, tween(480, easing = FastOutSlowInEasing)) }
+                                rotationAngle.animateTo(
+                                    targetValue = rotationAngle.value + 360f,
+                                    animationSpec = tween(520, easing = CubicBezierEasing(0.22f, 0.95f, 0.3f, 1.0f))
+                                )
+                                isSpinning = false
+                                spinningItemId = null
+                                act.onClick()
+                            }
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.radialGradient(
+                                        listOf(act.accentColor.copy(alpha = 0.35f), act.accentColor.copy(alpha = 0.10f))
+                                    )
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = act.icon,
+                                contentDescription = act.label,
+                                modifier = Modifier.size(19.dp),
+                                tint = act.accentColor
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = act.label,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Black,
+                                color = if (isDark) Color.White else Color(0xFF0F172A)
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "தட்டவும் • Tap to activate",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = act.accentColor
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.Bolt,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(11.dp),
+                                    tint = act.accentColor
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
         // Corner Helm Wheel Container
         Box(

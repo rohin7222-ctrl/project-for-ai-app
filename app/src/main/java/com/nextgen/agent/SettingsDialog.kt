@@ -247,96 +247,64 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                                             }
                                         )
                                     }
-                                }
-                            }
 
-                            // Raise to Ear Auto-Answer Setting Card
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                                border = BorderStroke(1.dp, if (cfg.raiseToAnswer) Color(0xFF10B981).copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(vertical = 4.dp),
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                                    )
+
                                     Row(
-                                        modifier = Modifier.weight(1f).padding(end = 12.dp),
+                                        modifier = Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = if (cfg.raiseToAnswer) Color(0xFF10B981).copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant,
-                                            modifier = Modifier.size(38.dp)
-                                        ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Icon(
-                                                    Icons.Default.PhoneInTalk,
-                                                    null,
-                                                    tint = if (cfg.raiseToAnswer) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                            }
-                                        }
-                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                Text(
-                                                    text = tr("raise_to_answer"),
-                                                    fontSize = 14.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.onSurface
-                                                )
+                                        Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text(tr("raise_to_answer"), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                                                 if (cfg.raiseToAnswer) {
                                                     Surface(
-                                                        shape = RoundedCornerShape(6.dp),
+                                                        shape = RoundedCornerShape(4.dp),
                                                         color = Color(0xFF10B981).copy(alpha = 0.18f)
                                                     ) {
                                                         Text(
                                                             text = tr("raise_to_answer_bg_badge"),
-                                                            fontSize = 9.sp,
+                                                            fontSize = 8.5.sp,
                                                             fontWeight = FontWeight.Bold,
                                                             color = Color(0xFF10B981),
-                                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                                                         )
                                                     }
                                                 }
                                             }
-                                            Text(
-                                                text = tr("raise_to_answer_sub"),
-                                                fontSize = 11.sp,
-                                                lineHeight = 15.sp,
-                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
-                                            )
+                                            Text(tr("raise_to_answer_sub"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                                         }
-                                    }
-                                    Switch(
-                                        checked = cfg.raiseToAnswer,
-                                        onCheckedChange = { checked ->
-                                            if (checked) {
-                                                val needed = mutableListOf<String>()
-                                                if (!has(Manifest.permission.ANSWER_PHONE_CALLS)) needed.add(Manifest.permission.ANSWER_PHONE_CALLS)
-                                                if (!has(Manifest.permission.READ_PHONE_STATE)) needed.add(Manifest.permission.READ_PHONE_STATE)
-                                                if (needed.isNotEmpty()) {
-                                                    permLauncher.launch(needed.toTypedArray())
+                                        Switch(
+                                            checked = cfg.raiseToAnswer,
+                                            onCheckedChange = { checked ->
+                                                if (checked) {
+                                                    val needed = mutableListOf<String>()
+                                                    if (!has(Manifest.permission.ANSWER_PHONE_CALLS)) needed.add(Manifest.permission.ANSWER_PHONE_CALLS)
+                                                    if (!has(Manifest.permission.READ_PHONE_STATE)) needed.add(Manifest.permission.READ_PHONE_STATE)
+                                                    if (needed.isNotEmpty()) {
+                                                        permLauncher.launch(needed.toTypedArray())
+                                                    }
                                                 }
-                                            }
-                                            upd { it.copy(raiseToAnswer = checked) }
-                                            Toast.makeText(
-                                                activity,
-                                                if (checked) "✅ ${tr("raise_to_answer")} ON" else "❌ ${tr("raise_to_answer")} OFF",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        },
-                                        colors = SwitchDefaults.colors(
-                                            checkedThumbColor = Color.White,
-                                            checkedTrackColor = Color(0xFF10B981)
+                                                upd { it.copy(raiseToAnswer = checked) }
+                                                Toast.makeText(
+                                                    activity,
+                                                    if (checked) "✅ ${tr("raise_to_answer")} ON" else "❌ ${tr("raise_to_answer")} OFF",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            },
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = Color.White,
+                                                checkedTrackColor = Color(0xFF10B981)
+                                            )
                                         )
-                                    )
+                                    }
                                 }
                             }
 

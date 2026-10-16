@@ -191,41 +191,20 @@ fun AiAnswerCard(
                 Column(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
                 ) {
-                    // Futuristic Header tag: Model identity & Time
-                    if (msg.isAiResponse) {
+                    // Header Time tag (clean without bracket telemetry)
+                    if (msg.isAiResponse && msg.time.isNotBlank()) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(bottom = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .padding(bottom = 6.dp),
+                            horizontalArrangement = Arrangement.End
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.5.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFF00E5FF))
-                                )
-                                Text(
-                                    text = "[ AI CORE // ${(activity.cfg.model.ifBlank { "Aero Fenix" }).uppercase(Locale.ROOT)} ]",
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDark) Color(0xFF00E5FF) else Color(0xFF4F46E5)
-                                )
-                            }
-                            if (msg.time.isNotBlank()) {
-                                Text(
-                                    text = "[ ${msg.time} ]",
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 9.5.sp,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
-                                )
-                            }
+                            Text(
+                                text = msg.time,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 9.5.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                            )
                         }
                     }
 
