@@ -15,7 +15,7 @@
 
 ## Build
 1. Install Android Studio (Koala or newer), JDK 17, and Python 3.11 on the PC (Chaquopy needs it at build time).
-2. File > Open > NextGenAIAgent folder > let Gradle sync (Gradle 8.9).
+2. File > Open > AeroFenix folder > let Gradle sync (Gradle 8.9).
 3. Run on a REAL phone (Android 11+). Emulator has no good speech engine.
 4. First Start tap: allow Mic, Phone, Contacts, SMS permissions.
 5. Gear menu > "Enable system control" > turn on Aero Fenix in Accessibility (Home/Back/Recents/lock/screenshot).
@@ -24,4 +24,4 @@
 ## APK without a PC (GitHub Actions)
 1. Create a new GitHub repo, upload ALL files of this project (keep the .github folder).
 2. Actions tab > "Build APK" > Run workflow (it also runs on every push).
-3. When green, open the run > Artifacts > NextGenAIAgent-apk > download > unzip > install app-debug.apk.
+3. When green, open the run > Artifacts > AeroFenix-apk > download > unzip > install app-debug.apk.
