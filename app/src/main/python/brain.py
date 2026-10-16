@@ -1,4 +1,4 @@
-"""NextGen AI Agent - the 'brain'. Runs inside the Android app via Chaquopy.
+"""Aero Fenix - the 'brain'. Runs inside the Android app via Chaquopy.
 Standard library only. Talks to Gemini, Groq, OpenAI, Claude, OpenRouter,
 Mistral, DeepSeek or a local Ollama / OpenAI-compatible server, and turns the
 answer into {"speech": "...", "actions": [...]} for the Java DeviceController."""
@@ -332,7 +332,7 @@ def _quick_local_answer(text, cfg):
     t = text.strip().lower()
     t_clean = re.sub(r"[?!.,]+", "", t).strip()
     lang = cfg.get("lang", "en-US")
-    name = cfg.get("name") or "NextGen AI"
+    name = cfg.get("name") or "Aero Fenix"
 
     # 1. Identity / Name
     if re.search(r"^(?:who are you|what is your name|your name|who made you|un per enna|unga peru enna|நீ யார்|உன் பெயர் என்ன|名前は何ですか|あなたは誰ですか)$", t_clean):

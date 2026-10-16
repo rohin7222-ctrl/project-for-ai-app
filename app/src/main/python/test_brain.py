@@ -1,4 +1,4 @@
-"""Unit tests for the NextGen AI Agent local command parser in brain.py.
+"""Unit tests for the Aero Fenix local command parser in brain.py.
 Tests Tamil, English, and Japanese commands, multi-step actions, and edge cases.
 """
 import sys

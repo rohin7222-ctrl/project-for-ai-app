@@ -45,7 +45,7 @@
         android:name="com.chaquo.python.android.PyApplication"
         android:icon="@drawable/ic_launcher"
         android:roundIcon="@drawable/ic_launcher"
-        android:label="NextGen AI Agent"
+        android:label="Aero Fenix"
         android:allowBackup="false"
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.App">
@@ -68,7 +68,7 @@
 
         <service
             android:name=".AgentNotificationListenerService"
-            android:label="NextGen Notification Reader"
+            android:label="Aero Fenix Notification Reader"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
             android:exported="true">
             <intent-filter>
@@ -78,7 +78,7 @@
 
         <service
             android:name=".AgentAccessibilityService"
-            android:label="NextGen AI Agent"
+            android:label="Aero Fenix"
             android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>

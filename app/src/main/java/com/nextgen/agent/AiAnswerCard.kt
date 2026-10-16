@@ -211,7 +211,7 @@ fun AiAnswerCard(
                                         .background(GeminiCyan)
                                 )
                                 Text(
-                                    text = activity.cfg.model.ifBlank { "NextGen AI" },
+                                    text = activity.cfg.model.ifBlank { "Aero Fenix" },
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = GeminiBlue

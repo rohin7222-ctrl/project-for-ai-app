@@ -508,7 +508,7 @@ internal fun MainActivity.MainScreen() {
                                     .background(dotColor)
                             )
                             Text(
-                                text = cfg.name.ifBlank { "NextGen AI" },
+                                text = cfg.name.ifBlank { "Aero Fenix" },
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -651,7 +651,7 @@ internal fun MainActivity.MainScreen() {
                                 ) {
                                     Image(
                                         painter = painterResource(id = R.drawable.app_logo),
-                                        contentDescription = "NextGen AI Logo",
+                                        contentDescription = "Aero Fenix Logo",
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .scale(1.22f)
@@ -701,7 +701,7 @@ internal fun MainActivity.MainScreen() {
                                         .background(if (cfg.autoWakeEnabled) Color(0xFF10B981) else Color(0xFF38BDF8))
                                 )
                                 Text(
-                                    text = if (cfg.autoWakeEnabled) "Wake Word Ready: \"${cfg.commandingWord}\"" else "NextGen AI Assistant Ready",
+                                    text = if (cfg.autoWakeEnabled) "Wake Word Ready: \"${cfg.commandingWord}\"" else "Aero Fenix Assistant Ready",
                                     fontSize = 11.5.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = if (cfg.autoWakeEnabled) Color(0xFF10B981) else if (isDark) Color(0xFF7DD3FC) else Color(0xFF0284C7)

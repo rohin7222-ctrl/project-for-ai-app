@@ -277,7 +277,7 @@ class EarToCallManager private constructor(appContext: Context) {
             if (wakeLock == null) {
                 wakeLock = powerManager?.newWakeLock(
                     PowerManager.PARTIAL_WAKE_LOCK,
-                    "NextGenAI:EarToCallWakeLock"
+                    "AeroFenix:EarToCallWakeLock"
                 )
             }
             if (wakeLock?.isHeld == false) {

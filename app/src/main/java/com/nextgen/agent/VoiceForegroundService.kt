@@ -132,7 +132,7 @@ class VoiceForegroundService : Service() {
     private fun buildForegroundNotification(): Notification {
         val store = Store(this)
         val cfg = store.load()
-        val appName = cfg.name.ifBlank { "NextGen AI" }
+        val appName = cfg.name.ifBlank { "Aero Fenix" }
         val wakeWord = cfg.commandingWord.ifBlank { appName }
 
         val openIntent = Intent(this, MainActivity::class.java).apply {
@@ -169,7 +169,7 @@ class VoiceForegroundService : Service() {
             val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
             wakeLock = pm?.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
-                "NextGenAI:VoiceForegroundWakeLock"
+                "AeroFenix:VoiceForegroundWakeLock"
             )?.apply {
                 setReferenceCounted(false)
                 acquire(10 * 60 * 1000L) // 10 minute chunks, refreshed

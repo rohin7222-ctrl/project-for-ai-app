@@ -1141,7 +1141,7 @@ class MainActivity : FragmentActivity() {
                         ) {
                             Image(
                                 painter = painterResource(id = R.drawable.app_logo),
-                                contentDescription = "NextGen AI Logo",
+                                contentDescription = "Aero Fenix Logo",
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .scale(1.22f)

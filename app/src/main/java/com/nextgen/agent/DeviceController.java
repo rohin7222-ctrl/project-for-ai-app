@@ -953,7 +953,7 @@ public class DeviceController {
             Intent intent = new Intent(Intent.ACTION_INSERT)
                     .setData(android.provider.CalendarContract.Events.CONTENT_URI)
                     .putExtra(android.provider.CalendarContract.Events.TITLE, title != null && !title.isEmpty() ? title : "Reminder")
-                    .putExtra(android.provider.CalendarContract.Events.DESCRIPTION, "Created by NextGen AI Assistant")
+                    .putExtra(android.provider.CalendarContract.Events.DESCRIPTION, "Created by Aero Fenix Assistant")
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             ctx.startActivity(intent);
             return "OK";

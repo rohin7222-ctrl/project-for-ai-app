@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="logo.png" alt="NextGen AI Agent logo" width="220">
+  <img src="logo.png" alt="Aero Fenix logo" width="220">
 </p>
 
-# NextGen AI Agent (Kotlin + Java + Python)
+# Aero Fenix (Kotlin + Java + Python)
 
 ## How it works
 - **Commands run locally** (no internet, no API key): open any app, call a name/number, search inside any app, open the 1st/2nd/3rd chat or video, click, type, scroll, torch, volume, alarm, timer, Home/Back/screenshot. Several commands in one sentence work: "open WhatsApp, search Amma, open first chat".
@@ -18,7 +18,7 @@
 2. File > Open > NextGenAIAgent folder > let Gradle sync (Gradle 8.9).
 3. Run on a REAL phone (Android 11+). Emulator has no good speech engine.
 4. First Start tap: allow Mic, Phone, Contacts, SMS permissions.
-5. Gear menu > "Enable system control" > turn on NextGen AI Agent in Accessibility (Home/Back/Recents/lock/screenshot).
+5. Gear menu > "Enable system control" > turn on Aero Fenix in Accessibility (Home/Back/Recents/lock/screenshot).
 6. Say: "Amma ku call pannu", "WhatsApp open pannu", "7 mani ku alarm vei", "torch on pannu".
 
 ## APK without a PC (GitHub Actions)
