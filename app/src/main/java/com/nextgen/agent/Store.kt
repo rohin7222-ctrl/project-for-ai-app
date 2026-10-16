@@ -85,24 +85,31 @@ class Store(val ctx: Context) {
     }
 
     companion object {
+        @JvmField
         @Volatile
         var latestOtp: String = ""
 
+        @JvmField
         @Volatile
         var userName: String = ""
 
+        @JvmField
         @Volatile
         var userPhone: String = ""
 
+        @JvmField
         @Volatile
         var userEmail: String = ""
 
+        @JvmField
         @Volatile
         var userAddress: String = ""
 
+        @JvmField
         @Volatile
         var failedBiometricAttempts: Int = 0
 
+        @JvmStatic
         fun resetBiometrics() {
             failedBiometricAttempts = 0
         }

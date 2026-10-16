@@ -177,13 +177,13 @@ fun AiAnswerCard(
                         else if (isDark) Color(0xFF0E1322)
                         else Color(0xFFFFFFFF),
                 tonalElevation = 3.dp,
-                shadowElevation = 6.dp,
-                border = BorderStroke(
-                    1.2.dp,
-                    if (msg.isError) MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
-                    else if (isDark) Brush.horizontalGradient(listOf(Color(0xFF00E5FF).copy(alpha = 0.45f), Color(0xFF8B5CF6).copy(alpha = 0.45f)))
-                    else Brush.horizontalGradient(listOf(Color(0xFF4F46E5).copy(alpha = 0.35f), Color(0xFF00E5FF).copy(alpha = 0.35f)))
-                ),
+                border = if (msg.isError) {
+                    BorderStroke(1.2.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.6f))
+                } else if (isDark) {
+                    BorderStroke(1.2.dp, Brush.horizontalGradient(listOf(Color(0xFF00E5FF).copy(alpha = 0.45f), Color(0xFF8B5CF6).copy(alpha = 0.45f))))
+                } else {
+                    BorderStroke(1.2.dp, Brush.horizontalGradient(listOf(Color(0xFF4F46E5).copy(alpha = 0.35f), Color(0xFF00E5FF).copy(alpha = 0.35f))))
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .animateContentSize()
