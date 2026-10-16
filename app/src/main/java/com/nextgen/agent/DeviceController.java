@@ -91,6 +91,28 @@ public class DeviceController {
         KNOWN_PACKAGES.put("phonepe", new String[]{"com.phonepe.app"});
         KNOWN_PACKAGES.put("uber", new String[]{"com.ubercab"});
         KNOWN_PACKAGES.put("ola", new String[]{"com.olacabs.customer"});
+        KNOWN_PACKAGES.put("rapido", new String[]{"com.rapido.passenger"});
+        KNOWN_PACKAGES.put("jiosaavn", new String[]{"com.jio.media.jiobeats"});
+        KNOWN_PACKAGES.put("saavn", new String[]{"com.jio.media.jiobeats"});
+        KNOWN_PACKAGES.put("wynk", new String[]{"com.bsb.hns"});
+        KNOWN_PACKAGES.put("gaana", new String[]{"com.gaana"});
+        KNOWN_PACKAGES.put("youtube music", new String[]{"com.google.android.apps.youtube.music"});
+        KNOWN_PACKAGES.put("yt music", new String[]{"com.google.android.apps.youtube.music"});
+        KNOWN_PACKAGES.put("apple music", new String[]{"com.apple.android.music"});
+        KNOWN_PACKAGES.put("prime video", new String[]{"com.amazon.avod.thirdpartyclient"});
+        KNOWN_PACKAGES.put("hotstar", new String[]{"in.startv.hotstar"});
+        KNOWN_PACKAGES.put("disney", new String[]{"in.startv.hotstar"});
+        KNOWN_PACKAGES.put("sonyliv", new String[]{"com.sonyliv"});
+        KNOWN_PACKAGES.put("zee5", new String[]{"com.graymatrix.did"});
+        KNOWN_PACKAGES.put("jiocinema", new String[]{"com.jio.media.ondemand"});
+        KNOWN_PACKAGES.put("jio cinema", new String[]{"com.jio.media.ondemand"});
+        KNOWN_PACKAGES.put("meesho", new String[]{"com.meesho.supply"});
+        KNOWN_PACKAGES.put("myntra", new String[]{"com.myntra.android"});
+        KNOWN_PACKAGES.put("ajio", new String[]{"com.ril.ajio"});
+        KNOWN_PACKAGES.put("zepto", new String[]{"com.zeptoconsumerapp"});
+        KNOWN_PACKAGES.put("blinkit", new String[]{"com.grofers.customerapp"});
+        KNOWN_PACKAGES.put("bigbasket", new String[]{"com.bigbasket.mobileapp"});
+        KNOWN_PACKAGES.put("cred", new String[]{"com.dreamplug.androidapp"});
     }
 
     /** Actions that cost money / affect other people: the UI asks the user to confirm first. */
@@ -105,7 +127,8 @@ public class DeviceController {
                 case "call": return call(a.optString("target"));
                 case "sms": return sms(a.optString("target"), a.optString("text"));
                 case "open_app": return openApp(a.optString("name"));
-                case "chat": return openChat(a.optString("app"), a.optString("target"));
+                case "chat": return openChat(a.optString("app"), a.optString("target"), a.optString("text"));
+                case "music_play": return playMusic(a.optString("query"), a.optString("app"));
                 case "google_search":
                 case "web_search": return webSearch(a.optString("query"));
                 case "youtube": return openYouTube(a.optString("query"), false);
@@ -148,6 +171,11 @@ public class DeviceController {
                 case "ui_scroll": return ui(4, a);
                 case "ui_clear_text": return ui(5, a);
                 case "ui_open_last_file": return ui(6, a);
+                case "ui_smart_click": return ui(7, a);
+                case "ui_swipe_reels": return ui(8, a);
+                case "ui_type_composer": return ui(9, a);
+                case "ui_read_screen": return ui(10, a);
+                case "ui_open_item": return ui(11, a);
                 default: return "ERR:unknown action " + type;
             }
         } catch (Exception e) {
@@ -445,6 +473,10 @@ public class DeviceController {
     }
 
     public String openChat(String app, String target) {
+        return openChat(app, target, null);
+    }
+
+    public String openChat(String app, String target, String text) {
         String a = (app == null) ? "whatsapp" : app.toLowerCase(Locale.ROOT).trim();
         if (a.contains("insta")) {
             return openInstagramDirect(target);
@@ -463,14 +495,27 @@ public class DeviceController {
         String num = resolveNumber(target);
         if (num != null) {
             String digits = num.replaceAll("[^0-9]", "");
+            String url = "https://api.whatsapp.com/send?phone=" + digits;
+            if (text != null && !text.trim().isEmpty()) {
+                url += "&text=" + Uri.encode(text.trim());
+            }
             try {
-                Intent wa = new Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=" + digits));
+                Intent wa = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                 wa.setPackage("com.whatsapp");
                 wa.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 ctx.startActivity(wa);
+                if (text != null && !text.trim().isEmpty()) {
+                    new Thread(() -> {
+                        try { Thread.sleep(1500); } catch (Exception ignored) {}
+                        AgentAccessibilityService s = AgentAccessibilityService.instance;
+                        if (s != null) {
+                            s.uiSmartClick("send");
+                        }
+                    }).start();
+                }
                 return "OK";
             } catch (Exception ignored) {
-                return view("https://api.whatsapp.com/send?phone=" + digits);
+                return view(url);
             }
         } else {
             // Open WhatsApp and search contact
@@ -481,6 +526,12 @@ public class DeviceController {
                     AgentAccessibilityService s = AgentAccessibilityService.instance;
                     if (s != null) {
                         s.uiSearch(target, true);
+                        if (text != null && !text.trim().isEmpty()) {
+                            try { Thread.sleep(1500); } catch (Exception ignored) {}
+                            s.uiOpenNth(1);
+                            try { Thread.sleep(1500); } catch (Exception ignored) {}
+                            s.uiTypeComposer(text, true);
+                        }
                     }
                 }).start();
             }
@@ -719,8 +770,79 @@ public class DeviceController {
             case 4: return s.uiScroll(!"up".equals(a.optString("dir")));
             case 5: return s.uiClearText();
             case 6: return s.uiOpenLastFile();
+            case 7: return s.uiSmartClick(a.optString("action", a.optString("query", a.optString("text"))));
+            case 8: return s.uiSwipeReels(a.optBoolean("next", true));
+            case 9: return s.uiTypeComposer(a.optString("text"), a.optBoolean("send", false));
+            case 10: return s.uiReadScreen();
+            case 11: return s.uiOpenItemByText(a.optString("query", a.optString("text", a.optString("target"))));
             default: return "ERR:unknown ui action " + kind;
         }
+    }
+
+    public String playMusic(String query, String app) {
+        String q = (query == null) ? "" : query.trim();
+        String a = (app == null) ? "spotify" : app.toLowerCase(Locale.ROOT).trim();
+
+        if (a.contains("spotify")) {
+            try {
+                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("spotify:search:" + Uri.encode(q)));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(intent);
+                new Thread(() -> {
+                    try { Thread.sleep(2000); } catch (Exception ignored) {}
+                    AgentAccessibilityService s = AgentAccessibilityService.instance;
+                    if (s != null) {
+                        s.uiOpenNth(1);
+                    }
+                }).start();
+                return "OK";
+            } catch (Exception ignored) {
+                return openYouTube(q, true);
+            }
+        }
+
+        if (a.contains("youtube") || a.contains("yt")) {
+            try {
+                Intent ytMusic = new Intent(Intent.ACTION_SEARCH);
+                ytMusic.setPackage("com.google.android.apps.youtube.music");
+                ytMusic.putExtra("query", q);
+                ytMusic.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(ytMusic);
+                new Thread(() -> {
+                    try { Thread.sleep(2000); } catch (Exception ignored) {}
+                    AgentAccessibilityService s = AgentAccessibilityService.instance;
+                    if (s != null) {
+                        s.uiOpenNth(1);
+                    }
+                }).start();
+                return "OK";
+            } catch (Exception ignored) {
+                return openYouTube(q, true);
+            }
+        }
+
+        String pkg = null;
+        if (a.contains("wynk")) pkg = "com.bsb.hns";
+        else if (a.contains("jiosaavn") || a.contains("saavn")) pkg = "com.jio.media.jiobeats";
+        else if (a.contains("gaana")) pkg = "com.gaana";
+
+        if (pkg != null) {
+            String res = openApp(pkg);
+            if ("OK".equals(res) && !q.isEmpty()) {
+                new Thread(() -> {
+                    try { Thread.sleep(2200); } catch (Exception ignored) {}
+                    AgentAccessibilityService s = AgentAccessibilityService.instance;
+                    if (s != null) {
+                        s.uiSearch(q, true);
+                        try { Thread.sleep(1800); } catch (Exception ignored) {}
+                        s.uiOpenNth(1);
+                    }
+                }).start();
+            }
+            return res;
+        }
+
+        return openYouTube(q, true);
     }
 
     private String media(String cmd) {

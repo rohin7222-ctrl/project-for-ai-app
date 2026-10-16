@@ -2,24 +2,29 @@ package com.nextgen.agent;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Path;
 import android.graphics.Rect;
 import android.os.Bundle;
+import android.provider.Settings;
+import android.util.DisplayMetrics;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-
-import android.content.Context;
-import android.provider.Settings;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 
 /**
  * System buttons (Home/Back/...) + "inside any app" control: read the screen, search, open the Nth item,
@@ -643,6 +648,708 @@ public class AgentAccessibilityService extends AccessibilityService {
         if (list == null) return "ERR:nothing to scroll";
         return list.performAction(down ? AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
                 : AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) ? "OK" : "ERR:cannot scroll";
+    }
+
+    // ------------------------------------------------------------------ Universal Cross-App Control
+    /**
+     * Swipes vertically with natural velocity for Reels, Shorts, and TikTok.
+     * next = true -> swipes up to reveal next reel; next = false -> swipes down for previous reel.
+     */
+    public String uiSwipeReels(boolean next) {
+        try {
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            int w = dm.widthPixels > 0 ? dm.widthPixels : 1080;
+            int h = dm.heightPixels > 0 ? dm.heightPixels : 2400;
+
+            float x = w / 2.0f;
+            float startY = next ? (h * 0.78f) : (h * 0.22f);
+            float endY = next ? (h * 0.18f) : (h * 0.82f);
+
+            Path p = new Path();
+            p.moveTo(x, startY);
+            p.lineTo(x, endY);
+
+            GestureDescription g = new GestureDescription.Builder()
+                    .addStroke(new GestureDescription.StrokeDescription(p, 0, 260))
+                    .build();
+            boolean ok = dispatchGesture(g, null, null);
+            return ok ? "OK" : "ERR:gesture failed";
+        } catch (Exception e) {
+            return "ERR:" + e.getMessage();
+        }
+    }
+
+    /**
+     * Identifies and types into the bottom message/comment composer of any app
+     * (WhatsApp, Instagram, Messages, Telegram, YouTube comments, Twitter/X)
+     * without confusing it with top search bars.
+     */
+    public String uiTypeComposer(String text, boolean send) {
+        if (text == null) text = "";
+        AccessibilityNodeInfo root = waitRoot(3000);
+        if (root == null) return "ERR:cannot read the screen";
+        if (isOwnApp(root)) return "ERR:open the app first";
+
+        AccessibilityNodeInfo comp = findBottomComposer(root);
+        if (comp == null) {
+            // Check if there is an inactive placeholder button (e.g. "Message...", "Add a comment...")
+            AccessibilityNodeInfo placeholder = findComposerPlaceholder(root);
+            if (placeholder != null) {
+                click(placeholder);
+                for (int i = 0; i < 15 && comp == null; i++) {
+                    sleep(150);
+                    root = getRootInActiveWindow();
+                    if (root != null) comp = findBottomComposer(root);
+                }
+            }
+        }
+
+        if (comp == null) {
+            comp = findEditable(root);
+        }
+        if (comp == null) return "ERR:composer not found";
+
+        comp.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+        comp.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        sleep(150);
+
+        boolean set = setText(comp, text);
+        if (!set) {
+            // Clipboard paste fallback for Compose / Flutter / custom views
+            try {
+                ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                if (cm != null) {
+                    cm.setPrimaryClip(ClipData.newPlainText("AgentMsg", text));
+                    sleep(100);
+                    set = comp.performAction(AccessibilityNodeInfo.ACTION_PASTE);
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (send) {
+            sleep(300);
+            String sendRes = uiSmartClick("send");
+            if (!"OK".equals(sendRes)) {
+                comp.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.getId());
+            }
+        }
+        return set ? "OK" : "ERR:failed to set text";
+    }
+
+    /**
+     * Universal Smart Button Identifier across ANY Android app.
+     * Resolves buttons by semantic action (like, share, subscribe, comment, send, play/pause, next, prev, call, cart, close)
+     * or arbitrary button labels with multi-lingual fuzzy recognition and gesture fallback.
+     */
+    public String uiSmartClick(String query) {
+        if (query == null || query.trim().isEmpty()) return "ERR:nothing to click";
+        String q = query.toLowerCase(Locale.ROOT).trim();
+
+        for (int attempt = 0; attempt < 15; attempt++) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null && !isOwnApp(root)) {
+                if (isLikeQuery(q)) {
+                    if (clickLike(root)) return "OK";
+                } else if (isShareQuery(q)) {
+                    if (clickShare(root)) return "OK";
+                } else if (isSubscribeQuery(q)) {
+                    if (clickSubscribe(root)) return "OK";
+                } else if (isCommentQuery(q)) {
+                    if (clickComment(root)) return "OK";
+                } else if (isSendQuery(q)) {
+                    if (clickSendButton(root)) return "OK";
+                } else if (isPlayPauseQuery(q)) {
+                    if (clickPlayPause(root)) return "OK";
+                } else if (isNextQuery(q)) {
+                    if (clickNext(root)) return "OK";
+                } else if (isPrevQuery(q)) {
+                    if (clickPrev(root)) return "OK";
+                } else if (isCallQuery(q)) {
+                    if (clickCall(root, false)) return "OK";
+                } else if (isVideoCallQuery(q)) {
+                    if (clickCall(root, true)) return "OK";
+                } else if (isCartQuery(q)) {
+                    if (clickCart(root)) return "OK";
+                } else if (isCloseQuery(q)) {
+                    if (clickClose(root)) return "OK";
+                }
+
+                // General match: view ID, label, contentDescription, or visible text
+                AccessibilityNodeInfo target = findSmartTarget(root, q);
+                if (target != null && click(target)) {
+                    return "OK";
+                }
+            }
+            sleep(150);
+        }
+        return "ERR:button not found: " + query;
+    }
+
+    /**
+     * Reads and summarizes everything visible on the active screen:
+     * active package, title, buttons, texts, and input fields.
+     */
+    public String uiReadScreen() {
+        AccessibilityNodeInfo root = waitRoot(2000);
+        if (root == null) return "{\"error\":\"cannot read screen\"}";
+
+        try {
+            JSONObject res = new JSONObject();
+            CharSequence pSeq = root.getPackageName();
+            res.put("package", pSeq != null ? pSeq.toString() : "");
+
+            JSONArray buttons = new JSONArray();
+            JSONArray texts = new JSONArray();
+            JSONArray inputs = new JSONArray();
+
+            List<AccessibilityNodeInfo> nodes = all(root);
+            for (AccessibilityNodeInfo n : nodes) {
+                if (n == null || !n.isVisibleToUser()) continue;
+
+                String txt = ownText(n);
+                if (n.isEditable()) {
+                    JSONObject inp = new JSONObject();
+                    inp.put("text", txt);
+                    CharSequence hint = n.getHintText();
+                    if (hint != null) inp.put("hint", hint.toString());
+                    inputs.put(inp);
+                } else if (n.isClickable() || (n.getClassName() != null && n.getClassName().toString().toLowerCase(Locale.ROOT).contains("button"))) {
+                    if (!txt.isEmpty() && txt.length() < 70) {
+                        buttons.put(txt);
+                    }
+                } else if (!txt.isEmpty() && txt.length() > 1 && txt.length() < 300) {
+                    texts.put(txt);
+                }
+            }
+
+            res.put("buttons", buttons);
+            res.put("texts", texts);
+            res.put("inputs", inputs);
+            return res.toString();
+        } catch (Exception e) {
+            return "{\"error\":\"" + e.getMessage() + "\"}";
+        }
+    }
+
+    /**
+     * Intelligently clicks a specific item/card/contact matching text on screen.
+     * Automatically scrolls if not immediately in view.
+     */
+    public String uiOpenItemByText(String query) {
+        if (query == null || query.trim().isEmpty()) return "ERR:nothing to open";
+        String q = query.toLowerCase(Locale.ROOT).trim();
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            AccessibilityNodeInfo root = waitRoot(2000);
+            if (root != null && !isOwnApp(root)) {
+                // Check direct matches
+                for (AccessibilityNodeInfo n : all(root)) {
+                    if (n == null || !n.isVisibleToUser() || isExcludedHeaderOrNav(n)) continue;
+                    String txt = ownText(n);
+                    if (!txt.isEmpty() && (txt.equals(q) || txt.contains(q))) {
+                        AccessibilityNodeInfo target = clickableSelfOrParent(n);
+                        if (target == null) target = n;
+                        if (click(target)) return "OK";
+                    }
+                }
+            }
+            if (attempt == 0) {
+                uiScroll(true);
+                sleep(600);
+            }
+        }
+        return "ERR:item not found: " + query;
+    }
+
+    // ------------------------------------------------------------------ Smart Button Helpers
+    private static boolean isLikeQuery(String q) {
+        return q.equals("like") || q.equals("love") || q.equals("favorite") || q.equals("heart") ||
+                q.contains("லைக்") || q.contains("விருப்பம்") || q.contains("பிடி") ||
+                q.equals("いいね") || q.contains("पसंद");
+    }
+
+    private static boolean isShareQuery(String q) {
+        return q.equals("share") || q.equals("forward") || q.equals("send to") ||
+                q.contains("ஷேர்") || q.contains("பகிர்") || q.equals("共有") || q.contains("शेयर");
+    }
+
+    private static boolean isSubscribeQuery(String q) {
+        return q.equals("subscribe") || q.equals("sub") || q.equals("follow") || q.equals("following") ||
+                q.contains("சப்ஸ்கிரைப்") || q.contains("பின்தொடர்") || q.equals("チャンネル登録") || q.contains("フォロー") || q.contains("सब्सक्राइब");
+    }
+
+    private static boolean isCommentQuery(String q) {
+        return q.equals("comment") || q.equals("comments") || q.equals("reply") ||
+                q.contains("கருத்து") || q.contains("கமெண்ட்") || q.equals("コメント") || q.contains("टिप्पणी");
+    }
+
+    private static boolean isSendQuery(String q) {
+        return q.equals("send") || q.equals("send it") || q.equals("anuppu") ||
+                q.contains("அனுப்பு") || q.contains("அனுப்பி விடு") || q.equals("送信") || q.contains("भेजें");
+    }
+
+    private static boolean isPlayPauseQuery(String q) {
+        return q.equals("play") || q.equals("pause") || q.equals("play_pause") || q.equals("resume") ||
+                q.contains("இயக்கு") || q.contains("நிறுத்து") || q.contains("போடு") || q.equals("再生") || q.equals("一時停止");
+    }
+
+    private static boolean isNextQuery(String q) {
+        return q.equals("next") || q.equals("skip") || q.equals("forward") ||
+                q.contains("அடுத்த") || q.equals("次へ") || q.contains("अगला");
+    }
+
+    private static boolean isPrevQuery(String q) {
+        return q.equals("prev") || q.equals("previous") || q.equals("rewind") ||
+                q.contains("முந்தைய") || q.equals("前へ") || q.contains("पिछला");
+    }
+
+    private static boolean isCallQuery(String q) {
+        return q.equals("call") || q.equals("voice call") || q.equals("dial") ||
+                q.contains("அழை") || q.contains("கால்") || q.equals("通話");
+    }
+
+    private static boolean isVideoCallQuery(String q) {
+        return q.equals("video call") || q.equals("video_call") ||
+                q.contains("வீடியோ கால்") || q.equals("ビデオ通話");
+    }
+
+    private static boolean isCartQuery(String q) {
+        return q.equals("cart") || q.equals("basket") || q.equals("add to cart") || q.equals("buy now") ||
+                q.contains("கார்ட்") || q.contains("கூடை") || q.contains("வாங்க") || q.equals("カート");
+    }
+
+    private static boolean isCloseQuery(String q) {
+        return q.equals("close") || q.equals("cancel") || q.equals("dismiss") || q.equals("exit") || q.equals("cross") ||
+                q.contains("மூடு") || q.contains("ரத்து") || q.equals("閉じる");
+    }
+
+    private boolean clickLike(AccessibilityNodeInfo root) {
+        String[] ids = {
+            "com.instagram.android:id/row_feed_button_like",
+            "com.instagram.android:id/like_button",
+            "com.instagram.android:id/feed_like_button",
+            "com.google.android.youtube:id/like_button",
+            "com.google.android.youtube:id/toggle_button",
+            "com.spotify.music:id/button_heart",
+            "com.spotify.music:id/heart_button",
+            "com.twitter.android:id/like",
+            "com.facebook.katana:id/like_button"
+        };
+        for (String id : ids) {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByViewId(id);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo h : hits) {
+                    if (h != null && h.isVisibleToUser() && click(h)) return true;
+                }
+            }
+        }
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null || !n.isVisibleToUser()) continue;
+            String l = label(n);
+            if ((l.contains("like") || l.contains("favorite") || l.contains("thumbs up") || l.contains("லைக்") || l.contains("விருப்பம்")) &&
+                (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                return click(n);
+            }
+        }
+        return false;
+    }
+
+    private boolean clickShare(AccessibilityNodeInfo root) {
+        String[] ids = {
+            "com.instagram.android:id/row_feed_button_share",
+            "com.instagram.android:id/direct_share_button",
+            "com.google.android.youtube:id/share_button",
+            "com.spotify.music:id/button_share",
+            "com.twitter.android:id/share"
+        };
+        for (String id : ids) {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByViewId(id);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo h : hits) {
+                    if (h != null && h.isVisibleToUser() && click(h)) return true;
+                }
+            }
+        }
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null || !n.isVisibleToUser()) continue;
+            String l = label(n);
+            if ((l.contains("share") || l.contains("forward") || l.contains("ஷேர்") || l.contains("பகிர்")) &&
+                (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                return click(n);
+            }
+        }
+        return false;
+    }
+
+    private boolean clickSubscribe(AccessibilityNodeInfo root) {
+        String[] ids = {
+            "com.google.android.youtube:id/subscribe_button",
+            "com.instagram.android:id/button_follow",
+            "com.instagram.android:id/follow_button",
+            "com.twitter.android:id/follow_button"
+        };
+        for (String id : ids) {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByViewId(id);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo h : hits) {
+                    if (h != null && h.isVisibleToUser() && click(h)) return true;
+                }
+            }
+        }
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null || !n.isVisibleToUser()) continue;
+            String l = label(n);
+            if ((l.contains("subscribe") || l.contains("follow") || l.contains("சப்ஸ்கிரைப்") || l.contains("பின்தொடர்")) &&
+                (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                return click(n);
+            }
+        }
+        return false;
+    }
+
+    private boolean clickComment(AccessibilityNodeInfo root) {
+        String[] ids = {
+            "com.instagram.android:id/row_feed_button_comment",
+            "com.instagram.android:id/comment_button",
+            "com.google.android.youtube:id/comments_entry_point",
+            "com.google.android.youtube:id/comment_text",
+            "com.twitter.android:id/reply"
+        };
+        for (String id : ids) {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByViewId(id);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo h : hits) {
+                    if (h != null && h.isVisibleToUser() && click(h)) return true;
+                }
+            }
+        }
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null || !n.isVisibleToUser()) continue;
+            String l = label(n);
+            if ((l.contains("comment") || l.contains("கருத்து") || l.contains("reply")) &&
+                (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                return click(n);
+            }
+        }
+        return false;
+    }
+
+    private boolean clickSendButton(AccessibilityNodeInfo root) {
+        String[] ids = {
+            "com.whatsapp:id/send",
+            "com.whatsapp:id/send_container",
+            "com.instagram.android:id/row_thread_composer_send_button_container",
+            "com.instagram.android:id/row_thread_composer_button_send",
+            "com.instagram.android:id/direct_text_send_button",
+            "com.google.android.apps.messaging:id/send_message_button_icon",
+            "com.google.android.apps.messaging:id/send_message_button",
+            "org.telegram.messenger:id/send_button"
+        };
+        for (String id : ids) {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByViewId(id);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo h : hits) {
+                    if (h != null && h.isVisibleToUser() && click(h)) return true;
+                }
+            }
+        }
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null || !n.isVisibleToUser()) continue;
+            String l = label(n);
+            if ((l.contains("send") || l.contains("அனுப்பு") || l.contains("送信")) &&
+                !l.contains("resend") && !l.contains("cancel") && (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                return click(n);
+            }
+        }
+        return false;
+    }
+
+    private boolean clickPlayPause(AccessibilityNodeInfo root) {
+        String[] ids = {
+            "com.google.android.youtube:id/player_control_play_pause_replay_button",
+            "com.google.android.youtube:id/play_pause_button",
+            "com.spotify.music:id/play_pause_button",
+            "com.spotify.music:id/button_play_pause"
+        };
+        for (String id : ids) {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByViewId(id);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo h : hits) {
+                    if (h != null && h.isVisibleToUser() && click(h)) return true;
+                }
+            }
+        }
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null || !n.isVisibleToUser()) continue;
+            String l = label(n);
+            if ((l.contains("play") || l.contains("pause") || l.contains("இயக்கு") || l.contains("நிறுத்து")) &&
+                (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                return click(n);
+            }
+        }
+
+        // Fallback for auto-hiding video players: tap center of video area to wake controls
+        try {
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            int screenW = dm.widthPixels > 0 ? dm.widthPixels : 1080;
+            int screenH = dm.heightPixels > 0 ? dm.heightPixels : 2400;
+            Path p = new Path();
+            p.moveTo(screenW / 2.0f, screenH * 0.35f);
+            GestureDescription g = new GestureDescription.Builder()
+                    .addStroke(new GestureDescription.StrokeDescription(p, 0, 50)).build();
+            dispatchGesture(g, null, null);
+            sleep(250);
+            AccessibilityNodeInfo updatedRoot = getRootInActiveWindow();
+            if (updatedRoot != null) {
+                for (String id : ids) {
+                    List<AccessibilityNodeInfo> hits = updatedRoot.findAccessibilityNodeInfosByViewId(id);
+                    if (hits != null && !hits.isEmpty()) {
+                        for (AccessibilityNodeInfo node : hits) {
+                            if (node != null && node.isVisibleToUser() && click(node)) return true;
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    private boolean clickNext(AccessibilityNodeInfo root) {
+        String[] ids = {
+            "com.google.android.youtube:id/next_button",
+            "com.spotify.music:id/button_next",
+            "com.spotify.music:id/next_button"
+        };
+        for (String id : ids) {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByViewId(id);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo h : hits) {
+                    if (h != null && h.isVisibleToUser() && click(h)) return true;
+                }
+            }
+        }
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null || !n.isVisibleToUser()) continue;
+            String l = label(n);
+            if ((l.contains("next") || l.contains("skip") || l.contains("அடுத்த")) &&
+                (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                return click(n);
+            }
+        }
+        return false;
+    }
+
+    private boolean clickPrev(AccessibilityNodeInfo root) {
+        String[] ids = {
+            "com.google.android.youtube:id/prev_button",
+            "com.spotify.music:id/button_prev",
+            "com.spotify.music:id/previous_button"
+        };
+        for (String id : ids) {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByViewId(id);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo h : hits) {
+                    if (h != null && h.isVisibleToUser() && click(h)) return true;
+                }
+            }
+        }
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null || !n.isVisibleToUser()) continue;
+            String l = label(n);
+            if ((l.contains("prev") || l.contains("previous") || l.contains("முந்தைய")) &&
+                (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                return click(n);
+            }
+        }
+        return false;
+    }
+
+    private boolean clickCall(AccessibilityNodeInfo root, boolean isVideo) {
+        String[] ids = isVideo ? new String[]{
+            "com.whatsapp:id/video_call",
+            "com.whatsapp:id/menuitem_video_call",
+            "com.instagram.android:id/action_bar_button_video_call"
+        } : new String[]{
+            "com.whatsapp:id/voice_call",
+            "com.whatsapp:id/menuitem_calls",
+            "com.instagram.android:id/action_bar_button_call",
+            "com.google.android.dialer:id/incall_first_button"
+        };
+        for (String id : ids) {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByViewId(id);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo h : hits) {
+                    if (h != null && h.isVisibleToUser() && click(h)) return true;
+                }
+            }
+        }
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null || !n.isVisibleToUser()) continue;
+            String l = label(n);
+            if (isVideo) {
+                if ((l.contains("video call") || l.contains("வீடியோ கால்")) && (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                    return click(n);
+                }
+            } else {
+                if ((l.contains("call") || l.contains("voice call") || l.contains("அழைப்பு")) &&
+                    !l.contains("video") && (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                    return click(n);
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean clickCart(AccessibilityNodeInfo root) {
+        String[] ids = {
+            "in.amazon.mShop.android.shopping:id/chrome_action_bar_cart_count",
+            "com.amazon.mShop.android.shopping:id/action_bar_cart",
+            "com.flipkart.android:id/cart_icon",
+            "in.amazon.mShop.android.shopping:id/add_to_cart_button"
+        };
+        for (String id : ids) {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByViewId(id);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo h : hits) {
+                    if (h != null && h.isVisibleToUser() && click(h)) return true;
+                }
+            }
+        }
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null || !n.isVisibleToUser()) continue;
+            String l = label(n);
+            if ((l.contains("cart") || l.contains("add to cart") || l.contains("buy now") || l.contains("கார்ட்") || l.contains("கூடை")) &&
+                (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                return click(n);
+            }
+        }
+        return false;
+    }
+
+    private boolean clickClose(AccessibilityNodeInfo root) {
+        String[] ids = {
+            "android:id/closeButton",
+            "com.instagram.android:id/action_bar_button_back",
+            "com.google.android.youtube:id/close_button"
+        };
+        for (String id : ids) {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByViewId(id);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo h : hits) {
+                    if (h != null && h.isVisibleToUser() && click(h)) return true;
+                }
+            }
+        }
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null || !n.isVisibleToUser()) continue;
+            String l = label(n);
+            if ((l.contains("close") || l.contains("cancel") || l.contains("dismiss") || l.contains("மூடு") || l.contains("ரத்து")) &&
+                (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                return click(n);
+            }
+        }
+        return false;
+    }
+
+    private AccessibilityNodeInfo findSmartTarget(AccessibilityNodeInfo root, String q) {
+        // 1. Exact text match
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (!n.isVisibleToUser()) continue;
+            String t = ownText(n);
+            if (!t.isEmpty() && t.equals(q)) {
+                AccessibilityNodeInfo c = clickableSelfOrParent(n);
+                return c != null ? c : n;
+            }
+        }
+        // 2. View ID entry match
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (!n.isVisibleToUser()) continue;
+            String vId = n.getViewIdResourceName();
+            if (vId != null && vId.contains(":id/")) {
+                String entry = vId.substring(vId.indexOf(":id/") + 4).toLowerCase(Locale.ROOT);
+                if (entry.equals(q) || entry.contains(q)) {
+                    AccessibilityNodeInfo c = clickableSelfOrParent(n);
+                    return c != null ? c : n;
+                }
+            }
+        }
+        // 3. Contains label match
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (!n.isVisibleToUser()) continue;
+            String l = label(n);
+            if (!l.isEmpty() && l.contains(q)) {
+                AccessibilityNodeInfo c = clickableSelfOrParent(n);
+                return c != null ? c : n;
+            }
+        }
+        return null;
+    }
+
+    private AccessibilityNodeInfo findBottomComposer(AccessibilityNodeInfo root) {
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int h = dm.heightPixels > 0 ? dm.heightPixels : 2400;
+        int thresholdY = (int) (h * 0.38f);
+
+        // 1. Known composer view IDs
+        String[] composerIds = {
+            "com.whatsapp:id/entry",
+            "com.whatsapp:id/conversation_text_entry",
+            "com.whatsapp:id/input_holder",
+            "com.instagram.android:id/row_thread_composer_edittext",
+            "com.instagram.android:id/comment_text_area",
+            "com.instagram.android:id/layout_comment_thread_edittext",
+            "com.google.android.apps.messaging:id/compose_message_text",
+            "com.google.android.apps.messaging:id/message_text",
+            "org.telegram.messenger:id/chat_text_edit",
+            "org.telegram.messenger:id/message_text_edit",
+            "com.facebook.orca:id/composer_text_tab",
+            "com.google.android.youtube:id/comment_text"
+        };
+        for (String cId : composerIds) {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByViewId(cId);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo hit : hits) {
+                    if (hit != null && hit.isVisibleToUser()) return hit;
+                }
+            }
+        }
+
+        // 2. Scan all editable nodes located in the lower half of the screen
+        Rect r = new Rect();
+        AccessibilityNodeInfo bestBottom = null;
+        int maxBottom = -1;
+
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null || !n.isEditable() || !n.isVisibleToUser()) continue;
+            n.getBoundsInScreen(r);
+            if (r.top >= thresholdY && r.bottom > maxBottom) {
+                maxBottom = r.bottom;
+                bestBottom = n;
+            }
+        }
+        return bestBottom;
+    }
+
+    private AccessibilityNodeInfo findComposerPlaceholder(AccessibilityNodeInfo root) {
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int h = dm.heightPixels > 0 ? dm.heightPixels : 2400;
+        int thresholdY = (int) (h * 0.38f);
+        Rect r = new Rect();
+
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null || !n.isVisibleToUser()) continue;
+            n.getBoundsInScreen(r);
+            if (r.top < thresholdY) continue;
+
+            String l = label(n);
+            if (l.contains("message") || l.contains("reply") || l.contains("comment") ||
+                l.contains("type a message") || l.contains("செய்தி") || l.contains("கருத்து")) {
+                AccessibilityNodeInfo target = clickableSelfOrParent(n);
+                if (target != null) return target;
+                return n;
+            }
+        }
+        return null;
     }
 
     // ------------------------------------------------------------------ helpers

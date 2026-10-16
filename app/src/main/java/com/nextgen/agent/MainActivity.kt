@@ -579,10 +579,31 @@ class MainActivity : FragmentActivity() {
             val d = a.optString("desc")
             if (d.isNotBlank()) executingAction = d
             val r = withContext(Dispatchers.IO) { device.execute(a) }   // ui_* actions block while they wait for the screen
-            if (type == "open_app") delay(2500)          // let the app finish opening before the next step
+            if (type == "open_app" || type == "chat" || type == "music_play") delay(2500)          // let the app finish opening before the next step
             else if (type == "call") delay(1000)
             else if (type.startsWith("ui_")) delay(600)
             executingAction = ""
+            if (type == "ui_read_screen" && r.startsWith("{")) {
+                try {
+                    val sObj = JSONObject(r)
+                    val pkg = sObj.optString("package", "App")
+                    val textsArr = sObj.optJSONArray("texts")
+                    val summaryList = mutableListOf<String>()
+                    if (textsArr != null) {
+                        for (ti in 0 until minOf(textsArr.length(), 4)) {
+                            val t = textsArr.optString(ti)
+                            if (t.isNotBlank()) summaryList.add(t)
+                        }
+                    }
+                    val spoken = if (summaryList.isNotEmpty()) {
+                        "Screen ($pkg): " + summaryList.joinToString(", ")
+                    } else {
+                        "Active app: $pkg"
+                    }
+                    chat.add(Msg(mine = false, text = "📱 $spoken", time = nowTime()))
+                    voice.speak(spoken)
+                } catch (ignored: Exception) {}
+            }
             when {
                 r == "NEED_ACCESSIBILITY" -> {
                     chat.add(Msg(mine = false, text = tr("need_a11y"), time = nowTime(), isError = true))

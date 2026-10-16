@@ -450,6 +450,21 @@ APPS = {  # spoken name (any language) -> name searched in the phone's app list
     "gpay": "Google Pay", "google pay": "Google Pay", "கூகுள் பே": "Google Pay", "phonepe": "PhonePe", "போன்பே": "PhonePe",
     "uber": "Uber", "ஊபர்": "Uber", "ola": "Ola", "ஓலா": "Ola",
     "hotspot": "Hotspot", "ஹாட்ஸ்பாட்": "Hotspot",
+    "jiosaavn": "JioSaavn", "saavn": "JioSaavn", "ஜியோசாவன்": "JioSaavn",
+    "wynk": "Wynk", "விங்க்": "Wynk", "gaana": "Gaana", "கானா": "Gaana",
+    "youtube music": "YouTube Music", "yt music": "YouTube Music", "யூடியூப் மியூசிக்": "YouTube Music",
+    "prime video": "Prime Video", "பிரைம் வீடியோ": "Prime Video",
+    "hotstar": "Hotstar", "disney hotstar": "Hotstar", "ஹாட்ஸ்டார்": "Hotstar",
+    "sonyliv": "SonyLIV", "zee5": "Zee5",
+    "jiocinema": "JioCinema", "jio cinema": "JioCinema", "ஜியோ சினிமா": "JioCinema",
+    "meesho": "Meesho", "மீஷோ": "Meesho",
+    "myntra": "Myntra", "மிந்த்ரா": "Myntra",
+    "ajio": "Ajio", "அஜியோ": "Ajio",
+    "zepto": "Zepto", "செப்டோ": "Zepto",
+    "blinkit": "Blinkit", "பிளிங்கிட்": "Blinkit",
+    "bigbasket": "BigBasket", "பிக்பாஸ்கெட்": "BigBasket",
+    "rapido": "Rapido", "ரேபிடோ": "Rapido",
+    "cred": "CRED", "கிரெட்": "CRED",
 }
 ORD = {1: ("first", "1st", "one", "mudhal", "mudhalavadhu", "mudhalavathu", "mudhalaavadhu", "muthal", "muthalavathu", "முதல்", "முதலாவது", "முதலாம்", "1வது", "ஒன்று", "最初", "1番目"),
        2: ("second", "2nd", "two", "rendavathu", "irandavathu", "rendavadhu", "irandavadhu", "randavadhu", "rendam", "irandam", "இரண்டாவது", "இரண்டாம்", "2வது", "ரெண்டு", "இரண்டு", "2番目"),
@@ -589,11 +604,30 @@ def _parse_one(p, last_app):
     if any(w in t for w in ("airplane mode", "flight mode", "ஏரோப்ளேன் மோட்")):
         return [{"type": "settings", "page": "airplane", "desc": "Airplane Mode"}], "ok"
 
-    # --- Instagram special actions: reels, dm
-    if any(w in t for w in ("reels", "reel", "ரீல்ஸ்")):
+    # --- Screen Awareness / Reading
+    if any(w in t for w in ("read screen", "read the screen", "what is on screen", "what's on screen", "screen la enna irukku", "திரையை படி", "ஸ்கிரீனை படி", "திரையில் என்ன உள்ளது")):
+        return [{"type": "ui_read_screen", "desc": "Read Screen"}], "read_screen"
+
+    # --- Reels, Shorts, and Vertical Feeds (Instagram, YouTube Shorts, TikTok)
+    if any(w in t for w in ("next reel", "next reels", "adutha reel", "அடுத்த ரீல்ஸ்", "next shorts", "next video in reels", "swipe up", "keela swipe", "அடுத்த வீடியோ", "reels maathu")):
+        return [{"type": "ui_swipe_reels", "next": True, "desc": "Next Reel"}], "reels_next"
+    if any(w in t for w in ("previous reel", "prev reel", "munthaiya reel", "முந்தைய ரீல்ஸ்", "prev shorts", "swipe down", "mela swipe", "முந்தைய வீடியோ")):
+        return [{"type": "ui_swipe_reels", "next": False, "desc": "Previous Reel"}], "reels_prev"
+    if any(w in t for w in ("open reels", "reels open", "reels போடு", "reels பாரு", "ரீல்ஸ் போடு", "ரீல்ஸ் பாரு")) or t in ("reels", "reel", "ரீல்ஸ்"):
         return [{"type": "instagram_reels", "desc": "Instagram Reels"}], "ok"
     if any(w in t for w in ("instagram dm", "insta dm", "instagram message", "insta chat", "இன்ஸ்டா மெசேஜ்", "இன்ஸ்டா சாட்")):
         return [{"type": "instagram_dm", "desc": "Instagram Messages"}], "ok"
+
+    # --- Cross-App Message Sending with Text: "whatsapp la appa ku hello nu message anuppu"
+    m_send_msg = re.match(r"^(?:send\s+(?:message|msg)\s+to\s+)?(?P<app>whatsapp|instagram|insta|telegram)\s+(?:la|le|ல|இல்|-la)?\s*(?P<tgt>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)\s*(?:ku|kku|க்கு|வுக்கு|ukku|vukku)\s+(?P<msg>.+?)\s*(?:nu|ன்னு|னு)?\s*(?:send|anuppu|message\s*anuppu|செய்தி\s*அனுப்பு)(?:\s+(?:pannu|vidu|seiy|pa|da))?$", t) or \
+                 re.match(r"^send\s+(?:a\s+)?(?:message|msg)\s+to\s+(?P<tgt>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)\s+(?:in|on)\s+(?P<app>whatsapp|instagram|insta|telegram)(?:\s*(?:saying|as|:)\s*|\s+)(?P<msg>.+)$", t) or \
+                 re.match(r"^(?P<tgt>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)\s*(?:ku|kku|க்கு|வுக்கு)\s+(?P<msg>.+?)\s*(?:nu|ன்னு|னு)?\s*(?:message\s*anuppu|செய்தி\s*அனுப்பு|send\s*pannu)(?:\s+(?:in|on)\s+(?P<app>whatsapp|telegram))?$", t)
+    if m_send_msg:
+        a_name = _app_name(m_send_msg.group("app") or "WhatsApp")
+        t_name = m_send_msg.group("tgt").strip()
+        m_body = m_send_msg.group("msg").strip()
+        if a_name and t_name and m_body:
+            return [{"type": "chat", "app": a_name, "target": t_name, "text": m_body, "desc": f"Send to {t_name}: {m_body}"}], "send_to:" + t_name
 
     # --- Direct Chat opening (WhatsApp, Instagram, Telegram)
     m_chat = re.match(r"^(?:open\s+)?(?:chat\s+(?:with\s+)?(?P<t1>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)\s+(?:in|on)\s+(?P<app1>whatsapp|instagram|insta|telegram))", t) or \
@@ -605,6 +639,15 @@ def _parse_one(p, last_app):
             t_name = t_name.strip()
             if t_name not in ("open", "thira", "app", "chat", "la"):
                 return [{"type": "chat", "app": a_name, "target": t_name, "desc": f"Chat with {t_name}"}], "chat"
+
+    # --- Music across Spotify, JioSaavn, Wynk, Gaana, YouTube Music
+    m_music = re.match(r"^(?:play|போடு|பாடல் போடு|பாட்டு போடு)\s+(?P<q>.+?)\s+(?:in|on)\s+(?P<a>spotify|jiosaavn|wynk|gaana|youtube\s*music|yt\s*music)$", t) or \
+              re.match(r"^(?P<a>spotify|jiosaavn|wynk|gaana|youtube\s*music|yt\s*music)\s+(?:la|le|ல|இல்)?\s*(?P<q>.+?)\s*(?:nu|ன்னு|னு)?\s*(?:play|podu|போடு|பாடல் போடு|பாட்டு போடு)$", t)
+    if m_music:
+        app_m = m_music.group("a").strip()
+        q_m = m_music.group("q").strip()
+        if q_m:
+            return [{"type": "music_play", "app": app_m, "query": q_m, "desc": f"Play on {app_m}: {q_m}"}], "music:" + q_m
 
     # --- YouTube direct video play
     m_yt_play = re.match(r"^(?:play|போடு|பாடல் போடு|வீடியோ போடு)\s+(?P<q1>.+?)\s+(?:in|on)\s+youtube$", t) or \
@@ -793,20 +836,56 @@ def _parse_one(p, last_app):
     # --- send message (direct, no popup)
     send_words = ("send", "send it", "anuppu", "அனுப்பு", "அனுப்பி விடு", "send pannu", "anuppidu", "anupunga", "சென்ட்", "சென்ட் பண்ணு", "送信")
     if t in send_words or re.match(r"^(?:send|anuppu|அனுப்பு|அனுப்பி\s*விடு|சென்ட்)(?:\s+(?:it|pannu|panu|vidu|seiyu|pa|da))?$", t):
-        return [{"type": "ui_click", "text": "send", "desc": "Send Message"}], "sent"
+        return [{"type": "ui_smart_click", "action": "send", "desc": "Send Message"}], "sent"
 
-    # --- type text (without pressing send button)
+    # --- Universal Smart Buttons: Like, Share, Subscribe, Comment, Cart, Buy Now, Close
+    if any(w in t for w in ("like pannu", "like பண்ணு", "like this video", "like this reel", "like video", "like reel", "like post", "thumbs up", "விருப்பம்", "பிடிச்சிருக்கு", "いいね")) or t in ("like", "லைக்"):
+        return [{"type": "ui_smart_click", "action": "like", "desc": "Like"}], "like"
+
+    if any(w in t for w in ("share pannu", "ஷேர் பண்ணு", "share this", "share video", "share reel", "share post", "பகிர்", "பகிர்க")) or t in ("share", "ஷேர்"):
+        return [{"type": "ui_smart_click", "action": "share", "desc": "Share"}], "share"
+
+    if any(w in t for w in ("subscribe pannu", "சப்ஸ்கிரைப் பண்ணு", "follow pannu", "ஃபாலோ பண்ணு", "பின்தொடர்", "சேர்")) or t in ("subscribe", "follow", "சப்ஸ்கிரைப்", "ஃபாலோ"):
+        return [{"type": "ui_smart_click", "action": "subscribe", "desc": "Subscribe/Follow"}], "subscribe"
+
+    if any(w in t for w in ("comment pannu", "கமெண்ட் பண்ணு", "comment podu", "கருத்து போடு")) or t in ("comment", "கமெண்ட்", "கருத்து"):
+        return [{"type": "ui_smart_click", "action": "comment", "desc": "Comment"}], "comment"
+
+    if any(w in t for w in ("add to cart", "cart la podu", "கார்ட்ல போடு", "கூடையில் சேர்", "cart podu")) or t in ("cart", "கார்ட்"):
+        return [{"type": "ui_smart_click", "action": "cart", "desc": "Add to Cart"}], "cart"
+
+    if any(w in t for w in ("buy now", "இப்போதே வாங்கு", "buy pannu")):
+        return [{"type": "ui_smart_click", "action": "buy_now", "desc": "Buy Now"}], "ok"
+
+    if any(w in t for w in ("close pannu", "மூடு", "close it", "close window", "வெளியேறு")) or t in ("close", "மூடு"):
+        return [{"type": "ui_smart_click", "action": "close", "desc": "Close"}], "ok"
+
+    # --- Type text & Auto-Send
+    m_type_send = re.match(r"^(?:type|write|தட்டச்சு செய்|டைப் பண்ணு)\s+(?P<x>.+?)\s+(?:and\s+send|send\s+pannu|அனுப்பு|சென்ட்\s+பண்ணு)$", t)
+    if m_type_send:
+        txt = m_type_send.group("x").strip()
+        return [{"type": "ui_type_composer", "text": txt, "send": True, "desc": f"Type & Send '{txt}'"}], "type:" + txt
+
+    # --- Type text into Composer (without pressing send button)
     m = re.match(r"^(?:type|write|enter|தட்டச்சு செய்|டைப் பண்ணு|டைப் செய்)\s+(?P<x>.+)$", t) or \
         re.match(r"^(?P<x>.+?)\s*(?:nu|ன்னு|னு)?\s*(?:type|write|தட்டச்சு)(?=\s|$).*$", t)
     if m:
         txt = m.group("x").strip()
         txt = re.sub(r"^(?:message|msg|செய்தி)\s+", "", txt).strip()
-        return [{"type": "ui_type", "text": txt, "send": False, "desc": f"Type '{txt}'"}], "type:" + txt
+        return [{"type": "ui_type_composer", "text": txt, "send": False, "desc": f"Type '{txt}'"}], "type:" + txt
+
+    # --- Open specific item/contact/card by text query
+    m_item = re.match(r"^(?:open|select|click)\s+(?P<q>.+?)\s+(?:chat|contact|card|item|song|video|சாட்)$", t) or \
+             re.match(r"^(?P<q>.+?)\s*(?:chat|contact|சாட்)\s*(?:open|thira|திற|போடு)$", t)
+    if m_item:
+        q_item = m_item.group("q").strip()
+        if q_item and q_item not in ("the", "first", "second", "last", "any"):
+            return [{"type": "ui_open_item", "query": q_item, "desc": f"Open '{q_item}'"}], "ok"
 
     m = re.match(r"^(?:click|tap|press|select)\s+(?:on\s+)?(?P<x>.+)$", t) or \
         re.match(r"^(?P<x>.+?)\s*" + PART + r"?\s*(?:click|tap|press|thotta|thodu|தொடு|கிளிக்|タップ|押).*$", t)
     if m:
-        return [{"type": "ui_click", "text": m.group("x").strip(), "desc": f"Click '{m.group('x').strip()}'"}], "ok"
+        return [{"type": "ui_smart_click", "query": m.group("x").strip(), "desc": f"Click '{m.group('x').strip()}'"}], "ok"
 
     # --- open app (last, most generic)
     m = re.match(r"^(?:open|launch|start|run)\s+(?P<a>.+)$", t) or \
@@ -832,7 +911,12 @@ SAY = {  # spoken confirmation per language
               "stop": "சரி, நிறுத்துகிறேன்.",
               "type": "'%s' என தட்டச்சு செய்துள்ளேன். அனுப்ப 'send' அல்லது அழிக்க 'cancel' என சொல்லுங்கள்.",
               "erased": "செய்தி அழிக்கப்பட்டது.",
-              "sent": "செய்தி அனுப்பப்பட்டது."},
+              "sent": "செய்தி அனுப்பப்பட்டது.",
+              "reels_next": "அடுத்த ரீல்ஸ்.", "reels_prev": "முந்தைய ரீல்ஸ்.",
+              "like": "விருப்பம் (Liked).", "share": "பகிர்வு திறக்கப்பட்டது.",
+              "subscribe": "பின்தொடரப்பட்டது (Subscribed).", "comment": "கமெண்ட் பகுதி திறக்கப்பட்டது.",
+              "cart": "கூடையில் சேர்க்கப்பட்டது.", "read_screen": "திரையில் உள்ளவற்றை பார்க்கிறேன்.",
+              "send_to": "%s-க்கு செய்தி அனுப்பப்படுகிறது.", "music": "%s பாடல் இயக்கப்படுகிறது."},
     "en-US": {"app": "Opening %s.", "search": "Searching %s.", "call": "Calling %s right now.",
               "nth": "Opening number %d.", "ok": "Done.", "yt": "Playing %s on YouTube.",
               "google": "Searching %s on Google.", "google_page": "Opening Google.",
@@ -846,7 +930,12 @@ SAY = {  # spoken confirmation per language
               "stop": "Stopping assistant.",
               "type": "Typed '%s'. Say 'send' to send, or 'cancel' to erase.",
               "erased": "Message erased.",
-              "sent": "Message sent."},
+              "sent": "Message sent.",
+              "reels_next": "Next reel.", "reels_prev": "Previous reel.",
+              "like": "Liked.", "share": "Share opened.",
+              "subscribe": "Subscribed / Followed.", "comment": "Comments opened.",
+              "cart": "Added to cart.", "read_screen": "Reading screen.",
+              "send_to": "Sending message to %s.", "music": "Playing %s."},
     "ja-JP": {"app": "%sを開きます。", "search": "%sを検索します。", "call": "%sに電話をかけています。",
               "nth": "%d番目を開きます。", "ok": "はい。", "yt": "YouTubeで%sを再生します。",
               "google": "Googleで%sを検索します。", "google_page": "Googleを開きます。",
@@ -860,7 +949,12 @@ SAY = {  # spoken confirmation per language
               "stop": "わかりました。停止します。",
               "type": "'%s'と入力しました。送信するには'send'、消去するには'cancel'と言ってください。",
               "erased": "メッセージを消去しました。",
-              "sent": "メッセージを送信しました."},
+              "sent": "メッセージを送信しました.",
+              "reels_next": "次のリールです。", "reels_prev": "前のリールです。",
+              "like": "いいねしました。", "share": "共有を開きました。",
+              "subscribe": "登録しました。", "comment": "コメントを開きました。",
+              "cart": "カートに追加しました。", "read_screen": "画面を確認しています。",
+              "send_to": "%sにメッセージを送信しています。", "music": "%sを再生します。"},
 }
 
 
@@ -905,6 +999,16 @@ def local_command(text, lang="en-US"):
         elif kind == "screenshot": said.append(s["screenshot"])
         elif kind == "media": said.append(s["media"])
         elif kind == "clipboard": said.append(s["clipboard"])
+        elif kind == "reels_next": said.append(s.get("reels_next", "Next reel."))
+        elif kind == "reels_prev": said.append(s.get("reels_prev", "Previous reel."))
+        elif kind == "like": said.append(s.get("like", "Liked."))
+        elif kind == "share": said.append(s.get("share", "Share opened."))
+        elif kind == "subscribe": said.append(s.get("subscribe", "Subscribed."))
+        elif kind == "comment": said.append(s.get("comment", "Comments opened."))
+        elif kind == "cart": said.append(s.get("cart", "Added to cart."))
+        elif kind == "read_screen": said.append(s.get("read_screen", "Reading screen."))
+        elif kind.startswith("send_to:"): said.append(s.get("send_to", "Sending message to %s.") % kind[8:])
+        elif kind.startswith("music:"): said.append(s.get("music", "Playing %s.") % kind[6:])
         elif kind == "stop": said.append(s.get("stop", "OK"))
         else: said.append(s["ok"])
     return {"speech": " ".join(said), "actions": actions}
