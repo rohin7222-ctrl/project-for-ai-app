@@ -67,6 +67,7 @@ class Voice(
     var onVoiceRejected: (() -> Unit)? = null
     var onEmergencyUninstallTriggered: (() -> Unit)? = null
     var onPartialText: ((String) -> Unit)? = null
+    var onErrorDescription: ((errorCode: Int, description: String) -> Unit)? = null
 
     // Phone call & media playback pause states
     @Volatile var pausedForCall = false
@@ -517,9 +518,7 @@ class Voice(
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1000L)
-            if (!isOnline()) {
-                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-            }
+            // EXTRA_PREFER_OFFLINE removed: prevents SpeechRecognizer errors on devices without offline packages
         }
     }
 
@@ -540,9 +539,7 @@ class Voice(
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2200L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1600L)
-            if (!isOnline()) {
-                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-            }
+            // EXTRA_PREFER_OFFLINE removed: ensures reliable wake-word standby across all Android devices
         }
     }
 
@@ -703,7 +700,9 @@ class Voice(
                     override fun onError(e: Int) {
                         restoreBeep()
                         onPartialText?.invoke("")
-                        Log.d("VoiceEngine", "Active Recognizer onError code: $e")
+                        val errMsg = getErrorMessage(e)
+                        Log.d("VoiceEngine", "Active Recognizer onError code: $e ($errMsg)")
+                        onErrorDescription?.invoke(e, errMsg)
                         if (e == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                             stop()
                             return
@@ -753,20 +752,77 @@ class Voice(
         }
     }
 
+    /** Translates SpeechRecognizer error codes into clear, multilingual error descriptions */
+    fun getErrorMessage(e: Int): String {
+        return when (e) {
+            SpeechRecognizer.ERROR_AUDIO -> when (lang) {
+                "ta-IN" -> "ஆடியோ பதிவு பிழை (மைக் சிக்கல்)"
+                "ja-JP" -> "音声録音エラー (マイク)"
+                else -> "Audio recording error (Mic)"
+            }
+            SpeechRecognizer.ERROR_CLIENT -> when (lang) {
+                "ta-IN" -> "கிளையண்ட் அங்கீகாரப் பிழை"
+                "ja-JP" -> "クライアント認識エラー"
+                else -> "Client recognition error"
+            }
+            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> when (lang) {
+                "ta-IN" -> "மைக் அனுமதி தேவை (அனுமதி வழங்கவும்)"
+                "ja-JP" -> "マイクの権限が必要です"
+                else -> "Microphone permission required"
+            }
+            SpeechRecognizer.ERROR_NETWORK -> when (lang) {
+                "ta-IN" -> "இணைய இணைப்பு பிழை"
+                "ja-JP" -> "ネットワークエラー"
+                else -> "Network connection error"
+            }
+            SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> when (lang) {
+                "ta-IN" -> "இணைய நேர வரம்பு முடிந்தது"
+                "ja-JP" -> "ネットワークタイムアウト"
+                else -> "Network request timed out"
+            }
+            SpeechRecognizer.ERROR_NO_MATCH -> when (lang) {
+                "ta-IN" -> "வார்த்தை புரியவில்லை"
+                "ja-JP" -> "音声が一致しませんでした"
+                else -> "No speech match found"
+            }
+            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> when (lang) {
+                "ta-IN" -> "மைக் இயக்கம் பிஸியாக உள்ளது"
+                "ja-JP" -> "音声認識エンジンがビジー状態です"
+                else -> "Speech recognition engine busy"
+            }
+            SpeechRecognizer.ERROR_SERVER -> when (lang) {
+                "ta-IN" -> "சர்வர் பிழை"
+                "ja-JP" -> "サーバーエラー"
+                else -> "Server error"
+            }
+            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> when (lang) {
+                "ta-IN" -> "பேச்சு எதுவும் கேட்கவில்லை"
+                "ja-JP" -> "音声入力が検出されませんでした"
+                else -> "No speech detected"
+            }
+            else -> when (lang) {
+                "ta-IN" -> "மைக் பிழை ($e)"
+                "ja-JP" -> "認識エラー ($e)"
+                else -> "Voice recognition error ($e)"
+            }
+        }
+    }
+
     /** Returns list of accepted phonetic aliases for the user's wake word */
     fun getWakeWordAliases(): List<String> {
         val word = commandingWord.trim().lowercase(Locale.ROOT)
-        if (word.isBlank()) return emptyList()
-        val list = mutableListOf(word, "hey $word", "hi $word", "ok $word")
-        if (word == "jarvis") {
-            list.addAll(listOf(
-                "jarvish", "jarves", "javis", "charvis",
-                "ஜார்விஸ்", "ஜார்வி", "சார்விஸ்", "ஜார்வீஸ்",
-                "ஹே ஜார்விஸ்", "ஹே ஜார்வி",
-                "hey jarvis", "hi jarvis", "ok jarvis",
-                "ジャーヴィス", "ジャービス"
-            ))
+        val list = mutableListOf<String>()
+        if (word.isNotBlank()) {
+            list.addAll(listOf(word, "hey $word", "hi $word", "ok $word", "hello $word", "ஹே $word"))
         }
+        // Always include jarvis aliases as standard secondary wake word
+        list.addAll(listOf(
+            "jarvis", "hey jarvis", "hi jarvis", "ok jarvis", "hello jarvis",
+            "jarvish", "jarves", "javis", "charvis",
+            "ஜார்விஸ்", "ஜார்வி", "சார்விஸ்", "ஜார்வீஸ்",
+            "ஹே ஜார்விஸ்", "ஹே ஜார்வி",
+            "ジャーヴィス", "ジャービス"
+        ))
         return list.distinct()
     }
 
@@ -849,6 +905,9 @@ class Voice(
 
                     override fun onError(e: Int) {
                         restoreBeep()
+                        val errMsg = getErrorMessage(e)
+                        Log.d("VoiceEngine", "Standby Recognizer onError code: $e ($errMsg)")
+                        onErrorDescription?.invoke(e, errMsg)
                         if (e == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                             standby = false
                             return

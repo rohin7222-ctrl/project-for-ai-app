@@ -140,7 +140,21 @@ object S {
         "chip_reels" to listOf("ரீல்ஸ் / ஷார்ட்ஸ்", "Reels & Shorts", "リール動画"),
         "chip_camera" to listOf("கேமரா", "Camera", "カメラ"),
         "chip_screen_read" to listOf("திரை பார்வை", "Screen Vision", "画面を読み取り"),
-        "raise_to_ear_wheel" to listOf("காதில் ஏற்க", "Raise to Ear", "耳で応答")
+        "raise_to_ear_wheel" to listOf("காதில் ஏற்க", "Raise to Ear", "耳で応答"),
+        "continue_without_api" to listOf("API இல்லாமல் தொடரவும் (முழு ஆப்லைன்)", "Continue without API (Full Offline)", "APIなしで続行 (完全オフライン)"),
+        "continue_without_api_sub" to listOf("போன் கட்டளைகள், வீல் மெனு மற்றும் ஆப்லைன் விதிகளுடன் இயங்கும்", "Runs locally with device control, wheel menu & shortcuts", "デバイス制御、ホイール、ショートカット機能で動作"),
+        "battery_ignore_btn" to listOf("Battery Optimization விலக்கு (Samsung/Xiaomi)", "Ignore Battery Optimization (Keep Alive)", "バッテリー最適化を除外 (常時起動)"),
+        "battery_ignore_sub" to listOf("Samsung, Xiaomi, Oppo போன்களில் ஆப் பின்னணியில் மூடப்படாமல் இருக்க இது கட்டாயம் தேவை", "Required so Samsung, Xiaomi, Oppo don't kill background assistant", "Samsung、Xiaomi等でバックグラウンド常駐を維持するために必須です"),
+        "crash_log_title" to listOf("பிழைப் பதிவு (Crash Logs)", "Crash Diagnostics Log", "クラッシュログ診断"),
+        "crash_log_empty" to listOf("பிழைகள் எதுவும் இல்லை! ஆப் சிறப்பாக இயங்குகிறது.", "No crashes recorded. App is running cleanly!", "クラッシュログはありません。正常に動作しています。"),
+        "clear_logs" to listOf("பதிவை அழி", "Clear Logs", "ログ消去"),
+        "read_notif" to listOf("வந்த செய்தியைப் படி", "Read Notifications", "通知を読み上げ"),
+        "notif_perm_btn" to listOf("Notification Access அனுமதி", "Enable Notification Access", "通知アクセスを許可"),
+        "confirm_sensitive_action" to listOf("இந்த முக்கியமான செயலை செய்ய உறுதியா?", "Are you sure you want to perform this sensitive action?", "このアクションを実行してもよろしいですか？"),
+        "action_failed_retry" to listOf("பொத்தான் திரையில் கிடைக்கவில்லை, தயவுசெய்து கைமுறையாகத் தொடவும்", "Target button not found on screen, please tap manually", "画面にボタンが見つかりません。手動で操作してください"),
+        "all_perms_title" to listOf("அனைத்து அனுமதிகளையும் சரிபார்க்கவும்", "System Permissions Overview", "システム権限一覧"),
+        "perm_granted" to listOf("வழங்கப்பட்டது", "Granted", "許可済み"),
+        "perm_missing" to listOf("அனுமதி தேவை", "Required", "未許可")
     )
 
     fun t(lang: String, k: String): String {

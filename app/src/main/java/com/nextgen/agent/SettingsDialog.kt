@@ -715,6 +715,78 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                                 }
                             }
 
+                            // Battery Optimization Ignore (Item 6)
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Icon(Icons.Default.Bolt, null, tint = Amber, modifier = Modifier.size(18.dp))
+                                        Text(
+                                            text = tr("battery_ignore_btn"),
+                                            fontSize = 14.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    Text(
+                                        text = tr("battery_ignore_sub"),
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                    )
+                                    Button(
+                                        onClick = { activity.requestIgnoreBatteryOptimization() },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Amber),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Default.Bolt, null, Modifier.size(16.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Ignore Battery Optimization", fontWeight = FontWeight.Bold, color = Color.Black)
+                                    }
+                                }
+                            }
+
+                            // Notification Listener Service (Item 11)
+                            val notifEnabled = remember { AgentNotificationListenerService.isListenerEnabled(activity) }
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Icon(Icons.Default.PhoneInTalk, null, tint = Cyan, modifier = Modifier.size(18.dp))
+                                        Text(
+                                            text = tr("notif_perm_btn"),
+                                            fontSize = 14.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    Text(
+                                        text = if (notifEnabled) "Notification Listener இயக்கத்தில் உள்ளது (செய்திகளை வாசிக்கலாம்)" else "வந்த செய்திகளைப் படிக்க Notification Listener அனுமதி தேவை",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                    )
+                                    OutlinedButton(
+                                        onClick = { AgentNotificationListenerService.openSettings(activity) },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(containerColor = if (notifEnabled) Color(0xFF10B981).copy(alpha = 0.15f) else Cyan.copy(alpha = 0.12f)),
+                                        border = BorderStroke(1.dp, if (notifEnabled) Color(0xFF10B981) else Cyan),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(if (notifEnabled) Icons.Default.CheckCircle else Icons.Default.Settings, null, Modifier.size(16.dp), tint = if (notifEnabled) Color(0xFF10B981) else Cyan)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(if (notifEnabled) "Active (இயங்குகிறது)" else tr("notif_perm_btn"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                    }
+                                }
+                            }
+
                             Surface(
                                 shape = RoundedCornerShape(18.dp),
                                 color = Amber.copy(alpha = 0.08f),
@@ -930,6 +1002,78 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                                                 upd { it.copy(voiceMatchEnabled = checked) }
                                             }
                                         )
+                                    }
+                                }
+                            }
+
+                            // In-App Crash Diagnostics Card (Item 16)
+                            var crashLogs by remember { mutableStateOf(CrashHandler.getCrashLogs(activity)) }
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Icon(Icons.Default.Bolt, null, tint = if (crashLogs.isNotBlank()) Color(0xFFEF4444) else Color(0xFF10B981), modifier = Modifier.size(18.dp))
+                                        Text(
+                                            text = tr("crash_log_title"),
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+
+                                    if (crashLogs.isBlank()) {
+                                        Text(
+                                            text = tr("crash_log_empty"),
+                                            fontSize = 12.sp,
+                                            color = Color(0xFF10B981)
+                                        )
+                                    } else {
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = Color.Black.copy(alpha = 0.65f),
+                                            modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp)
+                                        ) {
+                                            Text(
+                                                text = crashLogs,
+                                                fontSize = 11.sp,
+                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                                color = Color(0xFFFCA5A5),
+                                                modifier = Modifier.padding(10.dp).verticalScroll(rememberScrollState())
+                                            )
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    activity.copyToClipboard(crashLogs)
+                                                    Toast.makeText(activity, tr("copy_done"), Toast.LENGTH_SHORT).show()
+                                                },
+                                                shape = RoundedCornerShape(10.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text("Copy", fontSize = 12.sp)
+                                            }
+
+                                            Button(
+                                                onClick = {
+                                                    CrashHandler.clearCrashLogs(activity)
+                                                    crashLogs = ""
+                                                    Toast.makeText(activity, "Logs cleared", Toast.LENGTH_SHORT).show()
+                                                },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                                                shape = RoundedCornerShape(10.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text(tr("clear_logs"), fontSize = 12.sp)
+                                            }
+                                        }
                                     }
                                 }
                             }

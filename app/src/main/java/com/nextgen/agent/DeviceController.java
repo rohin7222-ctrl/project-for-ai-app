@@ -115,9 +115,37 @@ public class DeviceController {
         KNOWN_PACKAGES.put("cred", new String[]{"com.dreamplug.androidapp"});
     }
 
-    /** Actions that cost money / affect other people: the UI asks the user to confirm first. */
+    /** Actions that cost money / affect other people / delete data: the UI asks the user to confirm first. */
     public static boolean isSensitive(String type) {
         return "sms".equals(type) || "end_call".equals(type);
+    }
+
+    public static boolean isSensitive(JSONObject a) {
+        if (a == null) return false;
+        String type = a.optString("type", "");
+        if ("sms".equals(type) || "end_call".equals(type)) return true;
+
+        if ("open_app".equals(type)) {
+            String name = a.optString("name", "").toLowerCase(Locale.ROOT);
+            if (name.contains("gpay") || name.contains("google pay") || name.contains("phonepe") ||
+                name.contains("paytm") || name.contains("cred") || name.contains("bhim") ||
+                name.contains("பேடிஎம்") || name.contains("கூகுள் பே") || name.contains("போன்பே")) {
+                return true;
+            }
+        }
+
+        if (type.startsWith("ui_")) {
+            String query = a.optString("query", "").toLowerCase(Locale.ROOT);
+            String text = a.optString("text", "").toLowerCase(Locale.ROOT);
+            String name = a.optString("name", "").toLowerCase(Locale.ROOT);
+            if (query.contains("delete") || query.contains("remove") || query.contains("clear") ||
+                query.contains("நீக்கு") || query.contains("அழி") || query.contains("uninstall") ||
+                text.contains("delete") || text.contains("clear") || text.contains("நீக்கு") ||
+                name.contains("delete") || name.contains("uninstall")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public String execute(JSONObject a) {
@@ -156,6 +184,15 @@ public class DeviceController {
                 case "flashlight": return flashlight(a.optBoolean("on", true));
                 case "wifi": return wifi(a.optBoolean("on", true));
                 case "bluetooth": return bluetooth(a.optBoolean("on", true));
+                case "mobile_data": return mobileData(a.optBoolean("on", true));
+                case "brightness": return brightness(a.optString("dir", "up"), a.optInt("value", -1));
+                case "rotation": return rotation(a.optBoolean("on", true));
+                case "dnd": return dnd(a.optBoolean("on", true));
+                case "location": return locationToggle();
+                case "take_photo": return takePhoto();
+                case "read_notifications": return readNotifications();
+                case "read_sms": return readSms();
+                case "calendar_event": return calendarEvent(a.optString("title"), a.optString("time"));
                 case "volume": return volume(a.optString("dir"));
                 case "media": return media(a.optString("cmd"));
                 case "clipboard": return clipboard(a.optString("text"));
@@ -673,6 +710,13 @@ public class DeviceController {
                 Intent panel = new Intent(Settings.Panel.ACTION_WIFI);
                 panel.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 ctx.startActivity(panel);
+                new Thread(() -> {
+                    try { Thread.sleep(500); } catch (Exception ignored) {}
+                    AgentAccessibilityService s = AgentAccessibilityService.instance;
+                    if (s != null) {
+                        s.uiToggleAnySwitch(on);
+                    }
+                }).start();
                 return "OK";
             } else {
                 WifiManager wm = (WifiManager) ctx.getSystemService(Context.WIFI_SERVICE);
@@ -682,7 +726,15 @@ public class DeviceController {
                 }
             }
         } catch (Exception ignored) {}
-        return start(new Intent(Settings.ACTION_WIFI_SETTINGS));
+        start(new Intent(Settings.ACTION_WIFI_SETTINGS));
+        new Thread(() -> {
+            try { Thread.sleep(700); } catch (Exception ignored) {}
+            AgentAccessibilityService s = AgentAccessibilityService.instance;
+            if (s != null) {
+                s.uiToggleAnySwitch(on);
+            }
+        }).start();
+        return "OK";
     }
 
     private String bluetooth(boolean on) {
@@ -695,20 +747,218 @@ public class DeviceController {
                             Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
                             enableBtIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                             ctx.startActivity(enableBtIntent);
+                            new Thread(() -> {
+                                try { Thread.sleep(500); } catch (Exception ignored) {}
+                                AgentAccessibilityService s = AgentAccessibilityService.instance;
+                                if (s != null) {
+                                    s.uiClick("Allow");
+                                    s.uiClick("அனுமதி");
+                                }
+                            }).start();
                             return "OK";
                         }
                         return "OK";
-                    } else {
+                    } else if (Build.VERSION.SDK_INT < 33) {
                         adapter.enable();
                         return "OK";
                     }
                 } else {
-                    adapter.disable();
-                    return "OK";
+                    if (Build.VERSION.SDK_INT < 33) {
+                        adapter.disable();
+                        return "OK";
+                    }
                 }
             }
         } catch (Exception ignored) {}
-        return start(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));
+        start(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));
+        new Thread(() -> {
+            try { Thread.sleep(700); } catch (Exception ignored) {}
+            AgentAccessibilityService s = AgentAccessibilityService.instance;
+            if (s != null) {
+                s.uiToggleAnySwitch(on);
+            }
+        }).start();
+        return "OK";
+    }
+
+    private String mobileData(boolean on) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_DATA_ROAMING_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(intent);
+            new Thread(() -> {
+                try { Thread.sleep(700); } catch (Exception ignored) {}
+                AgentAccessibilityService s = AgentAccessibilityService.instance;
+                if (s != null) {
+                    s.uiToggleSwitch("Mobile data", on);
+                    s.uiToggleSwitch("Mobile Data", on);
+                    s.uiToggleSwitch("மொபைல் டேட்டா", on);
+                    s.uiToggleAnySwitch(on);
+                }
+            }).start();
+            return "OK";
+        } catch (Exception ignored) {
+            return start(new Intent(Settings.ACTION_WIRELESS_SETTINGS));
+        }
+    }
+
+    private String brightness(String dir, int val) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (!Settings.System.canWrite(ctx)) {
+                    Intent i = new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS);
+                    i.setData(Uri.parse("package:" + ctx.getPackageName()));
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    ctx.startActivity(i);
+                    return "ERR:NEED_WRITE_SETTINGS";
+                }
+            }
+            android.content.ContentResolver cr = ctx.getContentResolver();
+            int current = Settings.System.getInt(cr, Settings.System.SCREEN_BRIGHTNESS, 128);
+            int target = val >= 0 ? val : ("down".equals(dir) ? Math.max(10, current - 60) : Math.min(255, current + 60));
+            Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS, target);
+            return "OK";
+        } catch (Exception e) {
+            return "ERR:" + e.getMessage();
+        }
+    }
+
+    private String rotation(boolean on) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.System.canWrite(ctx)) {
+                Intent i = new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS);
+                i.setData(Uri.parse("package:" + ctx.getPackageName()));
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(i);
+                return "ERR:NEED_WRITE_SETTINGS";
+            }
+            Settings.System.putInt(ctx.getContentResolver(), Settings.System.ACCELEROMETER_ROTATION, on ? 1 : 0);
+            return "OK";
+        } catch (Exception e) {
+            return "ERR:" + e.getMessage();
+        }
+    }
+
+    private String dnd(boolean on) {
+        try {
+            android.app.NotificationManager nm = (android.app.NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    if (!nm.isNotificationPolicyAccessGranted()) {
+                        Intent i = new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS);
+                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        ctx.startActivity(i);
+                        return "ERR:NEED_NOTIFICATION_POLICY";
+                    }
+                    nm.setInterruptionFilter(on ? android.app.NotificationManager.INTERRUPTION_FILTER_NONE
+                            : android.app.NotificationManager.INTERRUPTION_FILTER_ALL);
+                    return "OK";
+                }
+            }
+        } catch (Exception e) {
+            return "ERR:" + e.getMessage();
+        }
+        return "ERR:cannot set dnd";
+    }
+
+    private String locationToggle() {
+        try {
+            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(intent);
+            new Thread(() -> {
+                try { Thread.sleep(700); } catch (Exception ignored) {}
+                AgentAccessibilityService s = AgentAccessibilityService.instance;
+                if (s != null) {
+                    s.uiToggleAnySwitch(null);
+                }
+            }).start();
+            return "OK";
+        } catch (Exception e) {
+            return "ERR:" + e.getMessage();
+        }
+    }
+
+    private String takePhoto() {
+        try {
+            Intent intent = new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(intent);
+            new Thread(() -> {
+                try { Thread.sleep(1200); } catch (Exception ignored) {}
+                AgentAccessibilityService s = AgentAccessibilityService.instance;
+                if (s != null) {
+                    s.uiClick("Shutter");
+                    s.uiClick("Take photo");
+                    s.uiClick("Capture");
+                }
+            }).start();
+            return "OK";
+        } catch (Exception e) {
+            return "ERR:" + e.getMessage();
+        }
+    }
+
+    private String readNotifications() {
+        if (!AgentNotificationListenerService.Companion.isListenerEnabled(ctx)) {
+            AgentNotificationListenerService.Companion.openSettings(ctx);
+            return "ERR:NEED_NOTIFICATION_LISTENER";
+        }
+        List<NotificationItem> list = AgentNotificationListenerService.Companion.getRecentNotifications();
+        if (list.isEmpty()) {
+            return "SPEECH:புதிய செய்திகள் எதுவும் இல்லை. (No recent notifications)";
+        }
+        StringBuilder sb = new StringBuilder();
+        int count = Math.min(3, list.size());
+        for (int i = 0; i < count; i++) {
+            NotificationItem item = list.get(i);
+            sb.append(item.getAppName()).append(" வழியே ").append(item.getTitle());
+            if (!item.getText().isEmpty()) {
+                sb.append(": ").append(item.getText());
+            }
+            if (i < count - 1) sb.append(". அடுத்த செய்தி: ");
+        }
+        return "SPEECH:" + sb.toString();
+    }
+
+    private String readSms() {
+        if (!has(Manifest.permission.READ_SMS)) {
+            return "ERR:NEED_PERMISSION_READ_SMS";
+        }
+        try (Cursor cursor = ctx.getContentResolver().query(
+                Uri.parse("content://sms/inbox"),
+                new String[]{"address", "body", "date"},
+                null, null, "date DESC LIMIT 3")) {
+            if (cursor != null && cursor.moveToFirst()) {
+                StringBuilder sb = new StringBuilder();
+                int idx = 0;
+                do {
+                    String address = cursor.getString(0);
+                    String body = cursor.getString(1);
+                    String sender = smartLookup(address);
+                    if (sender == null) sender = address;
+                    if (idx > 0) sb.append(". அடுத்த எஸ்எம்எஸ்: ");
+                    sb.append(sender).append(" அனுப்பியுள்ளார்: ").append(body);
+                    idx++;
+                } while (cursor.moveToNext());
+                return "SPEECH:" + sb.toString();
+            }
+        } catch (Exception ignored) {}
+        return "SPEECH:புதிய SMS எதுவும் வரவில்லை.";
+    }
+
+    private String calendarEvent(String title, String time) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_INSERT)
+                    .setData(android.provider.CalendarContract.Events.CONTENT_URI)
+                    .putExtra(android.provider.CalendarContract.Events.TITLE, title != null && !title.isEmpty() ? title : "Reminder")
+                    .putExtra(android.provider.CalendarContract.Events.DESCRIPTION, "Created by NextGen AI Assistant")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(intent);
+            return "OK";
+        } catch (Exception e) {
+            return "ERR:" + e.getMessage();
+        }
     }
 
     private String volume(String dir) {

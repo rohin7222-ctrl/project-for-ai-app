@@ -11,13 +11,16 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.media.AudioManager
 import android.media.AudioPlaybackConfiguration
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.provider.Settings
+import android.view.WindowManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -209,13 +212,30 @@ class MainActivity : FragmentActivity() {
     internal var pending by mutableStateOf<List<JSONObject>>(emptyList())
     internal val chat = mutableStateListOf<Msg>()
 
-    internal val perms = arrayOf(
-        Manifest.permission.RECORD_AUDIO,
-        Manifest.permission.CALL_PHONE,
-        Manifest.permission.READ_CONTACTS,
-        Manifest.permission.READ_PHONE_STATE,
-        Manifest.permission.ANSWER_PHONE_CALLS
-    )
+    internal fun getAllRequiredPermissions(): Array<String> {
+        val list = mutableListOf(
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.CALL_PHONE,
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.ANSWER_PHONE_CALLS,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.READ_SMS,
+            Manifest.permission.READ_CALL_LOG,
+            Manifest.permission.READ_CALENDAR,
+            Manifest.permission.WRITE_CALENDAR
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            list.add(Manifest.permission.BLUETOOTH_CONNECT)
+            list.add(Manifest.permission.BLUETOOTH_SCAN)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            list.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        return list.toTypedArray()
+    }
+
+    internal val perms get() = getAllRequiredPermissions()
     internal val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         if (has(Manifest.permission.RECORD_AUDIO)) startVoice()
     }
@@ -265,6 +285,23 @@ class MainActivity : FragmentActivity() {
     // ------------------------------------------------------------------ lifecycle
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashHandler.install(this)
+
+        // Lockscreen interaction & waking (item 13)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+            val km = getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
+            km?.requestDismissKeyguard(this, null)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
+
         store = Store(this)
         device = DeviceController(this)
         shortcutManager = ShortcutManager(this)
@@ -314,6 +351,9 @@ class MainActivity : FragmentActivity() {
                 unlocked = false
                 authenticate()
             }
+            if (cfg.autoWakeEnabled) {
+                VoiceForegroundService.start(this)
+            }
         }
         setContent { App() }
     }
@@ -350,13 +390,33 @@ class MainActivity : FragmentActivity() {
         }).authenticate(info)
     }
 
+    internal fun requestIgnoreBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            if (pm != null && !pm.isIgnoringBatteryOptimizations(packageName)) {
+                try {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    try {
+                        startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                    } catch (ignored: Exception) {}
+                }
+            } else {
+                Toast.makeText(this, "Battery optimization already ignored! (பின்னணி இயக்கம் பாதுகாக்கப்பட்டது)", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ assistant logic
     internal fun toggle() {
         if (voice.active) {
             voice.stop()
             return
         }
-        val missing = perms.filter { !has(it) }
+        val missing = getAllRequiredPermissions().filter { !has(it) }
         if (missing.isEmpty()) startVoice() else permLauncher.launch(missing.toTypedArray())
     }
 
@@ -593,6 +653,16 @@ class MainActivity : FragmentActivity() {
                 stopVoiceWithAck()
                 return
             }
+
+            // Sensitive action check (Item 14): Confirmation required for money transfers, delete, bulk SMS
+            if (DeviceController.isSensitive(a)) {
+                pending = listOf(a)
+                val confirmPrompt = tr("confirm_sensitive_action")
+                chat.add(Msg(mine = false, text = "⚠️ $confirmPrompt", time = nowTime()))
+                voice.speak(confirmPrompt)
+                return
+            }
+
             if (type == "call") {
                 isInPhoneCall = true
                 wasActiveBeforeCall = voice.active
@@ -631,6 +701,21 @@ class MainActivity : FragmentActivity() {
                 r == "NEED_ACCESSIBILITY" -> {
                     chat.add(Msg(mine = false, text = tr("need_a11y"), time = nowTime(), isError = true))
                     startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                }
+                r.startsWith("SPEECH:") -> {
+                    val speechText = r.substring(7)
+                    chat.add(Msg(mine = false, text = speechText, time = nowTime()))
+                    voice.speak(speechText)
+                }
+                r.startsWith("ERR:NOT_FOUND_RETRY") -> {
+                    val msg = tr("action_failed_retry")
+                    chat.add(Msg(mine = false, text = "⚠ $msg", time = nowTime(), isError = true))
+                    voice.speak(msg)
+                }
+                r.startsWith("ERR:NEED_NOTIFICATION_LISTENER") -> {
+                    val msg = tr("notif_perm_btn")
+                    chat.add(Msg(mine = false, text = "⚠ $msg", time = nowTime(), isError = true))
+                    AgentNotificationListenerService.openSettings(this@MainActivity)
                 }
                 r.startsWith("ERR") -> {
                     val errMsg = r.removePrefix("ERR:")
@@ -1226,6 +1311,38 @@ class MainActivity : FragmentActivity() {
                                 model = if (type == "api") chosenModel else lmodel.trim(), url = url.trim())
                         }
                         store.setReady(true); Brain.reset(); changeModel = false; screen = Screen.MAIN
+                        VoiceForegroundService.start(this@MainActivity)
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = {
+                            upd {
+                                it.copy(type = "local", provider = "rule_based", key = "", model = "offline", url = "")
+                            }
+                            store.setReady(true)
+                            Brain.reset()
+                            changeModel = false
+                            screen = Screen.MAIN
+                            VoiceForegroundService.start(this@MainActivity)
+                        },
+                        modifier = Modifier.fillMaxWidth().height(54.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.5.dp, Brush.horizontalGradient(listOf(Cyan, Indigo, Violet)))
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = tr("continue_without_api"),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = tr("continue_without_api_sub"),
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
                     }
                 }
             }

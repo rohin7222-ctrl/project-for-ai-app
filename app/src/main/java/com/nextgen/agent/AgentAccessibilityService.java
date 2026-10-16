@@ -611,17 +611,46 @@ public class AgentAccessibilityService extends AccessibilityService {
             return "ERR:send button not found";
         }
 
-        // General text search for click
-        for (int i = 0; i < 15; i++) {
+        // General text search for click with smart target matching and auto-scroll retry
+        for (int i = 0; i < 14; i++) {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root != null && !isOwnApp(root)) {
                 AccessibilityNodeInfo hit = findByLabel(root, q, true);
                 if (hit == null) hit = findByLabel(root, q, false);
-                if (hit != null) return click(hit) ? "OK" : "ERR:cannot click " + text;
+                if (hit == null) hit = findSmartTarget(root, q);
+                if (hit != null) {
+                    AccessibilityNodeInfo target = clickableSelfOrParent(hit);
+                    if (target == null) target = hit;
+                    if (click(target)) return "OK";
+                }
             }
-            sleep(200);
+            if (i == 5) {
+                // Auto retry: Scroll down to reveal offscreen targets
+                uiScroll(true);
+                sleep(300);
+            } else {
+                sleep(200);
+            }
         }
-        return "ERR:not found on screen: " + text;
+        return "ERR:NOT_FOUND_RETRY:" + text;
+    }
+
+    public String uiToggleAnySwitch(Boolean turnOn) {
+        for (int attempt = 0; attempt < 12; attempt++) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null && !isOwnApp(root)) {
+                AccessibilityNodeInfo sw = findCheckableNode(root);
+                if (sw != null) {
+                    boolean current = sw.isChecked();
+                    if (turnOn == null || current != turnOn) {
+                        return click(sw) ? "OK" : "ERR:cannot toggle";
+                    }
+                    return "OK";
+                }
+            }
+            sleep(180);
+        }
+        return "ERR:no switch found";
     }
 
     public String uiType(String text, boolean send) {

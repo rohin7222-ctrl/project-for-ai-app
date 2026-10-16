@@ -567,10 +567,16 @@ def _parse_one(p, last_app):
     if "quick settings" in t:
         return [{"type": "system", "name": "quick_settings", "desc": "Quick Settings"}], "ok"
 
-    # --- assistant stop command: strictly match user settings stop command (never match words like "unstop")
+    # --- assistant stop command: custom stop word + universal stop words
     custom_stop = (_assistant.get("stop_word") or "stop").strip().lower()
-    stop_pat = r"^(?:hey\s+|ok\s+|please\s+)?(?:" + re.escape(custom_stop) + r")(?:\\s+(?:please|pannu|panu|podu|vai|seiy|pa|da))?$"
-    if t == custom_stop or re.match(stop_pat, t, re.IGNORECASE):
+    stop_pat = r"^(?:hey\s+|ok\s+|please\s+)?(?:" + re.escape(custom_stop) + r")(?:\s+(?:please|pannu|panu|podu|vai|seiy|pa|da))?$"
+    universal_stops = (
+        "stop", "stop it", "shut up", "be quiet", "cancel", "pause", "enough", "halt",
+        "நிறுத்து", "நிறுத்துங்க", "போதும்", "நில்", "ஸ்டாப்", "நிறுத்துப்பா", "நிறுத்துடா",
+        "போதும் நிறுத்து", "பேசாத", "அமைதியா இரு", "வாயை மூடு", "niruthu", "pothum",
+        "ストップ", "止めて", "やめて", "静かに"
+    )
+    if t == custom_stop or re.match(stop_pat, t, re.IGNORECASE) or any(t == s or t.startswith(s + " ") or t.endswith(" " + s) for s in universal_stops):
         return [{"type": "stop_assistant", "desc": "Stop Assistant"}], "stop"
 
     # --- torch / flashlight
@@ -595,14 +601,48 @@ def _parse_one(p, last_app):
         is_off = any(w in t for w in ("off", "aff", "நிறுத்து", "அணை", "ஆஃப்", "ஆப்", "மூடு", "disable"))
         return [{"type": "bluetooth", "on": not is_off, "desc": "Bluetooth Off" if is_off else "Bluetooth On"}], "bt_off" if is_off else "bt_on"
 
-    # --- Mobile Data / Hotspot / Airplane Mode
-    if any(w in t for w in ("mobile data", "data on", "data off", "மொபைல் டேட்டா")):
-        return [{"type": "settings", "page": "data", "desc": "Mobile Data"}], "ok"
+    # --- Mobile Data
+    if any(w in t for w in ("mobile data", "cellular data", "மொபைல் டேட்டா", "டேட்டா ஆன்", "டேட்டா ஆஃப்")):
+        is_off = any(w in t for w in ("off", "aff", "நிறுத்து", "அணை", "ஆஃப்", "ஆப்", "மூடு", "disable"))
+        return [{"type": "mobile_data", "on": not is_off, "desc": "Mobile Data Off" if is_off else "Mobile Data On"}], "data_off" if is_off else "data_on"
     if any(w in t for w in ("hotspot", "ஹாட்ஸ்பாட்")):
         is_off = any(w in t for w in ("off", "aff", "நிறுத்து", "அணை", "ஆஃப்", "ஆப்", "மூடு", "disable"))
         return [{"type": "hotspot", "on": not is_off, "desc": "Hotspot Off" if is_off else "Hotspot On"}], "hotspot_off" if is_off else "hotspot_on"
     if any(w in t for w in ("airplane mode", "flight mode", "ஏரோப்ளேன் மோட்")):
         return [{"type": "settings", "page": "airplane", "desc": "Airplane Mode"}], "ok"
+
+    # --- Brightness & Display
+    if any(w in t for w in ("brightness", "பிரகாசம்", "வெளிச்சம்")):
+        is_down = any(w in t for w in ("down", "decrease", "reduce", "குறை", "low", "கம்மி"))
+        return [{"type": "brightness", "dir": "down" if is_down else "up", "desc": "Brightness"}], "ok"
+
+    # --- Screen Auto-Rotate
+    if any(w in t for w in ("auto rotate", "screen rotation", "ரொட்டேஷன்", "சுழற்சி")):
+        is_off = any(w in t for w in ("off", "aff", "நிறுத்து", "ஆஃப்", "ஆப்", "மூடு", "disable"))
+        return [{"type": "rotation", "on": not is_off, "desc": "Rotation Off" if is_off else "Rotation On"}], "ok"
+
+    # --- Do Not Disturb (DND)
+    if any(w in t for w in ("do not disturb", "dnd", "அமைதி பயன்முறை", "சைலன்ட் மோட்")):
+        is_off = any(w in t for w in ("off", "aff", "நிறுத்து", "ஆஃப்", "ஆப்", "மூடு", "disable"))
+        return [{"type": "dnd", "on": not is_off, "desc": "DND"}], "ok"
+
+    # --- Location / GPS
+    if any(w in t for w in ("location", "gps", "இருப்பிடம்", "லொகேஷன்")):
+        return [{"type": "location", "desc": "Location"}], "ok"
+
+    # --- Read Notifications
+    if any(w in t for w in ("read notification", "read notifications", "read my messages", "read incoming",
+                            "வந்த செய்தியை படி", "வந்த செய்திகளை படி", "நோட்டிபிகேஷன் படி", "புதிய மெசேஜ் படி", "செய்தி படி")):
+        return [{"type": "read_notifications", "desc": "Read Notifications"}], "read_notifications"
+
+    # --- Read SMS
+    if any(w in t for w in ("read sms", "read my sms", "read text messages", "எஸ்எம்எஸ் படி", "வந்த எஸ்எம்எஸ் படி")):
+        return [{"type": "read_sms", "desc": "Read SMS"}], "read_sms"
+
+    # --- Camera Photo
+    if any(w in t for w in ("take photo", "take picture", "take a photo", "take a picture", "click photo",
+                            "படம் எடு", "போட்டோ எடு", "புகைப்படம் எடு", "கேமராவில் படம்")):
+        return [{"type": "take_photo", "desc": "Take Photo"}], "take_photo"
 
     # --- Screen Awareness / Reading
     if any(w in t for w in ("read screen", "read the screen", "what is on screen", "what's on screen", "screen la enna irukku", "திரையை படி", "ஸ்கிரீனை படி", "திரையில் என்ன உள்ளது")):
@@ -994,7 +1034,9 @@ SAY = {  # spoken confirmation per language
               "swipe_up": "மேலே ஸ்வைப் செய்கிறேன்.", "swipe_down": "கீழே ஸ்வைப் செய்கிறேன்.",
               "menu": "மெனு திறக்கப்படுகிறது.", "dialog_allow": "அனுமதிக்கப்பட்டது.", "dialog_deny": "நிராகரிக்கப்பட்டது.",
               "tab": "%s பகுதிக்கு செல்கிறேன்.", "toggle_on": "%s ஆன் செய்யப்பட்டது.", "toggle_off": "%s ஆஃப் செய்யப்பட்டது.",
-              "feature": "%s செய்யப்படுகிறது."},
+              "feature": "%s செய்யப்படுகிறது.", "read_notifications": "வந்த செய்திகளைப் படிக்கிறேன்.",
+              "read_sms": "சமீபத்திய எஸ்எம்எஸ் படிக்கிறேன்.", "take_photo": "படம் எடுக்கிறேன்.",
+              "data_on": "மொபைல் டேட்டா ஆன் செய்கிறேன்.", "data_off": "மொபைல் டேட்டா ஆஃப் செய்கிறேன்."},
     "en-US": {"app": "Opening %s.", "search": "Searching %s.", "call": "Calling %s right now.",
               "nth": "Opening number %d.", "ok": "Done.", "yt": "Playing %s on YouTube.",
               "google": "Searching %s on Google.", "google_page": "Opening Google.",
@@ -1018,7 +1060,9 @@ SAY = {  # spoken confirmation per language
               "swipe_up": "Swiping up.", "swipe_down": "Swiping down.",
               "menu": "Menu opened.", "dialog_allow": "Allowed.", "dialog_deny": "Denied.",
               "tab": "Opening %s tab.", "toggle_on": "Turned on %s.", "toggle_off": "Turned off %s.",
-              "feature": "Executing %s."},
+              "feature": "Executing %s.", "read_notifications": "Reading notifications.",
+              "read_sms": "Reading recent SMS.", "take_photo": "Taking photo.",
+              "data_on": "Turning on mobile data.", "data_off": "Turning off mobile data."},
     "ja-JP": {"app": "%sを開きます。", "search": "%sを検索します。", "call": "%sに電話をかけています。",
               "nth": "%d番目を開きます。", "ok": "はい。", "yt": "YouTubeで%sを再生します。",
               "google": "Googleで%sを検索します。", "google_page": "Googleを開きます。",
@@ -1042,7 +1086,9 @@ SAY = {  # spoken confirmation per language
               "swipe_up": "上にスワイプします。", "swipe_down": "下にスワイプします。",
               "menu": "メニューを開きました。", "dialog_allow": "許可しました。", "dialog_deny": "拒否しました。",
               "tab": "%sタブを開きます。", "toggle_on": "%sをオンにしました。", "toggle_off": "%sをオフにしました。",
-              "feature": "%sを実行します。"},
+              "feature": "%sを実行します。", "read_notifications": "通知を読み上げます。",
+              "read_sms": "SMSを読み上げます。", "take_photo": "写真を撮影します。",
+              "data_on": "モバイルデータをオンにします。", "data_off": "モバイルデータをオフにします。"},
 }
 
 
@@ -1109,6 +1155,11 @@ def local_command(text, lang="en-US"):
         elif kind.startswith("toggle_on:"): said.append(s.get("toggle_on", "Turned on %s.") % kind[10:])
         elif kind.startswith("toggle_off:"): said.append(s.get("toggle_off", "Turned off %s.") % kind[11:])
         elif kind.startswith("feature:"): said.append(s.get("feature", "Executing %s.") % kind[8:])
+        elif kind == "read_notifications": said.append(s.get("read_notifications", "Reading notifications."))
+        elif kind == "read_sms": said.append(s.get("read_sms", "Reading SMS."))
+        elif kind == "take_photo": said.append(s.get("take_photo", "Taking photo."))
+        elif kind == "data_on": said.append(s.get("data_on", "Turning on data."))
+        elif kind == "data_off": said.append(s.get("data_off", "Turning off data."))
         else: said.append(s["ok"])
     return {"speech": " ".join(said), "actions": actions}
 

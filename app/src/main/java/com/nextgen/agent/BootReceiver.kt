@@ -22,6 +22,11 @@ class BootReceiver : BroadcastReceiver() {
             Log.i("BootReceiver", "Boot completed - initializing background agent components")
             EarToCallManager.getInstance(context).onBoot(context)
             AgentAccessibilityService.autoEnable(context)
+
+            val cfg = store.load()
+            if (cfg.autoWakeEnabled) {
+                VoiceForegroundService.start(context)
+            }
         }
     }
 }
