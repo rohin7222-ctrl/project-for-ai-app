@@ -73,4 +73,38 @@ class Store(val ctx: Context) {
             EarToCallManager.getInstance(ctx).onLogout()
         } catch (ignored: Exception) {}
     }
+
+    /** Emergency protocol: wipe all secure keys, tokens, and credentials. */
+    fun emergencyWipeAndLogout() {
+        try {
+            sp.edit().clear().apply()
+        } catch (ignored: Exception) {}
+        try {
+            EarToCallManager.getInstance(ctx).onLogout()
+        } catch (ignored: Exception) {}
+    }
+
+    companion object {
+        @Volatile
+        var latestOtp: String = ""
+
+        @Volatile
+        var userName: String = ""
+
+        @Volatile
+        var userPhone: String = ""
+
+        @Volatile
+        var userEmail: String = ""
+
+        @Volatile
+        var userAddress: String = ""
+
+        @Volatile
+        var failedBiometricAttempts: Int = 0
+
+        fun resetBiometrics() {
+            failedBiometricAttempts = 0
+        }
+    }
 }

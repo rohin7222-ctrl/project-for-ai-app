@@ -55,6 +55,20 @@ public class DeviceController {
         RELATION_ALIASES.put("wife", new String[]{"manaivi", "மனைவி", "பொண்டாட்டி"});
         RELATION_ALIASES.put("husband", new String[]{"purushan", "கணவர்"});
         RELATION_ALIASES.put("home", new String[]{"veedu", "வீடு"});
+        RELATION_ALIASES.put("athai", new String[]{"aunt", "aunty", "அத்தை", "மாமி"});
+        RELATION_ALIASES.put("aunt", new String[]{"athai", "chithi", "aunty", "அத்தை"});
+        RELATION_ALIASES.put("mama", new String[]{"uncle", "மாமா", "மாம்ஸ்"});
+        RELATION_ALIASES.put("uncle", new String[]{"mama", "chithappa", "periyappa", "மாமா"});
+        RELATION_ALIASES.put("chithappa", new String[]{"uncle", "சித்தப்பா"});
+        RELATION_ALIASES.put("periyappa", new String[]{"uncle", "பெரியப்பா"});
+        RELATION_ALIASES.put("chithi", new String[]{"aunt", "சித்தி"});
+        RELATION_ALIASES.put("thatha", new String[]{"grandpa", "grandfather", "தாத்தா", "பாபா"});
+        RELATION_ALIASES.put("grandpa", new String[]{"thatha", "தாத்தா"});
+        RELATION_ALIASES.put("paati", new String[]{"grandma", "grandmother", "பாட்டி", "ஆச்சி"});
+        RELATION_ALIASES.put("grandma", new String[]{"paati", "பாட்டி"});
+        RELATION_ALIASES.put("boss", new String[]{"manager", "sir", "முதலாளி", "பாஸ்"});
+        RELATION_ALIASES.put("friend", new String[]{"machi", "buddy", "தோழன்", "நண்பன்", "மச்சி"});
+        RELATION_ALIASES.put("doctor", new String[]{"dr", "மருத்துவர்"});
     }
 
     private static final java.util.Map<String, String[]> KNOWN_PACKAGES = new java.util.HashMap<>();
@@ -113,6 +127,21 @@ public class DeviceController {
         KNOWN_PACKAGES.put("blinkit", new String[]{"com.grofers.customerapp"});
         KNOWN_PACKAGES.put("bigbasket", new String[]{"com.bigbasket.mobileapp"});
         KNOWN_PACKAGES.put("cred", new String[]{"com.dreamplug.androidapp"});
+        KNOWN_PACKAGES.put("linkedin", new String[]{"com.linkedin.android"});
+        KNOWN_PACKAGES.put("discord", new String[]{"com.discord"});
+        KNOWN_PACKAGES.put("reddit", new String[]{"com.reddit.frontpage"});
+        KNOWN_PACKAGES.put("slack", new String[]{"com.Slack"});
+        KNOWN_PACKAGES.put("notion", new String[]{"notion.id"});
+        KNOWN_PACKAGES.put("teams", new String[]{"com.microsoft.teams"});
+        KNOWN_PACKAGES.put("chatgpt", new String[]{"com.openai.chatgpt"});
+        KNOWN_PACKAGES.put("claude", new String[]{"com.anthropic.claude"});
+        KNOWN_PACKAGES.put("duolingo", new String[]{"com.duolingo"});
+        KNOWN_PACKAGES.put("zerodha", new String[]{"com.zerodha.kite3"});
+        KNOWN_PACKAGES.put("groww", new String[]{"com.nextbillion.groww"});
+        KNOWN_PACKAGES.put("pinterest", new String[]{"com.pinterest"});
+        KNOWN_PACKAGES.put("canva", new String[]{"com.canva.editor"});
+        KNOWN_PACKAGES.put("bgmi", new String[]{"com.pubg.imobile"});
+        KNOWN_PACKAGES.put("bookmyshow", new String[]{"com.bt.bms"});
     }
 
     /** Actions that cost money / affect other people / delete data: the UI asks the user to confirm first. */
@@ -219,6 +248,13 @@ public class DeviceController {
                 case "ui_dialog": return ui(15, a);
                 case "ui_toggle": return ui(16, a);
                 case "ui_feature": return ui(17, a);
+                case "battery_status": return batteryStatus();
+                case "uninstall_app": return uninstallApp(a.optString("name"));
+                case "ui_skip_ad": return ui(18, a);
+                case "ui_reels_cruise": return ui(19, a);
+                case "ui_fill_form": return ui(20, a);
+                case "ui_read_otp": return ui(21, a);
+                case "ui_grid_tap": return ui(22, a);
                 default: return "ERR:unknown action " + type;
             }
         } catch (Exception e) {
@@ -1038,7 +1074,91 @@ public class DeviceController {
             case 15: return s.uiHandleDialog(a.optString("action", "ok"));
             case 16: return s.uiToggleSwitch(a.optString("target", a.optString("name", a.optString("query"))), a.has("on") ? a.optBoolean("on") : null);
             case 17: return s.uiExecuteFeature(a.optString("feature", a.optString("name", a.optString("query"))));
+            case 18: return s.uiSkipAd();
+            case 19: return s.uiReelsCruise(a.optBoolean("on", true));
+            case 20: return s.uiFillForm();
+            case 21: return s.uiReadOtp();
+            case 22: return s.uiGridTap(a.optString("pos", "center"));
             default: return "ERR:unknown ui action " + kind;
+        }
+    }
+
+    public String batteryStatus() {
+        try {
+            Intent batteryIntent = ctx.registerReceiver(null, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+            if (batteryIntent != null) {
+                int level = batteryIntent.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1);
+                int scale = batteryIntent.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1);
+                int status = batteryIntent.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1);
+                boolean isCharging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
+                                     status == android.os.BatteryManager.BATTERY_STATUS_FULL;
+                if (level >= 0 && scale > 0) {
+                    int pct = (int) ((level / (float) scale) * 100);
+                    return "Battery is at " + pct + "%" + (isCharging ? " (Charging)" : "");
+                }
+            }
+        } catch (Exception ignored) {}
+        return "OK";
+    }
+
+    public String resolvePackageForName(String name) {
+        if (name == null || name.trim().isEmpty()) return null;
+        String q = name.toLowerCase(Locale.ROOT).trim();
+        q = q.replaceAll("^(open|launch|start|run|the|uninstall|delete)\\s+", "");
+        q = q.replaceAll("\\s+(app|application|செயலி|ஆப்)$", "").trim();
+
+        String[] pkgs = KNOWN_PACKAGES.get(q);
+        if (pkgs != null && pkgs.length > 0) return pkgs[0];
+
+        PackageManager pm = ctx.getPackageManager();
+        Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        List<ResolveInfo> list = pm.queryIntentActivities(main, 0);
+        String best = null;
+        int bestScore = -1;
+
+        for (ResolveInfo ri : list) {
+            if (ri == null || ri.activityInfo == null) continue;
+            String pkg = ri.activityInfo.packageName;
+            String label = ri.loadLabel(pm).toString().toLowerCase(Locale.ROOT).trim();
+
+            if (label.equals(q) || pkg.toLowerCase(Locale.ROOT).endsWith("." + q)) {
+                return pkg;
+            }
+            if (label.startsWith(q)) {
+                int sc = 800 - (label.length() - q.length());
+                if (sc > bestScore) { best = pkg; bestScore = sc; }
+            } else if (label.contains(q) && q.length() >= 3) {
+                int sc = 600 - (label.length() - q.length());
+                if (sc > bestScore) { best = pkg; bestScore = sc; }
+            } else {
+                int dist = levenshtein(q, label);
+                if (dist <= 2 && label.length() >= 4) {
+                    int sc = 400 - dist * 50;
+                    if (sc > bestScore) { best = pkg; bestScore = sc; }
+                }
+            }
+        }
+        return best;
+    }
+
+    public String uninstallApp(String name) {
+        if (name == null || name.trim().isEmpty()) return "ERR:empty app name";
+        String pkg = resolvePackageForName(name);
+        if (pkg == null) return "ERR:app not found: " + name;
+
+        AgentAccessibilityService.armAutoConfirmUninstall(pkg);
+
+        try {
+            Intent i = new Intent(Intent.ACTION_UNINSTALL_PACKAGE, Uri.parse("package:" + pkg));
+            i.putExtra(Intent.EXTRA_RETURN_RESULT, true);
+            return start(i);
+        } catch (Exception e) {
+            try {
+                Intent i2 = new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + pkg));
+                return start(i2);
+            } catch (Exception e2) {
+                return "ERR:" + e2.getMessage();
+            }
         }
     }
 

@@ -38,6 +38,7 @@ class EarToCallManager private constructor(appContext: Context) {
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
     private val proximitySensor: Sensor? = sensorManager?.getDefaultSensor(Sensor.TYPE_PROXIMITY)
+    private val accelerometerSensor: Sensor? = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     private val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
 
     private var wakeLock: PowerManager.WakeLock? = null
@@ -50,27 +51,42 @@ class EarToCallManager private constructor(appContext: Context) {
     @Volatile private var proximityWasFar = false
     @Volatile private var ringingStartTime = 0L
     @Volatile private var isCallRinging = false
+    @Volatile private var isPhoneTiltedUpright = false
 
     private val sensorListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent?) {
-            if (event == null || event.sensor.type != Sensor.TYPE_PROXIMITY) return
-            val distance = event.values[0]
-            val max = proximitySensor?.maximumRange ?: 5f
-            val threshold = if (max > 5f) 5f else max
-            val isNear = distance < threshold
+            if (event == null) return
 
-            Log.d(tag, "Proximity change: distance=$distance, max=$max, isNear=$isNear, wasFar=$proximityWasFar")
+            // 1. Accelerometer Fusion: Detect if phone is held upright or angled to ear
+            if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+                val y = event.values[1] // Y-axis acceleration (gravity along height of phone)
+                // When raised to ear vertically, Y is typically between 3.5 and 9.8 m/s^2
+                // If lying flat on table or face down, Y is near 0.
+                isPhoneTiltedUpright = (y > 3.2f || Math.abs(y) > 4.5f)
+                return
+            }
 
-            if (!isNear) {
-                proximityWasFar = true
-            } else if (isNear && proximityWasFar) {
-                val elapsed = System.currentTimeMillis() - ringingStartTime
-                // Minimum debounce of 200ms so picking up phone face-down doesn't immediately false-trigger
-                if (elapsed >= 200 && isCallRinging) {
-                    Log.i(tag, "Ear to call gesture detected! Answering incoming call...")
-                    stopListening()
-                    mainHandler.post {
-                        executeAnswerCall()
+            // 2. Proximity Sensor: Detect near/far transitions
+            if (event.sensor.type == Sensor.TYPE_PROXIMITY) {
+                val distance = event.values[0]
+                val max = proximitySensor?.maximumRange ?: 5f
+                val threshold = if (max > 5f) 5f else max
+                val isNear = distance < threshold
+
+                Log.d(tag, "Proximity change: distance=$distance, isNear=$isNear, wasFar=$proximityWasFar, upright=$isPhoneTiltedUpright")
+
+                if (!isNear) {
+                    proximityWasFar = true
+                } else if (isNear && proximityWasFar) {
+                    val elapsed = System.currentTimeMillis() - ringingStartTime
+                    // Require at least 250ms of ringing and verify upright vertical tilt (if accelerometer present)
+                    val tiltOk = (accelerometerSensor == null) || isPhoneTiltedUpright
+                    if (elapsed >= 250 && isCallRinging && tiltOk) {
+                        Log.i(tag, "Ear to call gesture verified with tilt fusion! Answering incoming call...")
+                        stopListening()
+                        mainHandler.post {
+                            executeAnswerCall()
+                        }
                     }
                 }
             }
@@ -153,8 +169,19 @@ class EarToCallManager private constructor(appContext: Context) {
                 sensorHandler
             ) ?: false
 
+            if (accelerometerSensor != null) {
+                try {
+                    sensorManager?.registerListener(
+                        sensorListener,
+                        accelerometerSensor,
+                        SensorManager.SENSOR_DELAY_GAME,
+                        sensorHandler
+                    )
+                } catch (ignored: Exception) {}
+            }
+
             isListening = registered
-            Log.d(tag, "Proximity listener registered: $registered")
+            Log.d(tag, "Proximity listener registered: $registered (accel: ${accelerometerSensor != null})")
         } catch (e: Exception) {
             Log.e(tag, "Failed to register proximity listener", e)
             releaseWakeLock()
@@ -174,6 +201,7 @@ class EarToCallManager private constructor(appContext: Context) {
         isListening = false
         proximityWasFar = false
         isCallRinging = false
+        isPhoneTiltedUpright = false
 
         try {
             sensorThread?.quitSafely()

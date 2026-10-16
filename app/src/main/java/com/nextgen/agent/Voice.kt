@@ -420,9 +420,19 @@ class Voice(
                         n.contains("achird") || n.contains("iapetus") || n.contains("rasalgethi")) return false
                 }
                 "ta" -> {
-                    // Tamil: taf is female, tam is male
-                    if (n.contains("taf")) return true
-                    if (n.contains("tam")) return false
+                    // Tamil: taf, ta-in-x-taf are female; tam, ta-in-x-tam are male
+                    if (n.contains("taf") || n.contains("-taf") || n.contains("_taf")) return true
+                    if (n.contains("tam") || n.contains("-tam") || n.contains("_tam")) return false
+                }
+                "hi" -> {
+                    // Hindi: hif, hie, hid, wavenet-a/b/e are female; him, hic, hia are male
+                    if (n.contains("hif") || n.contains("-hie") || n.contains("-hid") || n.contains("wavenet-a") || n.contains("wavenet-e")) return true
+                    if (n.contains("him") || n.contains("-hic") || n.contains("-hia") || n.contains("wavenet-b") || n.contains("wavenet-d")) return false
+                }
+                "ko" -> {
+                    // Korean: kof, kod, wavenet-a/b are female; kom, koc, kob are male
+                    if (n.contains("kof") || n.contains("-kof") || n.contains("-kod") || n.contains("wavenet-a") || n.contains("wavenet-b")) return true
+                    if (n.contains("kom") || n.contains("-kom") || n.contains("-koc") || n.contains("-kob") || n.contains("wavenet-c")) return false
                 }
                 "en" -> {
                     // English: iof, tpf, iol, tpd, htf are female
@@ -430,8 +440,8 @@ class Voice(
                     if (n.contains("iom") || n.contains("sfg") || n.contains("tpc") || n.contains("iob")) return false
                 }
                 else -> {
-                    if (n.contains("taf") || n.contains("jab") || n.contains("htm") || n.contains("iof") || n.contains("tpf") || n.contains("tpd")) return true
-                    if (n.contains("tam") || n.contains("jad") || n.contains("jac") || n.contains("iom") || n.contains("sfg") || n.contains("tpc")) return false
+                    if (n.contains("taf") || n.contains("jab") || n.contains("htm") || n.contains("iof") || n.contains("tpf") || n.contains("tpd") || n.contains("hif") || n.contains("kof")) return true
+                    if (n.contains("tam") || n.contains("jad") || n.contains("jac") || n.contains("iom") || n.contains("sfg") || n.contains("tpc") || n.contains("him") || n.contains("kom")) return false
                 }
             }
             return false
@@ -461,8 +471,18 @@ class Voice(
                 }
                 "ta" -> {
                     // Tamil: tam is male, taf is female
-                    if (n.contains("tam")) return true
-                    if (n.contains("taf")) return false
+                    if (n.contains("tam") || n.contains("-tam") || n.contains("_tam")) return true
+                    if (n.contains("taf") || n.contains("-taf") || n.contains("_taf")) return false
+                }
+                "hi" -> {
+                    // Hindi: him, hic, hia are male; hif, hie are female
+                    if (n.contains("him") || n.contains("-hic") || n.contains("-hia") || n.contains("wavenet-b") || n.contains("wavenet-d")) return true
+                    if (n.contains("hif") || n.contains("-hie") || n.contains("-hid") || n.contains("wavenet-a") || n.contains("wavenet-e")) return false
+                }
+                "ko" -> {
+                    // Korean: kom, koc, kob are male; kof, kod are female
+                    if (n.contains("kom") || n.contains("-kom") || n.contains("-koc") || n.contains("-kob") || n.contains("wavenet-c")) return true
+                    if (n.contains("kof") || n.contains("-kof") || n.contains("-kod") || n.contains("wavenet-a") || n.contains("wavenet-b")) return false
                 }
                 "en" -> {
                     // English: iom, sfg, tpc, iob are male
@@ -470,8 +490,8 @@ class Voice(
                     if (n.contains("iof") || n.contains("tpf") || n.contains("iol") || n.contains("tpd") || n.contains("htf")) return false
                 }
                 else -> {
-                    if (n.contains("tam") || n.contains("jad") || n.contains("jac") || n.contains("iom") || n.contains("sfg") || n.contains("tpc")) return true
-                    if (n.contains("taf") || n.contains("jab") || n.contains("htm") || n.contains("iof") || n.contains("tpf") || n.contains("tpd")) return false
+                    if (n.contains("tam") || n.contains("jad") || n.contains("jac") || n.contains("iom") || n.contains("sfg") || n.contains("tpc") || n.contains("him") || n.contains("kom")) return true
+                    if (n.contains("taf") || n.contains("jab") || n.contains("htm") || n.contains("iof") || n.contains("tpf") || n.contains("tpd") || n.contains("hif") || n.contains("kof")) return false
                 }
             }
             return false
@@ -825,8 +845,12 @@ class Voice(
         if (word.isNotBlank()) {
             list.addAll(listOf(word, "hey $word", "hi $word", "ok $word", "hello $word", "ஹே $word"))
         }
-        // Always include jarvis aliases as standard secondary wake word
+        // Always include jarvis, aero fenix, and fenix aliases as standard wake words
         list.addAll(listOf(
+            "aero fenix", "hey aero fenix", "aerofenix", "hey fenix", "fenix", "phoenix", "hey phoenix",
+            "ஏரோ பீனிக்ஸ்", "பீனிக்ஸ்", "ஹே பீனிக்ஸ்", "ஹே ஃபீனிக்ஸ்", "ஃபீனிக்ஸ்",
+            "फेनिक्स", "हे फेनिक्स", "एरो फेनिक्स",
+            "フェニックス", "エアロフェニックス",
             "jarvis", "hey jarvis", "hi jarvis", "ok jarvis", "hello jarvis",
             "jarvish", "jarves", "javis", "charvis",
             "ஜார்விஸ்", "ஜார்வி", "சார்விஸ்", "ஜார்வீஸ்",

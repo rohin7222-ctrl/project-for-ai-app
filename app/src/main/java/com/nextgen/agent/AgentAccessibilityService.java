@@ -1153,6 +1153,179 @@ public class AgentAccessibilityService extends AccessibilityService {
         return uiSmartClick(q);
     }
 
+    public static volatile boolean reelsCruiseActive = false;
+
+    /**
+     * Auto Skip-Ad Engine: Searches for video player and interstitial ad skip buttons and clicks them.
+     */
+    public String uiSkipAd() {
+        for (int i = 0; i < 15; i++) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null && !isOwnApp(root)) {
+                String[] adIds = {
+                    "com.google.android.youtube:id/skip_ad_button",
+                    "com.google.android.youtube:id/modern_skip_ad_button",
+                    "com.google.android.youtube:id/ad_skip_button",
+                    "com.google.android.youtube:id/skip_button",
+                    "com.google.android.youtube:id/subtitles_button",
+                    "com.google.android.youtube:id/dismiss_button"
+                };
+                for (String adId : adIds) {
+                    List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByViewId(adId);
+                    if (nodes != null && !nodes.isEmpty()) {
+                        for (AccessibilityNodeInfo n : nodes) {
+                            if (n != null && n.isVisibleToUser()) {
+                                AccessibilityNodeInfo target = clickableSelfOrParent(n);
+                                if (target != null && click(target)) return "OK";
+                            }
+                        }
+                    }
+                }
+                for (AccessibilityNodeInfo n : all(root)) {
+                    if (n == null || !n.isVisibleToUser()) continue;
+                    String l = label(n).toLowerCase(Locale.ROOT);
+                    if (l.contains("skip ad") || l.contains("skip in") || l.equals("skip") ||
+                        l.contains("விளம்பரத்தை தவிர்") || l.contains("தவிர்") ||
+                        l.contains("광고 건너뛰기") || l.contains("広告スキップ") || l.contains("विज्ञापन छोड़ें")) {
+                        AccessibilityNodeInfo target = clickableSelfOrParent(n);
+                        if (target != null && click(target)) return "OK";
+                    }
+                }
+            }
+            sleep(150);
+        }
+        return "ERR:no ad skip button found";
+    }
+
+    /**
+     * Reels Cruise Control: Automatically swipes to next reel every 11 seconds.
+     */
+    public String uiReelsCruise(boolean on) {
+        reelsCruiseActive = on;
+        if (on) {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    while (reelsCruiseActive) {
+                        try {
+                            Thread.sleep(11000);
+                        } catch (InterruptedException ignored) {
+                            break;
+                        }
+                        if (!reelsCruiseActive) break;
+                        if (instance != null) {
+                            instance.uiSwipeReels(true);
+                        }
+                    }
+                }
+            }).start();
+        }
+        return "OK";
+    }
+
+    /**
+     * Auto Form Filler: Detects input fields and fills user profile info (name, phone, email, address).
+     */
+    public String uiFillForm() {
+        AccessibilityNodeInfo root = waitRoot(2000);
+        if (root == null) return "ERR:cannot read screen";
+        List<AccessibilityNodeInfo> nodes = all(root);
+        int filled = 0;
+        for (AccessibilityNodeInfo n : nodes) {
+            if (n == null || !n.isEditable() || !n.isVisibleToUser()) continue;
+            String hint = (n.getHintText() != null ? n.getHintText().toString() : "").toLowerCase(Locale.ROOT);
+            String txt = ownText(n).toLowerCase(Locale.ROOT);
+            String vId = (n.getViewIdResourceName() != null ? n.getViewIdResourceName() : "").toLowerCase(Locale.ROOT);
+            String combined = hint + " " + txt + " " + vId;
+
+            String valToSet = null;
+            if ((combined.contains("name") || combined.contains("பெயர்") || combined.contains("naam")) && !Store.userName.isEmpty()) {
+                valToSet = Store.userName;
+            } else if ((combined.contains("phone") || combined.contains("mobile") || combined.contains("contact") || combined.contains("போன்")) && !Store.userPhone.isEmpty()) {
+                valToSet = Store.userPhone;
+            } else if ((combined.contains("email") || combined.contains("mail") || combined.contains("மின்னஞ்சல்")) && !Store.userEmail.isEmpty()) {
+                valToSet = Store.userEmail;
+            } else if ((combined.contains("address") || combined.contains("street") || combined.contains("city") || combined.contains("முகவரி")) && !Store.userAddress.isEmpty()) {
+                valToSet = Store.userAddress;
+            }
+
+            if (valToSet != null) {
+                n.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+                if (setText(n, valToSet)) filled++;
+            }
+        }
+        return filled > 0 ? "OK" : "ERR:no matching form fields found";
+    }
+
+    /**
+     * Auto OTP Grabber & Filler: Automatically populates latest received OTP into active OTP boxes.
+     */
+    public String uiReadOtp() {
+        String otp = Store.latestOtp;
+        if (otp == null || otp.trim().isEmpty()) {
+            return "ERR:no recent OTP found in messages";
+        }
+        otp = otp.trim();
+        AccessibilityNodeInfo root = waitRoot(2000);
+        if (root == null) return "ERR:cannot read screen";
+        List<AccessibilityNodeInfo> editables = new ArrayList<>();
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n != null && n.isEditable() && n.isVisibleToUser()) {
+                editables.add(n);
+            }
+        }
+        if (editables.isEmpty()) return "ERR:no editable OTP box on screen";
+
+        if (editables.size() == 1) {
+            AccessibilityNodeInfo e = editables.get(0);
+            e.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+            return setText(e, otp) ? "OK" : "ERR:cannot set OTP";
+        } else if (editables.size() >= otp.length()) {
+            for (int i = 0; i < otp.length() && i < editables.size(); i++) {
+                AccessibilityNodeInfo box = editables.get(i);
+                box.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+                setText(box, String.valueOf(otp.charAt(i)));
+                sleep(50);
+            }
+            return "OK";
+        }
+        return "ERR:could not match OTP boxes";
+    }
+
+    /**
+     * Voice Grid Precision Coordinate Tap: Dispatches natural coordinate taps for Games, Canvas, and Flutter apps.
+     */
+    public String uiGridTap(String posId) {
+        try {
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            int w = dm.widthPixels > 0 ? dm.widthPixels : 1080;
+            int h = dm.heightPixels > 0 ? dm.heightPixels : 2400;
+
+            float x = w * 0.5f;
+            float y = h * 0.5f;
+            String p = posId != null ? posId.toLowerCase(Locale.ROOT).trim() : "center";
+
+            if (p.contains("top_left") || p.equals("1")) { x = w * 0.20f; y = h * 0.18f; }
+            else if (p.contains("top_center") || p.equals("2")) { x = w * 0.50f; y = h * 0.18f; }
+            else if (p.contains("top_right") || p.equals("3")) { x = w * 0.80f; y = h * 0.18f; }
+            else if (p.contains("middle_left") || p.equals("4")) { x = w * 0.20f; y = h * 0.50f; }
+            else if (p.contains("center") || p.contains("middle") || p.equals("5")) { x = w * 0.50f; y = h * 0.50f; }
+            else if (p.contains("middle_right") || p.equals("6")) { x = w * 0.80f; y = h * 0.50f; }
+            else if (p.contains("bottom_left") || p.equals("7")) { x = w * 0.20f; y = h * 0.82f; }
+            else if (p.contains("bottom_center") || p.equals("8")) { x = w * 0.50f; y = h * 0.82f; }
+            else if (p.contains("bottom_right") || p.equals("9")) { x = w * 0.80f; y = h * 0.82f; }
+
+            Path path = new Path();
+            path.moveTo(x, y);
+            GestureDescription g = new GestureDescription.Builder()
+                    .addStroke(new GestureDescription.StrokeDescription(path, 0, 100))
+                    .build();
+            return dispatchGesture(g, null, null) ? "OK" : "ERR:tap gesture failed";
+        } catch (Exception e) {
+            return "ERR:" + e.getMessage();
+        }
+    }
+
     // ------------------------------------------------------------------ Smart Button Helpers
     private static boolean isLikeQuery(String q) {
         return q.equals("like") || q.equals("love") || q.equals("favorite") || q.equals("heart") ||

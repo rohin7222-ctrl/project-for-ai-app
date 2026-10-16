@@ -439,58 +439,129 @@ internal fun MainActivity.MainScreen() {
         )
     )
 
-    Box(Modifier.fillMaxSize()) {
-        // Futuristic Ambient Atmosphere Orbs
+    // Futuristic animation transitions
+    val infTransition = rememberInfiniteTransition(label = "hudTransition")
+    val scanLineY by infTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(7000, easing = LinearEasing), RepeatMode.Restart),
+        label = "scanLine"
+    )
+    val ringRotate by infTransition.animateFloat(
+        initialValue = 0f, targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(24000, easing = LinearEasing), RepeatMode.Restart),
+        label = "rr"
+    )
+    val counterRotate by infTransition.animateFloat(
+        initialValue = 360f, targetValue = 0f,
+        animationSpec = infiniteRepeatable(tween(16000, easing = LinearEasing), RepeatMode.Restart),
+        label = "cr"
+    )
+    val logoPulse by infTransition.animateFloat(
+        initialValue = 1f, targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "lp"
+    )
+    val beaconPulse by infTransition.animateFloat(
+        initialValue = 0.85f, targetValue = 1.25f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "bp"
+    )
+
+    Box(Modifier.fillMaxSize().background(if (isDark) Color(0xFF080B11) else Color(0xFFF4F7FC))) {
+        // Futuristic Cyber HUD Background: Grid Matrix, Scanning Beam, & Cosmic Blooms
         Canvas(Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
-            // Top-right ambient orb
+
+            // 1. Subtle Cyber Isometric Grid Lines
+            val gridStep = 44.dp.toPx()
+            val gridColor = if (isDark) Color(0xFF00E5FF).copy(alpha = 0.035f) else Color(0xFF4F46E5).copy(alpha = 0.025f)
+            var x = 0f
+            while (x < w) {
+                drawLine(gridColor, Offset(x, 0f), Offset(x, h), strokeWidth = 1f)
+                x += gridStep
+            }
+            var y = 0f
+            while (y < h) {
+                drawLine(gridColor, Offset(0f, y), Offset(w, y), strokeWidth = 1f)
+                y += gridStep
+            }
+
+            // 2. Holographic Scanning Laser Sweep Beam
+            val beamY = h * scanLineY
+            drawLine(
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        Color.Transparent,
+                        (if (isDark) Color(0xFF00E5FF) else Color(0xFF6366F1)).copy(alpha = if (isDark) 0.18f else 0.10f),
+                        Color.Transparent
+                    )
+                ),
+                start = Offset(0f, beamY),
+                end = Offset(w, beamY),
+                strokeWidth = 2.dp.toPx()
+            )
+
+            // 3. Volumetric Cyber Energy Nebulae
+            // Top-right energetic bloom (Anchoring Top Wheel)
             drawCircle(
                 brush = Brush.radialGradient(
-                    listOf((if (isDark) Color(0xFF4F46E5) else Color(0xFF818CF8)).copy(alpha = if (isDark) 0.14f else 0.08f), Color.Transparent),
-                    center = androidx.compose.ui.geometry.Offset(w * 0.9f, h * 0.12f),
+                    listOf((if (isDark) Color(0xFF7C3AED) else Color(0xFF818CF8)).copy(alpha = if (isDark) 0.18f else 0.09f), Color.Transparent),
+                    center = Offset(w * 0.92f, h * 0.10f),
+                    radius = w * 0.70f
+                ),
+                center = Offset(w * 0.92f, h * 0.10f),
+                radius = w * 0.70f
+            )
+            // Bottom-right energetic bloom (Anchoring Bottom Wheel)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf((if (isDark) Color(0xFF00E5FF) else Color(0xFF38BDF8)).copy(alpha = if (isDark) 0.16f else 0.08f), Color.Transparent),
+                    center = Offset(w * 0.90f, h * 0.92f),
                     radius = w * 0.65f
                 ),
-                center = androidx.compose.ui.geometry.Offset(w * 0.9f, h * 0.12f),
+                center = Offset(w * 0.90f, h * 0.92f),
                 radius = w * 0.65f
             )
-            // Bottom-left ambient orb
+            // Center Quantum Plasma Core Bloom
             drawCircle(
                 brush = Brush.radialGradient(
-                    listOf((if (isDark) Color(0xFF06B6D4) else Color(0xFF38BDF8)).copy(alpha = if (isDark) 0.12f else 0.07f), Color.Transparent),
-                    center = androidx.compose.ui.geometry.Offset(w * 0.1f, h * 0.88f),
-                    radius = w * 0.65f
+                    listOf((if (isDark) Color(0xFF06B6D4) else Color(0xFF6366F1)).copy(alpha = if (isDark) 0.09f else 0.04f), Color.Transparent),
+                    center = Offset(w * 0.5f, h * 0.45f),
+                    radius = w * 0.55f
                 ),
-                center = androidx.compose.ui.geometry.Offset(w * 0.1f, h * 0.88f),
-                radius = w * 0.65f
+                center = Offset(w * 0.5f, h * 0.45f),
+                radius = w * 0.55f
             )
         }
 
         Column(Modifier.fillMaxSize()) {
-            // Enhanced Top Bar Header
+            // Enhanced Cyber HUD Top Bar
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
-                tonalElevation = 2.dp,
-                shadowElevation = 6.dp
+                color = if (isDark) Color(0xFF0D121F).copy(alpha = 0.92f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                tonalElevation = 3.dp,
+                shadowElevation = 8.dp,
+                border = BorderStroke(1.dp, if (isDark) Color(0x3300E5FF) else Color(0x224F46E5))
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .padding(horizontal = 16.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // Left: Pill Badge matching wireframe [ name ]
+                    // Left: High-Tech Cyber Telemetry Pill
                     Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
-                        border = BorderStroke(1.5.dp, Brush.horizontalGradient(listOf(Indigo, Violet, Cyan))),
-                        shadowElevation = 3.dp,
-                        modifier = Modifier.clip(RoundedCornerShape(24.dp))
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (isDark) Color(0xFF131A2B) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
+                        border = BorderStroke(1.4.dp, Brush.horizontalGradient(listOf(Color(0xFF00E5FF), Indigo, Violet))),
+                        shadowElevation = 4.dp,
+                        modifier = Modifier.clip(RoundedCornerShape(20.dp))
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -498,26 +569,46 @@ internal fun MainActivity.MainScreen() {
                                 isInPhoneCall || isMediaPlayingState -> Amber
                                 executingAction.isNotBlank() -> Amber
                                 thinking -> Violet
-                                listening -> Cyan
+                                listening -> Color(0xFF00E5FF)
                                 else -> Color(0xFF10B981)
                             }
-                            Box(
-                                modifier = Modifier
-                                    .size(10.dp)
-                                    .clip(CircleShape)
-                                    .background(dotColor)
-                            )
-                            Text(
-                                text = cfg.name.ifBlank { "Aero Fenix" },
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            GeminiSparkle(size = 15.dp)
+                            // Pulsing Cyber Beacon
+                            Box(contentAlignment = Alignment.Center) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .scale(beaconPulse)
+                                        .clip(CircleShape)
+                                        .background(dotColor.copy(alpha = 0.28f))
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.5.dp)
+                                        .clip(CircleShape)
+                                        .background(dotColor)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = cfg.name.ifBlank { "Aero Fenix" }.uppercase(Locale.ROOT),
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 1.1.sp,
+                                    color = if (isDark) Color(0xFFF1F5F9) else MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (cfg.autoWakeEnabled) "[ ⚡ HANDS-FREE READY ]" else "[ OS CONTROLLER ]",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    color = if (isDark) Color(0xFF00E5FF) else Color(0xFF4F46E5)
+                                )
+                            }
+                            GeminiSparkle(size = 14.dp)
                         }
                     }
 
-                    // Right: Top Helm Wheel Button
+                    // Right: Actions & Top Helm Wheel Launcher
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -530,123 +621,125 @@ internal fun MainActivity.MainScreen() {
                         CompactHelmButton(
                             onClick = { showTopWheel = true },
                             icon = Icons.Default.Settings,
-                            accentColor = Indigo,
+                            accentColor = Color(0xFF8B5CF6),
                             size = 46.dp
                         )
                     }
                 }
             }
 
-            // Middle Content: Logo vs Chat Feed
-            // "chat panna start pannita antha center la iruka pora app logo disappear agidanum."
+            // Middle Content: Futuristic Arc Reactor vs Chat Feed
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (chat.isEmpty()) {
-                    // Center Hero App Logo (Visible only before chatting)
+                    // Center Hero: Quantum Arc Reactor (Visible only before chatting)
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState())
-                            .padding(horizontal = 24.dp, vertical = 20.dp),
+                            .padding(horizontal = 20.dp, vertical = 16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        val logoPulse by rememberInfiniteTransition(label = "logoPulse").animateFloat(
-                            initialValue = 1f, targetValue = 1.05f,
-                            animationSpec = infiniteRepeatable(tween(2400, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-                            label = "lp"
-                        )
-                        val ringRotate by rememberInfiniteTransition(label = "ringRotate").animateFloat(
-                            initialValue = 0f, targetValue = 360f,
-                            animationSpec = infiniteRepeatable(tween(24000, easing = LinearEasing), RepeatMode.Restart),
-                            label = "rr"
-                        )
-                        val counterRotate by rememberInfiniteTransition(label = "counterRotate").animateFloat(
-                            initialValue = 360f, targetValue = 0f,
-                            animationSpec = infiniteRepeatable(tween(32000, easing = LinearEasing), RepeatMode.Restart),
-                            label = "cr"
-                        )
-
-                        // Circular logo area matching wireframe "logo"
+                        // High-Tech Concentric Quantum Arc Reactor Visualizer
                         Box(contentAlignment = Alignment.Center) {
-                            // Outer Astrolabe Orbit Ring Canvas
-                            Canvas(modifier = Modifier.size(196.dp)) {
+                            // Layer 1 & 2: Outer & Middle Holographic HUD Rings
+                            Canvas(modifier = Modifier.size(220.dp)) {
                                 val cx = size.width / 2f
                                 val cy = size.height / 2f
-                                val orbitR = cx - 6.dp.toPx()
+                                val outerR = cx - 8.dp.toPx()
+                                val midR = cx - 22.dp.toPx()
 
-                                // Soft ambient cosmic orbit ring
+                                // Outer Precision Orbit Ring
                                 drawCircle(
-                                    color = if (isDark) GeminiBlue.copy(alpha = 0.22f) else GeminiBlue.copy(alpha = 0.14f),
-                                    radius = orbitR,
-                                    style = Stroke(width = 1.4.dp.toPx())
+                                    color = if (isDark) Color(0xFF00E5FF).copy(alpha = 0.25f) else Color(0xFF4F46E5).copy(alpha = 0.18f),
+                                    radius = outerR,
+                                    style = Stroke(width = 1.5.dp.toPx())
                                 )
 
-                                // 12 Astrolabe Compass Notches
-                                for (step in 0 until 12) {
-                                    val angleRad = Math.toRadians((step * 30.0 + ringRotate)).toFloat()
+                                // 24 Holographic Compass Ticks (Clockwise rotation)
+                                for (step in 0 until 24) {
+                                    val angleRad = Math.toRadians((step * 15.0 + ringRotate)).toFloat()
                                     val cosA = cos(angleRad)
                                     val sinA = sin(angleRad)
-                                    val tickLen = if (step % 3 == 0) 6.dp.toPx() else 3.5.dp.toPx()
-                                    val startX = cx + (orbitR - tickLen) * cosA
-                                    val startY = cy + (orbitR - tickLen) * sinA
-                                    val endX = cx + (orbitR + tickLen) * cosA
-                                    val endY = cy + (orbitR + tickLen) * sinA
+                                    val isMajor = step % 6 == 0
+                                    val tickLen = if (isMajor) 7.5.dp.toPx() else 3.5.dp.toPx()
+                                    val startX = cx + (outerR - tickLen) * cosA
+                                    val startY = cy + (outerR - tickLen) * sinA
+                                    val endX = cx + (outerR + tickLen) * cosA
+                                    val endY = cy + (outerR + tickLen) * sinA
                                     drawLine(
-                                        color = if (step % 3 == 0) GeminiPurple.copy(alpha = 0.70f) else Cyan.copy(alpha = 0.40f),
+                                        color = if (isMajor) Color(0xFF00E5FF).copy(alpha = 0.85f) else Color(0xFF8B5CF6).copy(alpha = 0.40f),
                                         start = Offset(startX, startY),
                                         end = Offset(endX, endY),
-                                        strokeWidth = 1.6.dp.toPx(),
+                                        strokeWidth = if (isMajor) 2.dp.toPx() else 1.2.dp.toPx(),
                                         cap = StrokeCap.Round
                                     )
                                 }
 
-                                // Satellite Glowing Orbiting Particle
-                                val dotRad = Math.toRadians(counterRotate.toDouble()).toFloat()
-                                val dotX = cx + orbitR * cos(dotRad)
-                                val dotY = cy + orbitR * sin(dotRad)
+                                // Middle Segmented Arc Gauge (Counter-Clockwise rotation)
                                 drawCircle(
-                                    color = Cyan.copy(alpha = 0.25f),
-                                    radius = 8.dp.toPx(),
+                                    color = if (isDark) Color(0xFF8B5CF6).copy(alpha = 0.20f) else Color(0xFF8B5CF6).copy(alpha = 0.14f),
+                                    radius = midR,
+                                    style = Stroke(width = 1.2.dp.toPx())
+                                )
+                                for (step in 0 until 12) {
+                                    val angleRad = Math.toRadians((step * 30.0 + counterRotate)).toFloat()
+                                    val dotX = cx + midR * cos(angleRad)
+                                    val dotY = cy + midR * sin(angleRad)
+                                    drawCircle(
+                                        color = if (step % 3 == 0) Color(0xFF00E5FF) else Color(0xFFD946EF).copy(alpha = 0.70f),
+                                        radius = if (step % 3 == 0) 3.dp.toPx() else 1.8.dp.toPx(),
+                                        center = Offset(dotX, dotY)
+                                    )
+                                }
+
+                                // Satellite Glowing Orbiting Particle
+                                val dotRad = Math.toRadians(ringRotate.toDouble()).toFloat()
+                                val dotX = cx + outerR * cos(dotRad)
+                                val dotY = cy + outerR * sin(dotRad)
+                                drawCircle(
+                                    color = Color(0xFF00E5FF).copy(alpha = 0.30f),
+                                    radius = 9.dp.toPx(),
                                     center = Offset(dotX, dotY)
                                 )
                                 drawCircle(
-                                    color = Cyan.copy(alpha = 0.90f),
-                                    radius = 3.5.dp.toPx(),
+                                    color = Color(0xFF00E5FF),
+                                    radius = 4.dp.toPx(),
                                     center = Offset(dotX, dotY)
                                 )
                             }
 
-                            // Pulsing ambient glow
+                            // Layer 3: Pulsing Plasma Glow
                             Box(
                                 Modifier
-                                    .size(164.dp)
+                                    .size(175.dp)
                                     .scale(logoPulse)
                                     .clip(CircleShape)
                                     .background(
                                         Brush.radialGradient(
                                             listOf(
-                                                GeminiBlue.copy(alpha = 0.38f),
-                                                GeminiPurple.copy(alpha = 0.24f),
-                                                Cyan.copy(alpha = 0.12f),
+                                                Color(0xFF00E5FF).copy(alpha = if (isDark) 0.35f else 0.20f),
+                                                Color(0xFF8B5CF6).copy(alpha = if (isDark) 0.25f else 0.15f),
+                                                Color(0xFFEC4899).copy(alpha = if (isDark) 0.12f else 0.08f),
                                                 Color.Transparent
                                             )
                                         )
                                     )
                             )
 
-                            // Outer ring card
+                            // Layer 4: Deep Obsidian Core with Logo
                             Surface(
-                                modifier = Modifier.size(144.dp),
+                                modifier = Modifier.size(146.dp),
                                 shape = CircleShape,
-                                shadowElevation = 20.dp,
-                                color = Color.Black,
-                                border = BorderStroke(3.dp, GeminiAuraGradient)
+                                shadowElevation = 24.dp,
+                                color = Color(0xFF05070D),
+                                border = BorderStroke(2.8.dp, Brush.sweepGradient(listOf(Color(0xFF00E5FF), Color(0xFF8B5CF6), Color(0xFFD946EF), Color(0xFF00E5FF))))
                             ) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .clip(CircleShape)
-                                        .background(Color.Black),
+                                        .background(Color(0xFF05070D)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Image(
@@ -662,49 +755,49 @@ internal fun MainActivity.MainScreen() {
                             }
                         }
 
-                        Spacer(Modifier.height(22.dp))
+                        Spacer(Modifier.height(20.dp))
 
+                        // Futuristic Cyber Title
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = tr("hello").format(cfg.name),
-                                fontSize = 26.sp,
+                                text = "AERO FENIX",
+                                fontSize = 24.sp,
                                 fontWeight = FontWeight.Black,
+                                letterSpacing = 2.5.sp,
                                 textAlign = TextAlign.Center,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface
                             )
-                            GeminiSparkle(size = 22.dp)
+                            GeminiSparkle(size = 20.dp)
                         }
 
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(6.dp))
 
-                        // Status Badge
+                        // Futuristic Telemetry Readout Badges
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = if (cfg.autoWakeEnabled) Color(0xFF10B981).copy(alpha = 0.12f) else GeminiBlue.copy(alpha = 0.10f),
-                            border = BorderStroke(
-                                1.dp,
-                                if (cfg.autoWakeEnabled) Color(0xFF10B981).copy(alpha = 0.38f) else GeminiBlue.copy(alpha = 0.28f)
-                            )
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isDark) Color(0xFF101726) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f),
+                            border = BorderStroke(1.dp, if (isDark) Color(0x4400E5FF) else Color(0x334F46E5))
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
                                 Box(
                                     modifier = Modifier
                                         .size(7.dp)
                                         .clip(CircleShape)
-                                        .background(if (cfg.autoWakeEnabled) Color(0xFF10B981) else Color(0xFF38BDF8))
+                                        .background(if (cfg.autoWakeEnabled) Color(0xFF10B981) else Color(0xFF00E5FF))
                                 )
                                 Text(
-                                    text = if (cfg.autoWakeEnabled) "Wake Word Ready: \"${cfg.commandingWord}\"" else "Aero Fenix Assistant Ready",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (cfg.autoWakeEnabled) Color(0xFF10B981) else if (isDark) Color(0xFF7DD3FC) else Color(0xFF0284C7)
+                                    text = if (cfg.autoWakeEnabled) "WAKE: \"${cfg.commandingWord}\" / \"HEY FENIX\"" else "UNIVERSAL CONTROLLER READY",
+                                    fontSize = 11.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDark) Color(0xFF7DD3FC) else Color(0xFF0369A1)
                                 )
                             }
                         }
@@ -713,13 +806,67 @@ internal fun MainActivity.MainScreen() {
 
                         Text(
                             text = tr("welcome_sub"),
-                            fontSize = 13.sp,
+                            fontSize = 12.5.sp,
                             textAlign = TextAlign.Center,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-                            lineHeight = 19.sp,
-                            modifier = Modifier.padding(horizontal = 12.dp)
+                            lineHeight = 18.sp,
+                            modifier = Modifier.padding(horizontal = 14.dp)
                         )
 
+                        Spacer(Modifier.height(18.dp))
+
+                        // Holographic Quick-Prompt Action Chips (Instant 1-Tap Trigger)
+                        val quickChips = listOf(
+                            tr("quick_prompt_zomato"),
+                            tr("quick_prompt_skip_ad"),
+                            tr("quick_prompt_reels"),
+                            tr("quick_prompt_battery")
+                        )
+
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                        ) {
+                            quickChips.chunked(2).forEach { rowChips ->
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    rowChips.forEach { chipText ->
+                                        Surface(
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = if (isDark) Color(0xFF111728) else MaterialTheme.colorScheme.surface,
+                                            border = BorderStroke(1.dp, Brush.horizontalGradient(listOf(Color(0xFF00E5FF).copy(alpha = 0.5f), Color(0xFF8B5CF6).copy(alpha = 0.5f)))),
+                                            shadowElevation = 3.dp,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { handleUser(chipText) }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Bolt,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(13.dp),
+                                                    tint = Color(0xFF00E5FF)
+                                                )
+                                                Text(
+                                                    text = chipText,
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                    color = if (isDark) Color(0xFFE2E8F0) else MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 } else {
                     // Active Chat Conversation History
@@ -733,23 +880,34 @@ internal fun MainActivity.MainScreen() {
                                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                                     Column(horizontalAlignment = Alignment.End) {
                                         Surface(
-                                            shape = RoundedCornerShape(20.dp, 20.dp, 4.dp, 20.dp),
-                                            color = Indigo,
-                                            shadowElevation = 3.dp,
+                                            shape = RoundedCornerShape(18.dp, 18.dp, 3.dp, 18.dp),
+                                            color = if (isDark) Color(0xFF1E1B4B) else Color(0xFF4F46E5),
+                                            border = BorderStroke(1.2.dp, Brush.horizontalGradient(listOf(Color(0xFF8B5CF6), Color(0xFF00E5FF)))),
+                                            shadowElevation = 4.dp,
                                             modifier = Modifier.widthIn(max = 300.dp)
                                         ) {
-                                            Text(
-                                                text = m.text,
-                                                modifier = Modifier.padding(horizontal = 15.dp, vertical = 11.dp),
-                                                color = Color.White,
-                                                fontSize = 15.sp,
-                                                lineHeight = 21.sp
-                                            )
+                                            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                                                Text(
+                                                    text = "// USER",
+                                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF00E5FF).copy(alpha = 0.85f),
+                                                    modifier = Modifier.padding(bottom = 2.dp)
+                                                )
+                                                Text(
+                                                    text = m.text,
+                                                    color = Color.White,
+                                                    fontSize = 14.5.sp,
+                                                    lineHeight = 20.sp
+                                                )
+                                            }
                                         }
                                         if (m.time.isNotBlank()) {
                                             Text(
                                                 text = m.time,
                                                 fontSize = 10.sp,
+                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
                                                 modifier = Modifier.padding(top = 2.dp, end = 4.dp)
                                             )
@@ -774,10 +932,10 @@ internal fun MainActivity.MainScreen() {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Surface(
-                                        modifier = Modifier.size(30.dp),
+                                        modifier = Modifier.size(32.dp),
                                         shape = RoundedCornerShape(10.dp),
-                                        border = BorderStroke(1.dp, GeminiPurple.copy(alpha = 0.5f)),
-                                        color = MaterialTheme.colorScheme.surfaceVariant
+                                        border = BorderStroke(1.2.dp, Color(0xFF8B5CF6)),
+                                        color = if (isDark) Color(0xFF171333) else MaterialTheme.colorScheme.surfaceVariant
                                     ) {
                                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                             GeminiSparkle(size = 18.dp)
@@ -787,20 +945,26 @@ internal fun MainActivity.MainScreen() {
                                     Spacer(Modifier.width(8.dp))
 
                                     Surface(
-                                        shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp),
-                                        color = MaterialTheme.colorScheme.surface,
+                                        shape = RoundedCornerShape(3.dp, 16.dp, 16.dp, 16.dp),
+                                        color = if (isDark) Color(0xFF0F1523) else MaterialTheme.colorScheme.surface,
                                         tonalElevation = 2.dp,
-                                        shadowElevation = 2.dp,
-                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                                        shadowElevation = 3.dp,
+                                        border = BorderStroke(1.dp, Brush.horizontalGradient(listOf(Color(0xFF8B5CF6).copy(alpha = 0.6f), Color(0xFF00E5FF).copy(alpha = 0.6f))))
                                     ) {
                                         Row(
-                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(7.dp)
                                         ) {
                                             BouncingDots()
                                             Spacer(Modifier.width(4.dp))
-                                            Text(tr("thinking"), fontSize = 12.sp, color = Indigo, fontWeight = FontWeight.SemiBold)
+                                            Text(
+                                                text = "// QUANTUM REASONING...",
+                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                                fontSize = 11.5.sp,
+                                                color = Color(0xFF00E5FF),
+                                                fontWeight = FontWeight.Bold
+                                            )
                                         }
                                     }
                                 }
@@ -810,8 +974,8 @@ internal fun MainActivity.MainScreen() {
                 }
             }
 
-            // Bottom Bar matching user wireframe:
-            // [ give command                   🎤 ]     ( ☰ )
+            // Bottom Cyber Command Deck Bar
+            // [ // give command                 🎤 ]     ( ☰ )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -819,22 +983,22 @@ internal fun MainActivity.MainScreen() {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                val capsuleBg = if (isDark) Color(0xFF1E1F24) else Color(0xFFF0F4F9)
+                val capsuleBg = if (isDark) Color(0xFF0E131F) else Color(0xFFEFF3FA)
 
-                // Left: Command / Gemini Live Capsule
+                // Left: Command Console / Gemini Live Capsule
                 Surface(
                     modifier = Modifier.weight(1f),
                     color = capsuleBg,
-                    shape = RoundedCornerShape(32.dp),
-                    shadowElevation = if (listening) 12.dp else 4.dp,
+                    shape = RoundedCornerShape(28.dp),
+                    shadowElevation = if (listening) 14.dp else 4.dp,
                     border = if (listening) {
-                        BorderStroke(2.dp, GeminiAuraGradient)
+                        BorderStroke(2.dp, Brush.horizontalGradient(listOf(Color(0xFF00E5FF), Color(0xFF8B5CF6), Color(0xFFD946EF), Color(0xFF00E5FF))))
                     } else {
-                        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                        BorderStroke(1.2.dp, if (isDark) Color(0x4400E5FF) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
                     }
                 ) {
                     if (listening) {
-                        // Gemini Live Voice Listening Mode
+                        // Gemini Live Voice Listening Mode with High-Tech Frequency Wave
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -851,16 +1015,17 @@ internal fun MainActivity.MainScreen() {
                                 Column {
                                     Text(
                                         text = if (liveSpeechText.isNotBlank()) liveSpeechText else tr("listening"),
-                                        fontSize = 14.sp,
+                                        fontSize = 13.5.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface,
+                                        color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1
                                     )
                                     Text(
-                                        text = if (liveSpeechText.isNotBlank()) "Recognizing voice..." else "Gemini Live",
-                                        fontSize = 11.sp,
-                                        color = GeminiCyan,
-                                        fontWeight = FontWeight.SemiBold
+                                        text = if (liveSpeechText.isNotBlank()) "[ VOICE STREAMING ]" else "[ GEMINI LIVE // READY ]",
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF00E5FF),
+                                        fontWeight = FontWeight.Bold
                                     )
                                 }
                             }
@@ -886,15 +1051,15 @@ internal fun MainActivity.MainScreen() {
                             }
                         }
                     } else {
-                        // Modern Command Capsule: Text + Clear/Send + Mic
+                        // Modern Cyber Command Input Capsule
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                                .padding(start = 14.dp, end = 6.dp, top = 3.dp, bottom = 3.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            GeminiSparkle(size = 20.dp)
+                            GeminiSparkle(size = 19.dp)
 
                             OutlinedTextField(
                                 value = input,
@@ -919,8 +1084,9 @@ internal fun MainActivity.MainScreen() {
                                 modifier = Modifier.weight(1f),
                                 placeholder = {
                                     Text(
-                                        "give command",
-                                        fontSize = 14.sp,
+                                        ">_ give command",
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        fontSize = 13.sp,
                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                                     )
                                 },
@@ -955,15 +1121,15 @@ internal fun MainActivity.MainScreen() {
                                             handleUser(t)
                                         },
                                     shape = CircleShape,
-                                    color = GeminiBlue,
+                                    color = Color(0xFF00E5FF),
                                     shadowElevation = 3.dp
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(
                                             Icons.AutoMirrored.Filled.Send,
                                             "Send",
-                                            Modifier.size(18.dp),
-                                            tint = Color.White
+                                            Modifier.size(17.dp),
+                                            tint = Color(0xFF05070D)
                                         )
                                     }
                                 }
@@ -975,16 +1141,16 @@ internal fun MainActivity.MainScreen() {
                                         .clip(CircleShape)
                                         .clickable { toggle() },
                                     shape = CircleShape,
-                                    color = if (isDark) Color(0xFF2B2D35) else Color(0xFFE2E7EF),
-                                    border = BorderStroke(1.dp, GeminiPurple.copy(alpha = 0.4f)),
-                                    shadowElevation = 2.dp
+                                    color = if (isDark) Color(0xFF172033) else Color(0xFFE2E8F0),
+                                    border = BorderStroke(1.2.dp, Color(0xFF00E5FF).copy(alpha = 0.6f)),
+                                    shadowElevation = 3.dp
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(
                                             Icons.Default.Mic,
                                             contentDescription = "Voice Input",
                                             Modifier.size(20.dp),
-                                            tint = GeminiBlue
+                                            tint = Color(0xFF00E5FF)
                                         )
                                     }
                                 }

@@ -19,7 +19,13 @@ OPENAI_COMPAT = {
 }
 SKIP = ("whisper", "tts", "embed", "guard", "moderation", "dall-e", "image",
         "audio", "realtime", "imagen", "veo", "live", "transcribe", "aqa")
-LANGS = {"ta-IN": "Tamil", "en-US": "English", "ja-JP": "Japanese"}
+LANGS = {
+    "ta-IN": "Tamil",
+    "en-US": "English",
+    "ja-JP": "Japanese",
+    "hi-IN": "Hindi",
+    "ko-KR": "Korean"
+}
 
 _history = []
 
@@ -93,8 +99,9 @@ def _local_base(url):
 
 DEFAULT_MODELS = {
     "gemini": [
-        {"id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash (Recommended)"},
-        {"id": "gemini-1.5-flash", "name": "Gemini 1.5 Flash"},
+        {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash (Recommended)"},
+        {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro"},
+        {"id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash"},
         {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro"},
         {"id": "gemini-2.0-flash-lite", "name": "Gemini 2.0 Flash Lite"},
     ],
@@ -105,12 +112,14 @@ DEFAULT_MODELS = {
         {"id": "mixtral-8x7b-32768", "name": "Mixtral 8x7B"},
     ],
     "openai": [
-        {"id": "gpt-4o-mini", "name": "GPT-4o Mini (Fast & Smart)"},
-        {"id": "gpt-4o", "name": "GPT-4o"},
-        {"id": "o3-mini", "name": "o3-mini (High Reasoning)"},
-        {"id": "gpt-3.5-turbo", "name": "GPT-3.5 Turbo"},
+        {"id": "gpt-4.1", "name": "GPT-4.1 (Next-Gen)"},
+        {"id": "gpt-4o", "name": "GPT-4o (Omni)"},
+        {"id": "gpt-4o-mini", "name": "GPT-4o Mini (Fast)"},
+        {"id": "o3-mini", "name": "o3-mini (Reasoning)"},
+        {"id": "o1", "name": "o1 (High Intelligence)"},
     ],
     "anthropic": [
+        {"id": "claude-3-7-sonnet-20250219", "name": "Claude 3.7 Sonnet (Hybrid Reasoning)"},
         {"id": "claude-3-5-sonnet-20241022", "name": "Claude 3.5 Sonnet"},
         {"id": "claude-3-5-haiku-20241022", "name": "Claude 3.5 Haiku"},
     ],
@@ -119,12 +128,13 @@ DEFAULT_MODELS = {
         {"id": "deepseek-reasoner", "name": "DeepSeek R1 (Reasoner)"},
     ],
     "mistral": [
-        {"id": "mistral-small-latest", "name": "Mistral Small"},
         {"id": "mistral-large-latest", "name": "Mistral Large"},
+        {"id": "mistral-small-latest", "name": "Mistral Small"},
         {"id": "codestral-latest", "name": "Codestral"},
     ],
     "openrouter": [
         {"id": "deepseek/deepseek-r1", "name": "DeepSeek R1 (OpenRouter)"},
+        {"id": "anthropic/claude-3.7-sonnet", "name": "Claude 3.7 Sonnet"},
         {"id": "meta-llama/llama-3.3-70b-instruct", "name": "Llama 3.3 70B"},
         {"id": "google/gemini-2.0-flash-001", "name": "Gemini 2.0 Flash"},
         {"id": "deepseek/deepseek-chat", "name": "DeepSeek V3"},
@@ -248,6 +258,16 @@ MSG = {
               "net": "機内モードが有効か、オフラインです。通話、ライト、アプリ起動、アラームなどの機能は利用できます。",
               "err": "問題が発生しました。もう一度お試しください。",
               "unclear": "よく分かりませんでした。例えば「WhatsAppを開いて」のように言ってください。"},
+    "hi-IN": {"busy": "AI सर्वर अभी व्यस्त है। कृपया थोड़ी देर बाद फिर से प्रयास करें।",
+              "key": "API कुंजी अमान्य है या अनुमत नहीं है। कृपया सेटिंग्स में जांचें।",
+              "net": "इंटरनेट कनेक्शन नहीं है या हवाई जहाज मोड सक्रिय है। ऑफ़लाइन सुविधाएं (कॉल, टॉर्च, ऐप्स) चालू हैं।",
+              "err": "कुछ गलत हो गया। कृपया पुन: प्रयास करें।",
+              "unclear": "समझ नहीं आया। कृपया सरलता से कहें, जैसे: WhatsApp खोलो।"},
+    "ko-KR": {"busy": "AI 서버가 현재 바쁩니다. 잠시 후 다시 시도해 주세요.",
+              "key": "API 키가 잘못되었거나 허용되지 않았습니다. 설정에서 확인하세요.",
+              "net": "인터넷 연결이 없거나 비행기 탑승 모드입니다. 오프라인 제어(전화, 손전등, 앱)는 작동합니다.",
+              "err": "문제가 발생했습니다. 다시 시도해 주세요.",
+              "unclear": "이해하지 못했습니다. 'WhatsApp 열어줘'처럼 간단히 말씀해 주세요."},
 }
 _fallback_cache = {}
 
@@ -335,49 +355,102 @@ def _quick_local_answer(text, cfg):
     name = cfg.get("name") or "Aero Fenix"
 
     # 1. Identity / Name
-    if re.search(r"^(?:who are you|what is your name|your name|who made you|un per enna|unga peru enna|நீ யார்|உன் பெயர் என்ன|名前は何ですか|あなたは誰ですか)$", t_clean):
+    if re.search(r"^(?:who are you|what is your name|your name|who made you|un per enna|unga peru enna|நீ யார்|உன் பெயர் என்ன|名前は何ですか|あなたは誰ですか|आप कौन हैं|तुम्हारा नाम क्या है|누구세요|이름이 뭐야)$", t_clean):
         if lang == "ta-IN":
             return "என் பெயர் %s. நான் உங்கள் தனிப்பட்ட AI உதவியாளர்." % name
         elif lang == "ja-JP":
             return "私は%sです。あなたのパーソナルAIアシスタントです。" % name
+        elif lang == "hi-IN":
+            return "मेरा नाम %s है। मैं आपका निजी AI सहायक हूँ।" % name
+        elif lang == "ko-KR":
+            return "제 이름은 %s입니다. 개인 AI 비서입니다." % name
         return "I am %s, your personal AI assistant." % name
 
     # 2. Greetings
-    if re.search(r"^(?:hi|hello|hey|vanakkam|வணக்கம்|வணக்கங்க|good morning|good afternoon|good evening|こんにちは|おはよう)$", t_clean):
+    if re.search(r"^(?:hi|hello|hey|vanakkam|வணக்கம்|வணக்கங்க|good morning|good afternoon|good evening|こんにちは|おはよう|नमस्ते|प्रणाम|안녕하세요|안녕)$", t_clean):
         if lang == "ta-IN":
             return "வணக்கம்! நான் உங்களுக்கு எப்படி உதவ வேண்டும்?"
         elif lang == "ja-JP":
             return "こんにちは！何かお手伝いできることはありますか？"
+        elif lang == "hi-IN":
+            return "नमस्ते! मैं आपकी किस प्रकार सहायता कर सकता हूँ?"
+        elif lang == "ko-KR":
+            return "안녕하세요! 무엇을 도와드릴까요?"
         return "Hello! How can I help you today?"
 
     # 3. How are you
-    if re.search(r"^(?:how are you|how are u|epdi iruka|eppadi irukkeenga|nalla irukiya|எப்படி இருக்கிறீர்கள்|எப்படி இருக்கீங்க|元気ですか|調子はどうですか)$", t_clean):
+    if re.search(r"^(?:how are you|how are u|epdi iruka|eppadi irukkeenga|nalla irukiya|எப்படி இருக்கிறீர்கள்|எப்படி இருக்கீங்க|元気ですか|調子はどうですか|आप कैसे हैं|हाल चाल कैसा है|잘 지내|어떻게 지내)$", t_clean):
         if lang == "ta-IN":
             return "நான் நலமாக இருக்கிறேன்! உங்களுக்கு உதவ தயாராக உள்ளேன்."
         elif lang == "ja-JP":
             return "元気です！いつでもお手伝いできます。"
+        elif lang == "hi-IN":
+            return "मैं बहुत अच्छा हूँ! आपकी सेवा के लिए तैयार हूँ।"
+        elif lang == "ko-KR":
+            return "잘 지내고 있습니다! 도울 준비가 되어 있어요."
         return "I'm doing great, ready to assist you!"
 
     # 4. Time
-    if re.search(r"^(?:what is the time|time please|what time is it|now time|current time|neram enna|time enna|மணி என்ன|இப்போது நேரம் என்ன|何時ですか|今の時間は)$", t_clean):
+    if re.search(r"^(?:what is the time|time please|what time is it|now time|current time|neram enna|time enna|மணி என்ன|இப்போது நேரம் என்ன|何時ですか|今の時間は|समय क्या हुआ|कितने बजे हैं|지금 몇 시야|지금 시간)$", t_clean):
         now_time = time.strftime("%I:%M %p")
         if lang == "ta-IN":
             return "இப்போது நேரம்: %s" % now_time
         elif lang == "ja-JP":
             return "現在の時刻は %s です。" % now_time
+        elif lang == "hi-IN":
+            return "अभी का समय है: %s" % now_time
+        elif lang == "ko-KR":
+            return "현재 시각은 %s입니다." % now_time
         return "The current time is %s." % now_time
 
     # 5. Date
-    if re.search(r"^(?:what is the date|today date|what date is it|what is today's date|date enna|inniku date enna|தேதி என்ன|இன்றைய தேதி என்ன|今日の日付は|何日ですか)$", t_clean):
+    if re.search(r"^(?:what is the date|today date|what date is it|what is today's date|date enna|inniku date enna|தேதி என்ன|இன்றைய தேதி என்ன|今日の日付は|何日ですか|आज की तारीख क्या है|आज क्या तारीख है|오늘 며칠이야|오늘 날짜)$", t_clean):
         now_date = time.strftime("%A, %d %B %Y")
         if lang == "ta-IN":
             return "இன்றைய தேதி: %s" % now_date
         elif lang == "ja-JP":
             return "今日の日付は %s です。" % now_date
+        elif lang == "hi-IN":
+            return "आज की तारीख है: %s" % now_date
+        elif lang == "ko-KR":
+            return "오늘 날짜는 %s입니다." % now_date
         return "Today's date is %s." % now_date
 
-    # 6. Basic Math: e.g. "5 + 10", "calculate 25 * 4", "100 / 5", "50 - 20"
-    m_math = re.match(r"^(?:calculate|what is|கணக்கிடு|மதிப்பு)?\s*(\d+(?:\.\d+)?)\s*([\+\-\*\/xX÷])\s*(\d+(?:\.\d+)?)\s*(?:enna|என்ன|equal|is)?$", t_clean)
+    # 6. Coin Toss & Dice
+    if re.search(r"^(?:flip a coin|coin toss|toss a coin|toss pannu|head or tail|roll a dice|roll dice|dice podu)$", t_clean):
+        import random
+        if "dice" in t_clean:
+            d_val = random.randint(1, 6)
+            if lang == "ta-IN": return "தாயக்கட்டை எண்: %d" % d_val
+            elif lang == "hi-IN": return "पासे का अंक: %d" % d_val
+            elif lang == "ja-JP": return "サイコロの目は %d です。" % d_val
+            return "Dice rolled: %d." % d_val
+        else:
+            outcome = random.choice(["Heads", "Tails"])
+            if lang == "ta-IN": return "டாஸ் முடிவு: %s" % ("ஹெட் (தலை)" if outcome == "Heads" else "டெயில் (பூ)")
+            elif lang == "hi-IN": return "सिक्का उछालने का परिणाम: %s" % ("हेड" if outcome == "Heads" else "टेल")
+            elif lang == "ja-JP": return "コインの結果: %s" % ("表" if outcome == "Heads" else "裏")
+            return "Coin toss result: %s." % outcome
+
+    # 7. Unit Conversion: km to miles, celsius to fahrenheit, kg to lbs
+    m_conv = re.match(r"^(\d+(?:\.\d+)?)\s*(km|miles?|celsius|fahrenheit|kg|pounds?|lbs?)\s*(?:to|in|into|ஆக|இல்)\s*(km|miles?|celsius|fahrenheit|kg|pounds?|lbs?)$", t_clean)
+    if m_conv:
+        v = float(m_conv.group(1))
+        u1, u2 = m_conv.group(2).lower(), m_conv.group(3).lower()
+        ans = None
+        if u1.startswith("km") and u2.startswith("mile"): ans = "%.2f miles" % (v * 0.621371)
+        elif u1.startswith("mile") and u2.startswith("km"): ans = "%.2f km" % (v * 1.60934)
+        elif "celsius" in u1 and "fahrenheit" in u2: ans = "%.1f °F" % ((v * 9/5) + 32)
+        elif "fahrenheit" in u1 and "celsius" in u2: ans = "%.1f °C" % ((v - 32) * 5/9)
+        elif u1.startswith("kg") and (u2.startswith("pound") or u2.startswith("lb")): ans = "%.2f lbs" % (v * 2.20462)
+        elif (u1.startswith("pound") or u1.startswith("lb")) and u2.startswith("kg"): ans = "%.2f kg" % (v / 2.20462)
+        if ans:
+            if lang == "ta-IN": return "மாற்று மதிப்பு: %s" % ans
+            elif lang == "hi-IN": return "परिवर्तित मान: %s" % ans
+            return "Converted value: %s." % ans
+
+    # 8. Basic Math: e.g. "5 + 10", "calculate 25 * 4", "100 / 5", "50 - 20"
+    m_math = re.match(r"^(?:calculate|what is|கணக்கிடு|மதிப்பு|हिसाब करो)?\s*(\d+(?:\.\d+)?)\s*([\+\-\*\/xX÷])\s*(\d+(?:\.\d+)?)\s*(?:enna|என்ன|equal|is)?$", t_clean)
     if m_math:
         n1 = float(m_math.group(1))
         op = m_math.group(2).lower()
@@ -396,6 +469,8 @@ def _quick_local_answer(text, cfg):
                 return "விடை: %s" % res_str
             elif lang == "ja-JP":
                 return "計算結果は %s です。" % res_str
+            elif lang == "hi-IN":
+                return "उत्तर है: %s" % res_str
             return "The result is %s." % res_str
 
     return None
@@ -415,7 +490,11 @@ def _chat_api(cfg, user_text):
                    .replace("__LANG__", LANGS.get(lang, "English")) \
                    .replace("__DATETIME__", now_str)
     _history.append({"role": "user", "content": user_text})
-    del _history[:-6]  # Optimize tokens: truncate history to last 3 conversation turns
+    
+    # Token Optimization: Adaptive sliding window memory
+    if len(_history) > 8:
+        # Keep first exchange context + last 6 turns
+        del _history[1:-6]
     while _history and _history[0]["role"] != "user":
         _history.pop(0)
     try:
@@ -689,6 +768,55 @@ def _parse_one(p, last_app):
     # --- Screen Awareness / Reading
     if any(w in t for w in ("read screen", "read the screen", "what is on screen", "what's on screen", "screen la enna irukku", "திரையை படி", "ஸ்கிரீனை படி", "திரையில் என்ன உள்ளது")):
         return [{"type": "ui_read_screen", "desc": "Read Screen"}], "read_screen"
+
+    # --- Battery Status & Percentage
+    if any(w in t for w in ("battery status", "what is my battery", "battery percentage", "battery level", "battery percent", "how much battery",
+                            "battery eppadi", "battery evvalavu", "பேட்டரி எவ்வளவு", "பேட்டரி நிலை", "பேட்டரி பர்சன்ட்", "பேட்டரி பர்சென்டேஜ்",
+                            "बैटरी कितनी है", "बैटरी स्टेटस", "배터리 잔량", "バッテリー残量")):
+        return [{"type": "battery_status", "desc": "Check Battery"}], "battery"
+
+    # --- Auto Skip-Ad Engine
+    if any(w in t for w in ("skip ad", "skip the ad", "skip advertisement", "skip pannu", "ad skip", "skip video ad",
+                            "விளம்பரத்தை தவிர்", "விளம்பரம் நீக்கு", "விளம்பரம் தவிர்", "விளம்பரம் வேண்டாம்",
+                            "विज्ञापन छोड़ो", "विज्ञापन हटाएं", "広告をスキップ", "広告スキップ", "광고 건너뛰기")):
+        return [{"type": "ui_skip_ad", "desc": "Skip Ad"}], "skip_ad"
+
+    # --- Auto-Reels Cruise Control Mode
+    if any(w in t for w in ("auto scroll reels", "reels cruise", "auto reels", "cruise mode", "தானாக ரீல்ஸ் மாத்து", "தானாக ரீல்ஸ் ஓடு", "रील ऑटो स्क्रॉल", "릴스 자동 재생")):
+        is_stop = any(w in t for w in ("stop", "off", "நிறுத்து", "ஆஃப்", "rok", "band"))
+        return [{"type": "ui_reels_cruise", "on": not is_stop, "desc": "Reels Cruise Off" if is_stop else "Reels Cruise On"}], "cruise_off" if is_stop else "cruise_on"
+
+    # --- Universal Form Auto-Fill & OTP Grabber
+    if any(w in t for w in ("fill form", "fill my details", "fill details", "fill address", "enter my address", "படிவத்தை நிரப்பு", "விவரங்களை நிரப்பு", "फॉर्म भरो", "양식 작성")):
+        return [{"type": "ui_fill_form", "desc": "Fill Form"}], "fill_form"
+    if any(w in t for w in ("otp", "ஓடிபி", "read otp", "enter otp", "fill otp", "type otp", "put otp", "tell otp", "show otp", "get otp", "otp sollu", "otp enna", "what is otp",
+                            "ஓடிபி போடு", "ஓடிபி நிரப்பு", "ஓடிபி சொல்லு", "ஓடிபி என்ன", "ओटीपी भरो", "ओटीपी डालो", "ओटीपी बताओ", "OTP 입력")):
+        return [{"type": "ui_read_otp", "desc": "Enter OTP"}], "fill_otp"
+
+    # --- Voice Grid & Precision Coordinate Gestures
+    m_grid = re.match(r"^(?:tap|click|touch|தொடு|கிளிக்)\s+(?P<pos>top\s+left|top\s+right|top\s+center|center|middle|bottom\s+left|bottom\s+right|bottom\s+center|\d{1,2})$", t)
+    if m_grid:
+        pos_id = m_grid.group("pos").replace(" ", "_")
+        return [{"type": "ui_grid_tap", "pos": pos_id, "desc": f"Tap {pos_id}"}], "grid_tap:" + pos_id
+
+    # --- Multi-Step Hands-Free Chain: "<app> open panni <query> thedu"
+    m_open_search = re.match(r"^(?P<a>.+?)\s*(?:ah|a|ஐ)?\s*(?:open|thira|launch)\s+(?:(?:panni|pannitu|செய்து|செய்துவிட்டு|அப்புறம்|பிறகு)\s+)?(?P<q>.+?)\s*(?:nu|ன்னு|னு)?\s*(?:search|thedu|தேடு)(?:\s+(?:pannu|podu))?$", t)
+    if m_open_search:
+        a_raw = m_open_search.group("a").strip()
+        q_raw = m_open_search.group("q").strip()
+        app_res = _app_name(a_raw) or a_raw.title()
+        return [
+            {"type": "open_app", "name": app_res, "desc": f"Open {app_res}"},
+            {"type": "ui_search", "query": q_raw, "submit": True, "desc": f"Search '{q_raw}'"}
+        ], "search:" + app_res
+
+    # --- Uninstall App
+    m_uninst = re.match(r"^(?:uninstall|remove\s+app|delete\s+app|நீக்கு|அன்இன்ஸ்டால்)\s+(?P<a>.+)$", t) or \
+               re.match(r"^(?P<a>.+?)\s*" + PART + r"?\s*(?:uninstall|அன்இன்ஸ்டால்|நீக்கு|அழி)(?:\s+(?:pannu|seiyu|vidu))?$", t)
+    if m_uninst:
+        u_name = m_uninst.group("a").strip()
+        u_app = _app_name(u_name) or u_name.title()
+        return [{"type": "uninstall_app", "name": u_app, "desc": f"Uninstall {u_app}"}], "uninstall:" + u_app
 
     # --- Reels, Shorts, and Vertical Feeds (Instagram, YouTube Shorts, TikTok)
     if any(w in t for w in ("next reel", "next reels", "adutha reel", "அடுத்த ரீல்ஸ்", "next shorts", "next video in reels", "reels maathu")):
@@ -1102,7 +1230,11 @@ SAY = {  # spoken confirmation per language
               "tab": "%s பகுதிக்கு செல்கிறேன்.", "toggle_on": "%s ஆன் செய்யப்பட்டது.", "toggle_off": "%s ஆஃப் செய்யப்பட்டது.",
               "feature": "%s செய்யப்படுகிறது.", "read_notifications": "வந்த செய்திகளைப் படிக்கிறேன்.",
               "read_sms": "சமீபத்திய எஸ்எம்எஸ் படிக்கிறேன்.", "take_photo": "படம் எடுக்கிறேன்.",
-              "data_on": "மொபைல் டேட்டா ஆன் செய்கிறேன்.", "data_off": "மொபைல் டேட்டா ஆஃப் செய்கிறேன்."},
+              "data_on": "மொபைல் டேட்டா ஆன் செய்கிறேன்.", "data_off": "மொபைல் டேட்டா ஆஃப் செய்கிறேன்.",
+              "skip_ad": "விளம்பரம் தவிர்க்கப்பட்டது.", "cruise_on": "தானாக ரீல்ஸ் மாறும் முறை ஆன்.",
+              "cruise_off": "தானாக ரீல்ஸ் மாறும் முறை ஆஃப்.", "fill_form": "படிவம் தானாக நிரப்பப்படுகிறது.",
+              "fill_otp": "ஓடிபி கண்டறியப்பட்டு நிரப்பப்படுகிறது.", "battery": "பேட்டரி அளவை சரிபார்க்கிறேன்.",
+              "uninstall": "%s-ஐ நீக்க அன்இன்ஸ்டால் திரையை திறக்கிறேன்.", "grid_tap": "%s-ல் கிளிக் செய்கிறேன்."},
     "en-US": {"app": "Opening %s.", "search": "Searching %s.", "call": "Calling %s right now.",
               "nth": "Opening number %d.", "ok": "Done.", "yt": "Playing %s on YouTube.",
               "google": "Searching %s on Google.", "google_page": "Opening Google.",
@@ -1128,7 +1260,11 @@ SAY = {  # spoken confirmation per language
               "tab": "Opening %s tab.", "toggle_on": "Turned on %s.", "toggle_off": "Turned off %s.",
               "feature": "Executing %s.", "read_notifications": "Reading notifications.",
               "read_sms": "Reading recent SMS.", "take_photo": "Taking photo.",
-              "data_on": "Turning on mobile data.", "data_off": "Turning off mobile data."},
+              "data_on": "Turning on mobile data.", "data_off": "Turning off mobile data.",
+              "skip_ad": "Skipping advertisement.", "cruise_on": "Reels auto-cruise enabled.",
+              "cruise_off": "Reels auto-cruise disabled.", "fill_form": "Auto-filling form details.",
+              "fill_otp": "Reading and entering OTP.", "battery": "Checking battery level.",
+              "uninstall": "Opening uninstaller for %s.", "grid_tap": "Tapping %s."},
     "ja-JP": {"app": "%sを開きます。", "search": "%sを検索します。", "call": "%sに電話をかけています。",
               "nth": "%d番目を開きます。", "ok": "はい。", "yt": "YouTubeで%sを再生します。",
               "google": "Googleで%sを検索します。", "google_page": "Googleを開きます。",
@@ -1154,7 +1290,53 @@ SAY = {  # spoken confirmation per language
               "tab": "%sタブを開きます。", "toggle_on": "%sをオンにしました。", "toggle_off": "%sをオフにしました。",
               "feature": "%sを実行します。", "read_notifications": "通知を読み上げます。",
               "read_sms": "SMSを読み上げます。", "take_photo": "写真を撮影します。",
-              "data_on": "モバイルデータをオンにします。", "data_off": "モバイルデータをオフにします。"},
+              "data_on": "モバイルデータをオンにします。", "data_off": "モバイルデータをオフにします。",
+              "skip_ad": "広告をスキップしました。", "cruise_on": "リール自動スクロールを開始しました。",
+              "cruise_off": "リール自動スクロールを停止しました。", "fill_form": "フォームを自動入力しています。",
+              "fill_otp": "OTPを入力しています。", "battery": "バッテリー残量を確認します。",
+              "uninstall": "%sのアンインストールを開きます。", "grid_tap": "%sをタップしました。"},
+    "hi-IN": {"app": "%s खोल रहा हूँ।", "search": "%s खोज रहा हूँ।", "call": "%s को कॉल कर रहा हूँ।",
+              "nth": "%d नंबर खोल रहा हूँ।", "ok": "ठीक है।", "yt": "YouTube पर %s चला रहा हूँ।",
+              "google": "Google पर %s खोज रहा हूँ।", "google_page": "Google खोल रहा हूँ।",
+              "last_file": "अंतिम प्राप्त फ़ाइल खोल रहा हूँ।",
+              "torch_on": "टॉर्च चालू कर दी है।", "torch_off": "टॉर्च बंद कर दी है।",
+              "wifi_on": "वाई-फ़ाई चालू कर रहा हूँ।", "wifi_off": "वाई-फ़ाई बंद कर रहा हूँ।",
+              "bt_on": "ब्लूटूथ चालू कर रहा हूँ।", "bt_off": "ब्लूटूथ बंद कर रहा हूँ।",
+              "hotspot_on": "हॉटस्पॉट चालू किया गया।", "hotspot_off": "हॉटस्पॉट बंद किया गया।",
+              "chat": "चैट खोल रहा हूँ।", "screenshot": "स्क्रीनशॉट लिया गया।", "media": "मीडिया बदला गया।", "clipboard": "कॉपी किया गया।",
+              "stop": "सहायक को रोक रहा हूँ।", "type": "'%s' टाइप किया है।", "erased": "संदेश मिटाया गया।", "sent": "संदेश भेजा गया।",
+              "reels_next": "अगली रील।", "reels_prev": "पिछली रील।", "like": "पसंद किया गया।", "share": "शेयर खोला गया।",
+              "subscribe": "सब्सक्राइब किया गया।", "comment": "टिप्पणियाँ खोली गईं।", "cart": "कार्ट में जोड़ा गया।", "read_screen": "स्क्रीन पढ़ रहा हूँ।",
+              "send_to": "%s को संदेश भेज रहा हूँ।", "music": "%s बजा रहा हूँ।", "swipe_left": "बाएं स्वाइप कर रहा हूँ।",
+              "swipe_right": "दाएं स्वाइप कर रहा हूँ।", "swipe_up": "ऊपर स्वाइप कर रहा हूँ।", "swipe_down": "नीचे स्वाइप कर रहा हूँ।",
+              "menu": "मेनू खोला गया।", "dialog_allow": "अनुमति दी गई।", "dialog_deny": "अस्वीकार किया गया।", "tab": "%s टैब खोल रहा हूँ।",
+              "toggle_on": "%s चालू किया गया।", "toggle_off": "%s बंद किया गया।", "feature": "%s निष्पादित कर रहा हूँ।",
+              "read_notifications": "सूचनाएं पढ़ रहा हूँ।", "read_sms": "एसएमएस पढ़ रहा हूँ।", "take_photo": "फोटो खींच रहा हूँ।",
+              "data_on": "मोबाइल डेटा चालू कर रहा हूँ।", "data_off": "मोबाइल डेटा बंद कर रहा हूँ।", "skip_ad": "विज्ञापन छोड़ रहा हूँ।",
+              "cruise_on": "रील ऑटो-क्रूज़ चालू।", "cruise_off": "रील ऑटो-क्रूज़ बंद।", "fill_form": "विवरण भर रहा हूँ।",
+              "fill_otp": "ओटीपी भर रहा हूँ।", "battery": "बैटरी की स्थिति देख रहा हूँ।", "uninstall": "%s को हटाने के लिए अनइंस्टालर खोल रहा हूँ।",
+              "grid_tap": "%s पर टैप किया।"},
+    "ko-KR": {"app": "%s을(를) 엽니다.", "search": "%s을(를) 검색합니다.", "call": "%s에게 전화합니다.",
+              "nth": "%d번 항목을 엽니다.", "ok": "완료했습니다.", "yt": "YouTube에서 %s을(를) 재생합니다.",
+              "google": "Google에서 %s을(를) 검색합니다.", "google_page": "Google을 엽니다.",
+              "last_file": "최근 수신된 파일을 엽니다.",
+              "torch_on": "손전등을 켰습니다.", "torch_off": "손전등을 껐습니다.",
+              "wifi_on": "Wi-Fi를 켭니다.", "wifi_off": "Wi-Fi를 끕니다.",
+              "bt_on": "블루투스를 켭니다.", "bt_off": "블루투스를 끕니다.",
+              "hotspot_on": "핫스팟을 켰습니다.", "hotspot_off": "핫스팟을 껐습니다.",
+              "chat": "채팅을 엽니다.", "screenshot": "화면을 캡처했습니다.", "media": "미디어를 변경했습니다.", "clipboard": "클립보드에 복사했습니다.",
+              "stop": "비서를 종료합니다.", "type": "'%s'을(를) 입력했습니다.", "erased": "메시지를 지웠습니다.", "sent": "메시지를 전송했습니다.",
+              "reels_next": "다음 릴스입니다.", "reels_prev": "이전 릴스입니다.", "like": "좋아요를 눌렀습니다.", "share": "공유를 열었습니다.",
+              "subscribe": "구독했습니다.", "comment": "댓글창을 열었습니다.", "cart": "장바구니에 담았습니다.", "read_screen": "화면을 읽고 있습니다.",
+              "send_to": "%s에게 메시지를 보냅니다.", "music": "%s을(를) 재생합니다.", "swipe_left": "왼쪽으로 넘깁니다.",
+              "swipe_right": "오른쪽으로 넘깁니다.", "swipe_up": "위로 올립니다.", "swipe_down": "아래로 내립니다.",
+              "menu": "메뉴를 열었습니다.", "dialog_allow": "허용했습니다.", "dialog_deny": "거부했습니다.", "tab": "%s 탭을 엽니다.",
+              "toggle_on": "%s을(를) 켰습니다.", "toggle_off": "%s을(를) 껐습니다.", "feature": "%s을(를) 실행합니다.",
+              "read_notifications": "알림을 읽습니다.", "read_sms": "문자 메시지를 읽습니다.", "take_photo": "사진을 촬영합니다.",
+              "data_on": "모바일 데이터를 켭니다.", "data_off": "모바일 데이터를 끕니다.", "skip_ad": "광고를 건너뜁니다.",
+              "cruise_on": "릴스 자동 재생 시작.", "cruise_off": "릴스 자동 재생 중지.", "fill_form": "양식을 자동 입력합니다.",
+              "fill_otp": "OTP를 입력합니다.", "battery": "배터리 잔량을 확인합니다.", "uninstall": "%s 삭제 화면을 엽니다.",
+              "grid_tap": "%s을(를) 탭했습니다."},
 }
 
 
@@ -1172,7 +1354,6 @@ def local_command(text, lang="en-US"):
         for a in acts:
             if a["type"] == "open_app":
                 last_app = a["name"]
-        # a bare "search X" right after "open <app>" must search INSIDE that app (already open)
         actions.extend(acts)
         s = SAY.get(lang, SAY["en-US"])
         if kind.startswith("app:"): said.append(s["app"] % kind[4:])
@@ -1226,6 +1407,14 @@ def local_command(text, lang="en-US"):
         elif kind == "take_photo": said.append(s.get("take_photo", "Taking photo."))
         elif kind == "data_on": said.append(s.get("data_on", "Turning on data."))
         elif kind == "data_off": said.append(s.get("data_off", "Turning off data."))
+        elif kind == "skip_ad": said.append(s.get("skip_ad", "Skipping ad."))
+        elif kind == "cruise_on": said.append(s.get("cruise_on", "Reels auto-cruise enabled."))
+        elif kind == "cruise_off": said.append(s.get("cruise_off", "Reels auto-cruise disabled."))
+        elif kind == "fill_form": said.append(s.get("fill_form", "Auto-filling form."))
+        elif kind == "fill_otp": said.append(s.get("fill_otp", "Reading and entering OTP."))
+        elif kind == "battery": said.append(s.get("battery", "Checking battery level."))
+        elif kind.startswith("uninstall:"): said.append(s.get("uninstall", "Opening uninstaller for %s.") % kind[10:])
+        elif kind.startswith("grid_tap:"): said.append(s.get("grid_tap", "Tapping %s.") % kind[9:])
         else: said.append(s["ok"])
     return {"speech": " ".join(said), "actions": actions}
 

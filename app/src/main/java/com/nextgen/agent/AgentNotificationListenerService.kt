@@ -47,9 +47,25 @@ class AgentNotificationListenerService : NotificationListenerService() {
         fun addNotification(item: NotificationItem) {
             recentList.removeAll { it.id == item.id }
             recentList.add(0, item)
-            if (recentList.size > 50) {
+            if (recentList.size > 100) {
                 recentList.removeAt(recentList.size - 1)
             }
+        }
+
+        @Synchronized
+        fun getSummary(lang: String): String {
+            if (recentList.isEmpty()) {
+                return if (lang == "ta-IN") "புதிய செய்திகள் எதுவும் இல்லை."
+                else if (lang == "hi-IN") "कोई नई सूचनाएं नहीं हैं।"
+                else if (lang == "ja-JP") "新しい通知はありません。"
+                else "No new notifications."
+            }
+            val appCounts = recentList.take(15).groupingBy { it.appName }.eachCount()
+            val breakdown = appCounts.entries.joinToString(", ") { "${it.key}: ${it.value}" }
+            return if (lang == "ta-IN") "உங்களுக்கு ${recentList.size} புதிய அறிவிப்புகள் உள்ளன ($breakdown)."
+            else if (lang == "hi-IN") "आपके पास ${recentList.size} नई सूचनाएं हैं ($breakdown)।"
+            else if (lang == "ja-JP") "${recentList.size}件の新しい通知があります ($breakdown)。"
+            else "You have ${recentList.size} new notifications ($breakdown)."
         }
 
         @Synchronized
@@ -149,6 +165,18 @@ class AgentNotificationListenerService : NotificationListenerService() {
                 replyRemoteInput = replyRemoteInput
             )
             addNotification(item)
+
+            // Auto-detect OTP and save to Store
+            val combined = "$title $text"
+            val otpRegex = Regex("""\b(?:otp|code|verification|passcode|one time password|pin)\b[^\d]*(\d{4,8})|(\d{4,8})[^\d]*(?:is your|is the|otp|verification|code)""", RegexOption.IGNORE_CASE)
+            val match = otpRegex.find(combined)
+            if (match != null) {
+                val extracted = match.groups[1]?.value ?: match.groups[2]?.value
+                if (extracted != null && extracted.length in 4..8) {
+                    Store.latestOtp = extracted
+                    Log.d("NotifListener", "Auto-captured OTP: $extracted")
+                }
+            }
         } catch (e: Exception) {
             Log.e("NotifListener", "Error processing notification", e)
         }

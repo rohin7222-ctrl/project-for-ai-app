@@ -148,18 +148,18 @@ fun AiAnswerCard(
         horizontalArrangement = Arrangement.Start,
         verticalAlignment = Alignment.Top
     ) {
-        // Left: Gemini Sparkle Avatar
+        // Left: Futuristic Holographic Sparkle Avatar
         Surface(
             modifier = Modifier
                 .padding(top = 4.dp)
-                .size(32.dp),
-            shape = RoundedCornerShape(11.dp),
-            border = BorderStroke(1.2.dp, GeminiPurple.copy(alpha = 0.6f)),
-            color = if (isDark) Color(0xFF1E1F29) else Color(0xFFEFF3FA),
-            shadowElevation = 3.dp
+                .size(34.dp),
+            shape = RoundedCornerShape(10.dp),
+            border = BorderStroke(1.3.dp, Brush.linearGradient(listOf(Color(0xFF00E5FF), Color(0xFF8B5CF6)))),
+            color = if (isDark) Color(0xFF131A2B) else Color(0xFFEFF3FA),
+            shadowElevation = 4.dp
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                GeminiSparkle(size = 19.dp)
+                GeminiSparkle(size = 20.dp)
             }
         }
 
@@ -172,17 +172,17 @@ fun AiAnswerCard(
                 .padding(end = 4.dp)
         ) {
             Surface(
-                shape = RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp),
+                shape = RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp),
                 color = if (msg.isError) MaterialTheme.colorScheme.errorContainer
-                        else if (isDark) Color(0xFF161922)
+                        else if (isDark) Color(0xFF0E1322)
                         else Color(0xFFFFFFFF),
                 tonalElevation = 3.dp,
-                shadowElevation = 4.dp,
+                shadowElevation = 6.dp,
                 border = BorderStroke(
-                    1.dp,
-                    if (msg.isError) MaterialTheme.colorScheme.error.copy(alpha = 0.5f)
-                    else if (isDark) GeminiBlue.copy(alpha = 0.28f)
-                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                    1.2.dp,
+                    if (msg.isError) MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
+                    else if (isDark) Brush.horizontalGradient(listOf(Color(0xFF00E5FF).copy(alpha = 0.45f), Color(0xFF8B5CF6).copy(alpha = 0.45f)))
+                    else Brush.horizontalGradient(listOf(Color(0xFF4F46E5).copy(alpha = 0.35f), Color(0xFF00E5FF).copy(alpha = 0.35f)))
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -191,7 +191,7 @@ fun AiAnswerCard(
                 Column(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
                 ) {
-                    // Header tag: Model identity & Time
+                    // Futuristic Header tag: Model identity & Time
                     if (msg.isAiResponse) {
                         Row(
                             modifier = Modifier
@@ -206,21 +206,23 @@ fun AiAnswerCard(
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(6.dp)
+                                        .size(6.5.dp)
                                         .clip(CircleShape)
-                                        .background(GeminiCyan)
+                                        .background(Color(0xFF00E5FF))
                                 )
                                 Text(
-                                    text = activity.cfg.model.ifBlank { "Aero Fenix" },
-                                    fontSize = 11.sp,
+                                    text = "[ AI CORE // ${(activity.cfg.model.ifBlank { "Aero Fenix" }).uppercase(Locale.ROOT)} ]",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.5.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = GeminiBlue
+                                    color = if (isDark) Color(0xFF00E5FF) else Color(0xFF4F46E5)
                                 )
                             }
                             if (msg.time.isNotBlank()) {
                                 Text(
-                                    text = msg.time,
-                                    fontSize = 10.sp,
+                                    text = "[ ${msg.time} ]",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 9.5.sp,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
                                 )
                             }

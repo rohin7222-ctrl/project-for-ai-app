@@ -169,7 +169,16 @@ object S {
         "chip_stop" to listOf("நிறுத்து", "Emergency Stop", "緊急停止"),
         "chip_photo" to listOf("புகைப்படம்", "Take Photo", "写真を撮影"),
         "read_more" to listOf("முழுமையாகக் காட்டு", "Read more", "もっと見る"),
-        "show_less" to listOf("சுருக்கு", "Show less", "折りたたむ")
+        "show_less" to listOf("சுருக்கு", "Show less", "折りたたむ"),
+        "hud_system_online" to listOf("சிஸ்டம் ஆன்லைன்", "SYSTEM ONLINE", "システムオンライン"),
+        "hud_quantum_core" to listOf("குவாண்டம் AI கோர்", "QUANTUM AI CORE", "量子AIコア"),
+        "hud_neural_link" to listOf("நியூரல் இணைப்பு", "NEURAL LINK", "ニューラルリンク"),
+        "hud_hands_free" to listOf("யுனிவர்சல் ஆப் கண்ட்ரோலர்", "UNIVERSAL APP CONTROLLER", "ユニバーサルアプリ制御"),
+        "hud_wake_ready" to listOf("வேக் வேர்ட் தயார்", "WAKE WORD ACTIVE", "ウェイクワード待機中"),
+        "quick_prompt_zomato" to listOf("Zomato open panni biryani thedu", "Open Zomato and search biryani", "Zomatoを開いてビリヤニを検索"),
+        "quick_prompt_skip_ad" to listOf("Skip Ad (விளம்பரம் தவிர்)", "Skip Ad", "広告スキップ"),
+        "quick_prompt_reels" to listOf("Reels cruise on (தானாக ரீல்ஸ் மாற்று)", "Instagram Reels cruise on", "リール自動スクロール"),
+        "quick_prompt_battery" to listOf("பேட்டரி எவ்வளவு இருக்கு?", "What is battery status?", "バッテリー残量は？")
     )
 
     fun t(lang: String, k: String): String {
