@@ -504,15 +504,16 @@ public class DeviceController {
             if (i != null) return start(i);
         }
 
-        // 3. Fallback: Search in Google Play Store
-        try {
-            Intent play = new Intent(Intent.ACTION_VIEW, Uri.parse("market://search?q=" + Uri.encode(name)));
-            play.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            ctx.startActivity(play);
-            return "OK";
-        } catch (Exception e) {
-            return view("https://www.google.com/search?q=" + Uri.encode(name + " app"));
+        // Fallback: If not an installed app, try to click the matching item/button on the active screen via Accessibility
+        AgentAccessibilityService s = AgentAccessibilityService.instance;
+        if (s != null) {
+            String smartRes = s.uiSmartClick(name);
+            if ("OK".equals(smartRes)) return "OK";
+            String clickRes = s.uiClick(name);
+            if ("OK".equals(clickRes)) return "OK";
         }
+
+        return "ERR:app or item not found: " + name;
     }
 
     public String openChat(String app, String target) {

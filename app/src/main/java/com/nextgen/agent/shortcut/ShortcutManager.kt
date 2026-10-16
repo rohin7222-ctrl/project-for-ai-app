@@ -90,7 +90,7 @@ class ShortcutManager(private val ctx: Context) {
      * Retrieves all saved voice shortcuts.
      */
     fun getShortcuts(): List<VoiceShortcut> {
-        val raw = prefs.getString(KEY_SHORTCUTS, null) ?: return defaultShortcuts()
+        val raw = prefs.getString(KEY_SHORTCUTS, null) ?: return emptyList()
         return try {
             val arr = JSONArray(raw)
             val list = mutableListOf<VoiceShortcut>()
@@ -104,9 +104,9 @@ class ShortcutManager(private val ctx: Context) {
                     )
                 )
             }
-            if (list.isEmpty()) defaultShortcuts() else list
+            list
         } catch (e: Exception) {
-            defaultShortcuts()
+            emptyList()
         }
     }
 
@@ -225,12 +225,5 @@ class ShortcutManager(private val ctx: Context) {
                 ctx.startActivity(intent)
             } catch (ignored: Exception) {}
         }
-    }
-
-    private fun defaultShortcuts(): List<VoiceShortcut> {
-        return listOf(
-            VoiceShortcut(word = "open whatsapp", command = "O W"),
-            VoiceShortcut(word = "open youtube", command = "Y T")
-        )
     }
 }

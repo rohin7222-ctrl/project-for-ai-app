@@ -154,10 +154,14 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                 )
 
                 // Scrollable Tab Body
+                val tabScrollState = rememberScrollState()
+                LaunchedEffect(selectedTab) {
+                    tabScrollState.scrollTo(0)
+                }
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(tabScrollState)
                         .padding(horizontal = 18.dp, vertical = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
@@ -250,39 +254,44 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                             Surface(
                                 shape = RoundedCornerShape(18.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                                border = BorderStroke(1.dp, if (cfg.raiseToAnswer) Color(0xFF10B981).copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
-                                modifier = Modifier.fillMaxWidth()
+                                border = BorderStroke(1.dp, if (cfg.raiseToAnswer) Color(0xFF10B981).copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                                modifier = Modifier.fillMaxWidth().wrapContentHeight()
                             ) {
-                                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Row(
-                                            modifier = Modifier.weight(1f).padding(end = 10.dp),
+                                            modifier = Modifier.weight(1f).padding(end = 12.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
                                             Surface(
                                                 shape = RoundedCornerShape(12.dp),
                                                 color = if (cfg.raiseToAnswer) Color(0xFF10B981).copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant,
-                                                modifier = Modifier.size(40.dp)
+                                                modifier = Modifier.size(42.dp)
                                             ) {
                                                 Box(contentAlignment = Alignment.Center) {
                                                     Icon(
                                                         Icons.Default.PhoneInTalk,
                                                         null,
                                                         tint = if (cfg.raiseToAnswer) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                                                        modifier = Modifier.size(20.dp)
+                                                        modifier = Modifier.size(22.dp)
                                                     )
                                                 }
                                             }
-                                            Column {
+                                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                                     Text(
                                                         text = tr("raise_to_answer"),
-                                                        fontSize = 14.sp,
+                                                        fontSize = 14.5.sp,
                                                         fontWeight = FontWeight.Bold,
                                                         color = MaterialTheme.colorScheme.onSurface
                                                     )
@@ -301,7 +310,6 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                                                         }
                                                     }
                                                 }
-                                                Spacer(Modifier.height(2.dp))
                                                 Text(
                                                     text = tr("raise_to_answer_sub"),
                                                     fontSize = 11.5.sp,
@@ -466,37 +474,7 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                                         )
                                     )
 
-                                    // Quick preset suggestion chips
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        listOf(
-                                            "O W" to "open whatsapp",
-                                            "Y T" to "open youtube",
-                                            "C A" to "call appa"
-                                        ).forEach { (cmdPreset, wordPreset) ->
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = Cyan.copy(alpha = 0.12f),
-                                                border = BorderStroke(0.8.dp, Cyan.copy(alpha = 0.35f)),
-                                                modifier = Modifier.clickable {
-                                                    inputCmd = cmdPreset
-                                                    inputWord = wordPreset
-                                                }
-                                            ) {
-                                                Text(
-                                                    text = "$cmdPreset ➔",
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = Cyan,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    Spacer(Modifier.height(2.dp))
+                                    Spacer(Modifier.height(4.dp))
 
                                     Button(
                                         onClick = {
@@ -547,12 +525,25 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                                     )
 
                                     if (shortcutList.isEmpty()) {
-                                        Text(
-                                            text = tr("shortcut_empty"),
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                                            modifier = Modifier.padding(vertical = 8.dp)
-                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(14.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                Icon(Icons.Default.Bolt, null, tint = Cyan.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
+                                                Text(
+                                                    text = tr("shortcut_empty"),
+                                                    fontSize = 12.5.sp,
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                                )
+                                            }
+                                        }
                                     } else {
                                         shortcutList.forEach { item ->
                                             Surface(

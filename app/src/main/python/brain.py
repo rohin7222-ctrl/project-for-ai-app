@@ -502,13 +502,32 @@ SPLIT = re.compile(r"\s*(?:,|;|\.|\bthen\b|\band\b|\bappuram\b|\bapram\b|\baprom
 PART = r"(?:ah|a|ai|ku|kku|la|le|ல|இல்|ஐ|க்கு|க்|கு|வ|வை|ஐயும்|வும்|を|に|で)"
 
 
+UI_ELEMENT_WORDS = {
+    "status", "my status", "story", "stories", "chats", "chat", "calls", "call", "updates", "channels",
+    "community", "communities", "reels", "shorts", "profile", "my profile", "account", "my account",
+    "settings", "search", "camera", "cart", "my cart", "orders", "my orders", "menu", "notifications",
+    "messages", "message", "inbox", "sent", "drafts", "feed", "posts", "post", "saved", "scanner",
+    "qr code", "first chat", "new chat", "group", "new group", "starred", "info", "details",
+    "audio", "video", "photo", "document", "file", "media", "tab", "page",
+    # Tamil
+    "ஸ்டேட்டஸ்", "மை ஸ்டேட்டஸ்", "சாட்", "சாட்ஸ்", "அப்டேட்ஸ்", "கால்", "கால்ஸ்", "ப்ரொஃபைல்",
+    "ரீல்ஸ்", "ஸ்டோரி", "போஸ்ட்", "கேமரா", "மெனு", "நோட்டிபிகேஷன்", "கார்ட்", "செய்தி"
+}
+
+
 def _app_name(raw):
     t = raw.strip().lower()
-    t = re.sub(r"^(?:the|my|a)\s+", "", t)
-    t = re.sub(r"\s+(app|application|ஆப்|செயலி|アプリ)$", "", t).strip()
+    t_clean = re.sub(r"^(?:the|my|a)\s+", "", t)
+    t_clean = re.sub(r"\s+(app|application|ஆப்|செயலி|アプリ)$", "", t_clean).strip()
     for k in sorted(APPS, key=len, reverse=True):
-        if t == k or t.startswith(k + " ") or t.endswith(" " + k):
+        if t_clean == k or t_clean.startswith(k + " ") or t_clean.endswith(" " + k):
             return APPS[k]
+    # Check if this raw target is explicitly requested with the word 'app'
+    if re.search(r"\b(app|application|ஆப்|செயலி|アプリ)\b", t):
+        return t_clean.title() if t_clean else None
+    # If it is an in-app UI element or status, do NOT treat it as an app name
+    if t in UI_ELEMENT_WORDS or t_clean in UI_ELEMENT_WORDS or "status" in t or "ஸ்டேட்டஸ்" in t:
+        return None
     return raw.strip().title() if t else None
 
 
@@ -969,11 +988,21 @@ def _parse_one(p, last_app):
     if any(w in t for w in ("dismiss popup", "dismiss dialog", "cancel popup", "close popup", "விலக்கு")):
         return [{"type": "ui_dialog", "action": "cancel", "desc": "Dismiss Popup"}], "ok"
 
-    # --- App Navigation Tabs (Profile, Home, Search, Reels, Orders, Cart, Library, Notifications)
-    m_tab = re.match(r"^(?:open|go\s+to|switch\s+to|select)\s+(?P<tab>home|profile|search|explore|reels|shorts|notifications?|activity|orders?|cart|library|settings?)\s+tab$", t) or \
-            re.match(r"^(?P<tab>home|profile|search|explore|reels|shorts|notifications?|activity|orders?|cart|library|settings?)\s+tab(?:\s+(?:open|thira|select|போடு))?$", t) or \
-            re.match(r"^(?:go\s+to|open)\s+(?P<tab>profile|my\s+orders?|my\s+cart|my\s+library)(?:\s+page|\s+screen)?$", t) or \
-            re.match(r"^(?P<tab>profile|orders?|cart|library)\s*(?:ku|kku|க்கு)\s*(?:po|போ|open|thira|திற)$", t)
+    # --- In-App Status, Updates & UI Item Clicking
+    # e.g. "open my status", "open status", "my status ah open pannu", "status open pannu", "open updates", "open chats"
+    m_status = re.match(r"^(?:open|view|show|see|பாரு|பார்|திற|போடு)\s+(?P<st>(?:my\s+)?status|updates?|stories|story|channels?|chats?|calls?|reels?|profile|notifications?|ஸ்டேட்டஸ்|மை\s*ஸ்டேட்டஸ்)$", t) or \
+               re.match(r"^(?P<st>(?:my\s+)?status|updates?|stories|story|channels?|chats?|calls?|reels?|profile|notifications?|ஸ்டேட்டஸ்|மை\s*ஸ்டேட்டஸ்)\s*" + PART + r"?\s*(?:open|view|show|பாரு|பார்|திற|போடு)$", t)
+    if m_status:
+        st_query = m_status.group("st").strip()
+        cap_query = "My status" if ("my status" in st_query.lower() or "மை" in st_query) else st_query.title()
+        return [{"type": "ui_smart_click", "query": cap_query, "desc": f"Click '{cap_query}'"}], "ok"
+
+    # --- App Navigation Tabs (Status, Updates, Profile, Home, Search, Reels, Orders, Cart, Library, Notifications, Chats, Calls)
+    m_tab = re.match(r"^(?:open|go\s+to|switch\s+to|select)\s+(?P<tab>home|status|updates?|channels?|community|chats?|calls?|profile|search|explore|reels|shorts|notifications?|activity|orders?|cart|library|settings?)\s+tab$", t) or \
+            re.match(r"^(?P<tab>home|status|updates?|channels?|community|chats?|calls?|profile|search|explore|reels|shorts|notifications?|activity|orders?|cart|library|settings?)\s+tab(?:\s+(?:open|thira|select|போடு))?$", t) or \
+            re.match(r"^(?:go\s+to|open)\s+(?P<tab>profile|status|updates?|my\s+orders?|my\s+cart|my\s+library)\s+(?:page|screen)$", t) or \
+            re.match(r"^(?P<tab>profile|status|updates?|orders?|cart|library|சாட்|ஸ்டேட்டஸ்)\s*(?:page|screen)\s*(?:ku|kku|க்கு|ல|இல்)?\s*(?:po|போ|open|thira|திற)$", t) or \
+            re.match(r"^(?P<tab>status|updates?|சாட்|ஸ்டேட்டஸ்)\s*(?:ku|kku|க்கு)\s*(?:po|போ)$", t)
     if m_tab:
         tb = m_tab.group("tab").strip()
         return [{"type": "ui_click_tab", "tab": tb, "desc": f"Tab: {tb}"}], "tab:" + tb
@@ -1023,13 +1052,27 @@ def _parse_one(p, last_app):
     if m:
         return [{"type": "ui_smart_click", "query": m.group("x").strip(), "desc": f"Click '{m.group('x').strip()}'"}], "ok"
 
-    # --- open app (last, most generic)
+    # --- open app (last, most generic) or open on-screen element
     m = re.match(r"^(?:open|launch|start|run)\s+(?P<a>.+)$", t) or \
         re.match(r"^(?P<a>.+?)\s*" + PART + r"?\s*(?:open|thira|thiranga|thirakka|launch|start|திற|திறங்க|திறக்க|を開|開い|開け).*$", t)
     if m:
-        name = _app_name(m.group("a"))
+        target_raw = m.group("a").strip()
+        target_lower = target_raw.lower()
+
+        # If it is clearly an in-app UI element or status, click it on screen
+        if target_lower in UI_ELEMENT_WORDS or any(w in target_lower for w in ("status", "ஸ்டேட்டஸ்", "tab", "profile", "reels", "chat")):
+            cap_q = "My status" if ("my status" in target_lower or "மை" in target_lower) else target_raw
+            return [{"type": "ui_smart_click", "query": cap_q, "desc": f"Click '{cap_q}'"}], "ok"
+
+        # If inside an app already and the target is not a known app in APPS
+        if last_app and not any(k in target_lower for k in APPS):
+            return [{"type": "ui_smart_click", "query": target_raw, "desc": f"Click '{target_raw}'"}], "ok"
+
+        name = _app_name(target_raw)
         if name:
             return [{"type": "open_app", "name": name, "desc": f"Open {name}"}], "app:" + name
+        else:
+            return [{"type": "ui_smart_click", "query": target_raw, "desc": f"Click '{target_raw}'"}], "ok"
     return None
 
 

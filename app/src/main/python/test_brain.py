@@ -91,6 +91,34 @@ class TestBrainParser(unittest.TestCase):
         self.assertTrue(res_math["ok"])
         self.assertIn("100", res_math["speech"])
 
+    def test_in_app_status_and_ui_targets(self):
+        # "open my status" must be an on-screen ui_smart_click, NOT open_app or Play Store search
+        res_status = json.loads(brain.chat(self.cfg_en, "open my status"))
+        self.assertTrue(res_status["ok"])
+        self.assertEqual(res_status["actions"][0]["type"], "ui_smart_click")
+        self.assertIn("status", res_status["actions"][0]["query"].lower())
+
+        # Tamil: "மை ஸ்டேட்டஸ் திற" or "ஸ்டேட்டஸ் திற"
+        res_status_ta = json.loads(brain.chat(self.cfg_ta, "மை ஸ்டேட்டஸ் திற"))
+        self.assertTrue(res_status_ta["ok"])
+        self.assertEqual(res_status_ta["actions"][0]["type"], "ui_smart_click")
+
+        # Tab navigation: "status page ku po"
+        res_tab = json.loads(brain.chat(self.cfg_ta, "ஸ்டேட்டஸ் page ku po"))
+        self.assertTrue(res_tab["ok"])
+        self.assertEqual(res_tab["actions"][0]["type"], "ui_click_tab")
+
+        # User's exact flow: "open whatsapp and swipe left then open my status"
+        res_flow = json.loads(brain.chat(self.cfg_en, "open whatsapp and swipe left then open my status"))
+        self.assertTrue(res_flow["ok"])
+        self.assertEqual(len(res_flow["actions"]), 3)
+        self.assertEqual(res_flow["actions"][0]["type"], "open_app")
+        self.assertEqual(res_flow["actions"][0]["name"], "WhatsApp")
+        self.assertEqual(res_flow["actions"][1]["type"], "ui_swipe")
+        self.assertEqual(res_flow["actions"][1]["dir"], "left")
+        self.assertEqual(res_flow["actions"][2]["type"], "ui_smart_click")
+        self.assertEqual(res_flow["actions"][2]["query"], "My status")
+
     def test_stop_command(self):
         res_stop = json.loads(brain.chat(self.cfg_ta, "போதும் நிறுத்து"))
         self.assertEqual(res_stop["actions"][0]["type"], "stop_assistant")
