@@ -279,12 +279,28 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                                                 }
                                             }
                                             Column {
-                                                Text(
-                                                    text = tr("raise_to_answer"),
-                                                    fontSize = 14.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.onSurface
-                                                )
+                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                    Text(
+                                                        text = tr("raise_to_answer"),
+                                                        fontSize = 14.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    if (cfg.raiseToAnswer) {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            color = Color(0xFF10B981).copy(alpha = 0.18f)
+                                                        ) {
+                                                            Text(
+                                                                text = tr("raise_to_answer_bg_badge"),
+                                                                fontSize = 9.5.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = Color(0xFF10B981),
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
                                                 Spacer(Modifier.height(2.dp))
                                                 Text(
                                                     text = tr("raise_to_answer_sub"),
@@ -297,8 +313,13 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                                         Switch(
                                             checked = cfg.raiseToAnswer,
                                             onCheckedChange = { checked ->
-                                                if (checked && !has(Manifest.permission.ANSWER_PHONE_CALLS)) {
-                                                    permLauncher.launch(arrayOf(Manifest.permission.ANSWER_PHONE_CALLS))
+                                                if (checked) {
+                                                    val needed = mutableListOf<String>()
+                                                    if (!has(Manifest.permission.ANSWER_PHONE_CALLS)) needed.add(Manifest.permission.ANSWER_PHONE_CALLS)
+                                                    if (!has(Manifest.permission.READ_PHONE_STATE)) needed.add(Manifest.permission.READ_PHONE_STATE)
+                                                    if (needed.isNotEmpty()) {
+                                                        permLauncher.launch(needed.toTypedArray())
+                                                    }
                                                 }
                                                 upd { it.copy(raiseToAnswer = checked) }
                                                 Toast.makeText(

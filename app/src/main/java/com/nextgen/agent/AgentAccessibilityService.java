@@ -30,7 +30,13 @@ public class AgentAccessibilityService extends AccessibilityService {
     public static volatile boolean autoConfirmUninstall = false;
     public static volatile String uninstallPackageName = "";
 
-    @Override protected void onServiceConnected() { instance = this; }
+    @Override
+    protected void onServiceConnected() {
+        instance = this;
+        try {
+            EarToCallManager.Companion.getInstance(this).onBoot(this);
+        } catch (Exception ignored) {}
+    }
     @Override public boolean onUnbind(Intent intent) { instance = null; return super.onUnbind(intent); }
 
     @Override
@@ -274,6 +280,72 @@ public class AgentAccessibilityService extends AccessibilityService {
 
     public static boolean perform(int globalAction) {
         return instance != null && instance.performGlobalAction(globalAction);
+    }
+
+    /**
+     * Finds and triggers the call answer action / button across all phone dialers (Google, Samsung, Xiaomi, etc.)
+     */
+    public boolean answerIncomingCall() {
+        for (int attempt = 0; attempt < 10; attempt++) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                // 1. Dialer specific answer button IDs
+                String[] dialerIds = {
+                    "com.google.android.dialer:id/answer_button",
+                    "com.google.android.dialer:id/incall_first_button",
+                    "com.samsung.android.incallui:id/answer_btn",
+                    "com.samsung.android.incallui:id/voice_call_answer",
+                    "com.android.incallui:id/answer_btn",
+                    "com.android.incallui:id/answerButton",
+                    "com.android.phone:id/answer_btn",
+                    "com.coloros.incallui:id/answer_btn"
+                };
+                for (String dId : dialerIds) {
+                    List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByViewId(dId);
+                    if (nodes != null && !nodes.isEmpty()) {
+                        for (AccessibilityNodeInfo n : nodes) {
+                            if (n != null && n.isVisibleToUser()) {
+                                if (click(n)) return true;
+                            }
+                        }
+                    }
+                }
+
+                // 2. Answer labels across supported languages
+                for (AccessibilityNodeInfo n : all(root)) {
+                    if (n == null || !n.isVisibleToUser()) continue;
+                    String l = label(n).toLowerCase(Locale.ROOT);
+                    if (l.contains("decline") || l.contains("reject") || l.contains("cancel") || l.contains("ரத்து")) {
+                        continue;
+                    }
+                    if (l.contains("answer") || l.contains("accept") || l.contains("ஏற்கவும்") ||
+                        l.contains("பதில்") || l.contains("அழைப்பை ஏற்") || l.contains("応答")) {
+                        AccessibilityNodeInfo target = clickableSelfOrParent(n);
+                        if (target != null && click(target)) return true;
+                    }
+                }
+
+                // 3. Fallback for swipe-to-answer dialers
+                for (AccessibilityNodeInfo n : all(root)) {
+                    if (n == null || !n.isVisibleToUser()) continue;
+                    String l = label(n).toLowerCase(Locale.ROOT);
+                    if (l.contains("swipe up") || l.contains("drag to answer") || l.contains("slide to answer")) {
+                        Rect r = new Rect();
+                        n.getBoundsInScreen(r);
+                        if (!r.isEmpty()) {
+                            Path p = new Path();
+                            p.moveTo(r.centerX(), r.centerY());
+                            p.lineTo(r.centerX(), Math.max(100, r.centerY() - 400));
+                            GestureDescription g = new GestureDescription.Builder()
+                                .addStroke(new GestureDescription.StrokeDescription(p, 0, 250)).build();
+                            if (dispatchGesture(g, null, null)) return true;
+                        }
+                    }
+                }
+            }
+            sleep(100);
+        }
+        return false;
     }
 
     // ------------------------------------------------------------------ public UI actions (return "OK" / "ERR:...")

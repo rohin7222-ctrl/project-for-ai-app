@@ -133,8 +133,9 @@ object S {
         "shortcut_added_success" to listOf("குறுக்குவழி வெற்றிகரமாக சேர்க்கப்பட்டது!", "Shortcut saved successfully!", "ショートカットが保存されました！"),
         "shortcut_deleted" to listOf("குறுக்குவழி நீக்கப்பட்டது", "Shortcut deleted", "ショートカットを削除しました"),
         "emergency_uninstall_desc" to listOf("பாதுகாப்புக்காக ஆப் உடனடியாக அன்இன்ஸ்டால் செய்யப்படுகிறது…", "App is being uninstalled for safety…", "アプリをアンインストールしています…"),
-        "raise_to_answer" to listOf("காதில் வைத்தால் அழைப்பை ஏற்கவும் (Raise to Ear)", "Raise to Ear to Answer Call", "耳に当てて通話に応答"),
-        "raise_to_answer_sub" to listOf("போன் அடிக்கும்போது காதின் அருகே கொண்டு சென்றால் அழைப்பு தானாக ஏற்கப்படும்", "Automatically answer incoming calls when brought near your ear", "着信時にスマホを耳に近づけると自動的に通話を開始"),
+        "raise_to_answer" to listOf("காதில் வைத்தால் அழைப்பை ஏற்கவும் (Ear to Call)", "Raise to Ear to Answer Call", "耳に当てて通話に応答"),
+        "raise_to_answer_sub" to listOf("போன் அடிக்கும்போது காதின் அருகே கொண்டு சென்றால் அழைப்பு தானாக ஏற்கப்படும் (ஆப் மூடப்பட்டிருந்தாலும் வேலை செய்யும்)", "Automatically answer incoming calls when brought near your ear (Works even when app is closed)", "着信時にスマホを耳に近づけると自動的に通話を開始（アプリ終了時も有効）"),
+        "raise_to_answer_bg_badge" to listOf("⚡ 24/7 பின்னணியில் இயங்கும்", "⚡ 24/7 Background Ready", "⚡ バックグラウンド常時有効"),
         "raise_to_ear_wheel" to listOf("காதில் ஏற்க", "Raise to Ear", "耳で応答")
     )
 

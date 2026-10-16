@@ -22,11 +22,11 @@ data class Config(
     val voicePitchStd: Float = 0f,
     val voiceEnrolled: Boolean = false,
     val darkCustom: Boolean = false,
-    val raiseToAnswer: Boolean = false
+    val raiseToAnswer: Boolean = true
 )
 
 /** All settings (including the API key) live in AES-256 encrypted preferences backed by the Android Keystore. */
-class Store(ctx: Context) {
+class Store(val ctx: Context) {
     private val sp = EncryptedSharedPreferences.create(
         ctx, "agent_secure",
         MasterKey.Builder(ctx).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
@@ -45,7 +45,7 @@ class Store(ctx: Context) {
         sp.getBoolean("voice_match", false), sp.getFloat("pitch_mean", 0f),
         sp.getFloat("pitch_std", 0f), sp.getBoolean("voice_enrolled", false),
         sp.getBoolean("dark_custom", false),
-        sp.getBoolean("raise_to_answer", false)
+        sp.getBoolean("raise_to_answer", true)
     )
 
     fun save(c: Config) {
@@ -69,5 +69,8 @@ class Store(ctx: Context) {
         val c = load()
         save(c.copy(name = "", key = "", model = "", url = ""))
         setReady(false)
+        try {
+            EarToCallManager.getInstance(ctx).onLogout()
+        } catch (ignored: Exception) {}
     }
 }

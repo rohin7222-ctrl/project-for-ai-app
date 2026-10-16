@@ -95,13 +95,14 @@ DEFAULT_MODELS = {
     ],
     "groq": [
         {"id": "llama-3.3-70b-versatile", "name": "Llama 3.3 70B Versatile"},
+        {"id": "deepseek-r1-distill-llama-70b", "name": "DeepSeek R1 Distill 70B"},
         {"id": "llama-3.1-8b-instant", "name": "Llama 3.1 8B Instant"},
         {"id": "mixtral-8x7b-32768", "name": "Mixtral 8x7B"},
-        {"id": "gemma2-9b-it", "name": "Gemma 2 9B"},
     ],
     "openai": [
         {"id": "gpt-4o-mini", "name": "GPT-4o Mini (Fast & Smart)"},
         {"id": "gpt-4o", "name": "GPT-4o"},
+        {"id": "o3-mini", "name": "o3-mini (High Reasoning)"},
         {"id": "gpt-3.5-turbo", "name": "GPT-3.5 Turbo"},
     ],
     "anthropic": [
@@ -118,8 +119,9 @@ DEFAULT_MODELS = {
         {"id": "codestral-latest", "name": "Codestral"},
     ],
     "openrouter": [
+        {"id": "deepseek/deepseek-r1", "name": "DeepSeek R1 (OpenRouter)"},
         {"id": "meta-llama/llama-3.3-70b-instruct", "name": "Llama 3.3 70B"},
-        {"id": "google/gemini-2.0-flash-exp:free", "name": "Gemini 2.0 Flash (Free)"},
+        {"id": "google/gemini-2.0-flash-001", "name": "Gemini 2.0 Flash"},
         {"id": "deepseek/deepseek-chat", "name": "DeepSeek V3"},
     ],
 }

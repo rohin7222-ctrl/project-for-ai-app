@@ -135,6 +135,7 @@ internal val Indigo = Color(0xFF6366F1)
 internal val Violet = Color(0xFF8B5CF6)
 internal val Cyan = Color(0xFF06B6D4)
 internal val Amber = Color(0xFFF59E0B)
+internal val Magenta = Color(0xFFD946EF)
 
 internal val GeminiBlue = Color(0xFF4285F4)
 internal val GeminiPurple = Color(0xFF9B51E0)
@@ -156,13 +157,14 @@ internal val DEFAULT_MODELS_MAP = mapOf(
     ),
     "groq" to listOf(
         "llama-3.3-70b-versatile" to "Llama 3.3 70B Versatile",
+        "deepseek-r1-distill-llama-70b" to "DeepSeek R1 Distill 70B",
         "llama-3.1-8b-instant" to "Llama 3.1 8B Instant",
-        "mixtral-8x7b-32768" to "Mixtral 8x7B",
-        "gemma2-9b-it" to "Gemma 2 9B"
+        "mixtral-8x7b-32768" to "Mixtral 8x7B"
     ),
     "openai" to listOf(
         "gpt-4o-mini" to "GPT-4o Mini (Fast & Smart)",
         "gpt-4o" to "GPT-4o",
+        "o3-mini" to "o3-mini (High Reasoning)",
         "gpt-3.5-turbo" to "GPT-3.5 Turbo"
     ),
     "anthropic" to listOf(
@@ -223,14 +225,6 @@ class MainActivity : FragmentActivity() {
     internal var isInPhoneCall = false
     private var telephonyCallback: Any? = null
     private var phoneStateReceiver: BroadcastReceiver? = null
-
-    // Proximity Sensor for "Raise to Ear to Auto-Answer Call"
-    private var sensorManager: SensorManager? = null
-    private var proximitySensor: Sensor? = null
-    private var proximityListener: SensorEventListener? = null
-    private var isProximityListening = false
-    private var proximityWasFar = false
-    private var ringingStartTime = 0L
 
     private var wasActiveBeforeMedia = false
     private var wasStandbyBeforeMedia = false
@@ -603,101 +597,13 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    // ------------------------------------------------------------------ Proximity Sensor for Auto-Answer
-    private fun initProximitySensor() {
-        if (sensorManager == null) {
-            sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
-            proximitySensor = sensorManager?.getDefaultSensor(Sensor.TYPE_PROXIMITY)
-        }
-    }
-
-    private fun startProximityListeningForCall() {
-        if (!cfg.raiseToAnswer) return
-        initProximitySensor()
-        val sensor = proximitySensor ?: return
-        if (isProximityListening) return
-
-        proximityWasFar = false
-        ringingStartTime = System.currentTimeMillis()
-
-        proximityListener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent?) {
-                if (event == null || event.sensor.type != Sensor.TYPE_PROXIMITY) return
-                val distance = event.values[0]
-                val max = sensor.maximumRange
-                val threshold = if (max > 5f) 5f else max
-                val isNear = distance < threshold
-
-                if (!isNear) {
-                    proximityWasFar = true
-                } else if (isNear && proximityWasFar) {
-                    val elapsed = System.currentTimeMillis() - ringingStartTime
-                    if (elapsed >= 300) {
-                        stopProximityListening()
-                        answerIncomingCall()
-                    }
-                }
-            }
-
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-        }
-
-        try {
-            sensorManager?.registerListener(proximityListener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
-            isProximityListening = true
-        } catch (ignored: Exception) {}
-    }
-
-    private fun stopProximityListening() {
-        if (!isProximityListening) return
-        try {
-            proximityListener?.let { sensorManager?.unregisterListener(it) }
-        } catch (ignored: Exception) {}
-        proximityListener = null
-        isProximityListening = false
-        proximityWasFar = false
-    }
-
     internal fun answerIncomingCall() {
         lifecycleScope.launch(Dispatchers.Main) {
-            var answered = false
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    val tm = getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
-                    if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED) {
-                        @Suppress("DEPRECATION")
-                        tm?.acceptRingingCall()
-                        answered = true
-                    }
-                }
-            } catch (ignored: Exception) {}
-
-            if (!answered) {
-                val res = withContext(Dispatchers.IO) {
-                    device.answerCall()
-                }
-                answered = (res == "OK")
-            }
-
-            if (answered) {
-                try {
-                    val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        vibrator?.vibrate(VibrationEffect.createOneShot(150, VibrationEffect.DEFAULT_AMPLITUDE))
-                    } else {
-                        @Suppress("DEPRECATION")
-                        vibrator?.vibrate(150)
-                    }
-                } catch (ignored: Exception) {}
-
-                val msg = if (cfg.lang == "ta-IN") "📞 காதில் வைத்ததால் அழைப்பு ஏற்கப்பட்டது" else "📞 Call answered automatically"
-                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
-            }
+            EarToCallManager.getInstance(this@MainActivity).executeAnswerCall()
         }
     }
 
     private fun setupCallStateMonitoring() {
-        initProximitySensor()
         val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val cb = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
@@ -746,7 +652,6 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun teardownCallStateMonitoring() {
-        stopProximityListening()
         try {
             phoneStateReceiver?.let { unregisterReceiver(it) }
             phoneStateReceiver = null
@@ -762,6 +667,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun onPhoneCallStateChanged(state: Int) {
+        EarToCallManager.getInstance(this).onCallStateChanged(state, this)
         when (state) {
             TelephonyManager.CALL_STATE_RINGING -> {
                 if (!isInPhoneCall) {
@@ -770,12 +676,8 @@ class MainActivity : FragmentActivity() {
                     wasStandbyBeforeCall = voice.standby
                     voice.pauseForCall()
                 }
-                if (cfg.raiseToAnswer) {
-                    startProximityListeningForCall()
-                }
             }
             TelephonyManager.CALL_STATE_OFFHOOK -> {
-                stopProximityListening()
                 if (!isInPhoneCall) {
                     isInPhoneCall = true
                     wasActiveBeforeCall = voice.active
@@ -784,7 +686,6 @@ class MainActivity : FragmentActivity() {
                 }
             }
             TelephonyManager.CALL_STATE_IDLE -> {
-                stopProximityListening()
                 if (isInPhoneCall) {
                     isInPhoneCall = false
                     val wasActive = wasActiveBeforeCall
@@ -1021,19 +922,41 @@ class MainActivity : FragmentActivity() {
             }
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 GlassCard {
+                    val logoPulse by rememberInfiniteTransition(label = "nameLogoPulse").animateFloat(
+                        initialValue = 1f,
+                        targetValue = 1.05f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(2200, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "pulse"
+                    )
                     Surface(
-                        modifier = Modifier.size(80.dp),
-                        shape = RoundedCornerShape(26.dp),
-                        shadowElevation = 8.dp,
-                        border = BorderStroke(2.dp, Brush.linearGradient(listOf(Indigo, Violet, Cyan))),
-                        color = MaterialTheme.colorScheme.surface
+                        modifier = Modifier
+                            .size(92.dp)
+                            .scale(logoPulse),
+                        shape = CircleShape,
+                        shadowElevation = 16.dp,
+                        border = BorderStroke(2.5.dp, Brush.sweepGradient(listOf(Cyan, Indigo, Violet, Magenta, Cyan))),
+                        color = Color.Black
                     ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.app_logo),
-                            contentDescription = "NextGen AI Logo",
-                            modifier = Modifier.fillMaxSize().padding(6.dp),
-                            contentScale = ContentScale.Fit
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape)
+                                .background(Color.Black),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                painter = painterResource(id = R.drawable.app_logo),
+                                contentDescription = "NextGen AI Logo",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .scale(1.22f)
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
                     }
                     Text(tr("name_title"), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
                     Text(tr("name_sub"), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f))

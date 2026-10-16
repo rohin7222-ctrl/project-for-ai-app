@@ -243,9 +243,15 @@ internal fun MainActivity.MainScreen() {
             accentColor = if (cfg.raiseToAnswer) Color(0xFF10B981) else Color(0xFF94A3B8),
             onClick = {
                 val next = !cfg.raiseToAnswer
+                if (next) {
+                    val needed = mutableListOf<String>()
+                    if (!has(Manifest.permission.ANSWER_PHONE_CALLS)) needed.add(Manifest.permission.ANSWER_PHONE_CALLS)
+                    if (!has(Manifest.permission.READ_PHONE_STATE)) needed.add(Manifest.permission.READ_PHONE_STATE)
+                    if (needed.isNotEmpty()) permLauncher.launch(needed.toTypedArray())
+                }
                 upd { it.copy(raiseToAnswer = next) }
                 val msg = if (next) {
-                    if (cfg.lang == "ta-IN") "காதுக்கு கொண்டுவா இயக்கம்: ஆன்" else "Raise to Ear Answer: ON"
+                    if (cfg.lang == "ta-IN") "⚡ காதுக்கு கொண்டுவா இயக்கம்: ஆன் (24/7 இயங்கும்)" else "⚡ Raise to Ear Answer: ON (24/7 Background Ready)"
                 } else {
                     if (cfg.lang == "ta-IN") "காதுக்கு கொண்டுவா இயக்கம்: ஆஃப்" else "Raise to Ear Answer: OFF"
                 }
