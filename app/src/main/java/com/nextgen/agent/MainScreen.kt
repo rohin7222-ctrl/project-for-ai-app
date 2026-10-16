@@ -442,12 +442,6 @@ internal fun MainActivity.MainScreen() {
 
     // Futuristic animation transitions
     val infTransition = rememberInfiniteTransition(label = "hudTransition")
-    val scanLineY by infTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(7000, easing = LinearEasing), RepeatMode.Restart),
-        label = "scanLine"
-    )
     val ringRotate by infTransition.animateFloat(
         initialValue = 0f, targetValue = 360f,
         animationSpec = infiniteRepeatable(tween(24000, easing = LinearEasing), RepeatMode.Restart),
@@ -470,7 +464,7 @@ internal fun MainActivity.MainScreen() {
     )
 
     Box(Modifier.fillMaxSize().background(if (isDark) Color(0xFF080B11) else Color(0xFFF4F7FC))) {
-        // Futuristic Cyber HUD Background: Grid Matrix, Scanning Beam, & Cosmic Blooms
+        // Futuristic Cyber HUD Background: Grid Matrix & Cosmic Blooms
         Canvas(Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
@@ -488,21 +482,6 @@ internal fun MainActivity.MainScreen() {
                 drawLine(gridColor, Offset(0f, y), Offset(w, y), strokeWidth = 1f)
                 y += gridStep
             }
-
-            // 2. Holographic Scanning Laser Sweep Beam
-            val beamY = h * scanLineY
-            drawLine(
-                brush = Brush.horizontalGradient(
-                    listOf(
-                        Color.Transparent,
-                        (if (isDark) Color(0xFF00E5FF) else Color(0xFF6366F1)).copy(alpha = if (isDark) 0.18f else 0.10f),
-                        Color.Transparent
-                    )
-                ),
-                start = Offset(0f, beamY),
-                end = Offset(w, beamY),
-                strokeWidth = 2.dp.toPx()
-            )
 
             // 3. Volumetric Cyber Energy Nebulae
             // Top-right energetic bloom (Anchoring Top Wheel)
@@ -589,22 +568,13 @@ internal fun MainActivity.MainScreen() {
                                         .background(dotColor)
                                 )
                             }
-                            Column {
-                                Text(
-                                    text = cfg.name.ifBlank { "Aero Fenix" }.uppercase(Locale.ROOT),
-                                    fontSize = 13.5.sp,
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = 1.1.sp,
-                                    color = if (isDark) Color(0xFFF1F5F9) else MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = if (cfg.autoWakeEnabled) "[ ⚡ HANDS-FREE READY ]" else "[ OS CONTROLLER ]",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                    color = if (isDark) Color(0xFF00E5FF) else Color(0xFF4F46E5)
-                                )
-                            }
+                            Text(
+                                text = cfg.name.ifBlank { "Aero Fenix" }.uppercase(Locale.ROOT),
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.1.sp,
+                                color = if (isDark) Color(0xFFF1F5F9) else Color(0xFF0F172A)
+                            )
                             GeminiSparkle(size = 14.dp)
                         }
                     }
@@ -774,100 +744,16 @@ internal fun MainActivity.MainScreen() {
                             GeminiSparkle(size = 20.dp)
                         }
 
-                        Spacer(Modifier.height(6.dp))
-
-                        // Futuristic Telemetry Readout Badges
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isDark) Color(0xFF101726) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f),
-                            border = BorderStroke(1.dp, if (isDark) Color(0x4400E5FF) else Color(0x334F46E5))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(7.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(7.dp)
-                                        .clip(CircleShape)
-                                        .background(if (cfg.autoWakeEnabled) Color(0xFF10B981) else Color(0xFF00E5FF))
-                                )
-                                Text(
-                                    text = if (cfg.autoWakeEnabled) "WAKE: \"${cfg.commandingWord}\" / \"HEY FENIX\"" else "UNIVERSAL CONTROLLER READY",
-                                    fontSize = 11.sp,
-                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDark) Color(0xFF7DD3FC) else Color(0xFF0369A1)
-                                )
-                            }
-                        }
-
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(12.dp))
 
                         Text(
                             text = tr("welcome_sub"),
-                            fontSize = 12.5.sp,
+                            fontSize = 13.sp,
                             textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-                            lineHeight = 18.sp,
-                            modifier = Modifier.padding(horizontal = 14.dp)
+                            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
+                            lineHeight = 19.sp,
+                            modifier = Modifier.padding(horizontal = 24.dp)
                         )
-
-                        Spacer(Modifier.height(18.dp))
-
-                        // Holographic Quick-Prompt Action Chips (Instant 1-Tap Trigger)
-                        val quickChips = listOf(
-                            tr("quick_prompt_zomato"),
-                            tr("quick_prompt_skip_ad"),
-                            tr("quick_prompt_reels"),
-                            tr("quick_prompt_battery")
-                        )
-
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
-                        ) {
-                            quickChips.chunked(2).forEach { rowChips ->
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    rowChips.forEach { chipText ->
-                                        Surface(
-                                            shape = RoundedCornerShape(14.dp),
-                                            color = if (isDark) Color(0xFF111728) else MaterialTheme.colorScheme.surface,
-                                            border = BorderStroke(1.dp, Brush.horizontalGradient(listOf(Color(0xFF00E5FF).copy(alpha = 0.5f), Color(0xFF8B5CF6).copy(alpha = 0.5f)))),
-                                            shadowElevation = 3.dp,
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .clickable { handleUser(chipText) }
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.Bolt,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(13.dp),
-                                                    tint = Color(0xFF00E5FF)
-                                                )
-                                                Text(
-                                                    text = chipText,
-                                                    fontSize = 11.5.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    maxLines = 1,
-                                                    color = if (isDark) Color(0xFFE2E8F0) else MaterialTheme.colorScheme.onSurface
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
                     }
                 } else {
                     // Active Chat Conversation History
@@ -1085,17 +971,18 @@ internal fun MainActivity.MainScreen() {
                                 modifier = Modifier.weight(1f),
                                 placeholder = {
                                     Text(
-                                        ">_ give command",
-                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                        fontSize = 13.sp,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                        "give command",
+                                        fontSize = 14.sp,
+                                        color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
                                     )
                                 },
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = Color.Transparent,
                                     unfocusedBorderColor = Color.Transparent,
                                     focusedContainerColor = Color.Transparent,
-                                    unfocusedContainerColor = Color.Transparent
+                                    unfocusedContainerColor = Color.Transparent,
+                                    focusedTextColor = if (isDark) Color.White else Color(0xFF0F172A),
+                                    unfocusedTextColor = if (isDark) Color.White else Color(0xFF0F172A)
                                 )
                             )
 
