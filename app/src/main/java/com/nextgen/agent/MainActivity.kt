@@ -710,82 +710,94 @@ class MainActivity : FragmentActivity() {
     }
 
     private suspend fun runList(list: List<JSONObject>) {
-        for (a in list) {
-            val type = a.optString("type")
-            if (type == "stop_assistant") {
-                stopVoiceWithAck()
-                return
-            }
+        try {
+            for (a in list) {
+                val type = a.optString("type")
+                if (type == "stop_assistant") {
+                    stopVoiceWithAck()
+                    return
+                }
 
-            // Sensitive action check (Item 14): Confirmation required for money transfers, delete, bulk SMS
-            if (DeviceController.isSensitive(a)) {
-                pending = listOf(a)
-                val confirmPrompt = tr("confirm_sensitive_action")
-                chat.add(Msg(mine = false, text = "⚠️ $confirmPrompt", time = nowTime()))
-                voice.speak(confirmPrompt)
-                return
-            }
+                // Sensitive action check (Item 14): Confirmation required for money transfers, delete, bulk SMS
+                if (DeviceController.isSensitive(a)) {
+                    pending = listOf(a)
+                    val confirmPrompt = tr("confirm_sensitive_action")
+                    chat.add(Msg(mine = false, text = "⚠️ $confirmPrompt", time = nowTime()))
+                    voice.speak(confirmPrompt)
+                    return
+                }
 
-            if (type == "call") {
-                isInPhoneCall = true
-                wasActiveBeforeCall = voice.active
-                wasStandbyBeforeCall = voice.standby
-                voice.pauseForCall()
-            }
-            val d = a.optString("desc")
-            if (d.isNotBlank()) executingAction = d
-            val r = withContext(Dispatchers.IO) { device.execute(a) }   // ui_* actions block while they wait for the screen
-            if (type == "open_app" || type == "chat" || type == "music_play") delay(2500)          // let the app finish opening before the next step
-            else if (type == "call") delay(1000)
-            else if (type.startsWith("ui_")) delay(600)
-            executingAction = ""
-            if (type == "ui_read_screen" && r.startsWith("{")) {
-                try {
-                    val sObj = JSONObject(r)
-                    val pkg = sObj.optString("package", "App")
-                    val textsArr = sObj.optJSONArray("texts")
-                    val summaryList = mutableListOf<String>()
-                    if (textsArr != null) {
-                        for (ti in 0 until minOf(textsArr.length(), 4)) {
-                            val t = textsArr.optString(ti)
-                            if (t.isNotBlank()) summaryList.add(t)
+                if (type == "call") {
+                    isInPhoneCall = true
+                    wasActiveBeforeCall = voice.active
+                    wasStandbyBeforeCall = voice.standby
+                    voice.pauseForCall()
+                }
+                val d = a.optString("desc")
+                if (d.isNotBlank()) {
+                    executingAction = d
+                    AgentAccessibilityService.instance?.showFloatingHud(d)
+                }
+                if (type.startsWith("ui_") || type == "click" || type == "tap" || type == "type" || type == "scroll" || type == "swipe") {
+                    AgentAccessibilityService.instance?.uiDismissPopup()
+                }
+                val r = withContext(Dispatchers.IO) { device.execute(a) }   // ui_* actions block while they wait for the screen
+                if (type == "open_app" || type == "chat" || type == "music_play") delay(2500)          // let the app finish opening before the next step
+                else if (type == "call") delay(1000)
+                else if (type.startsWith("ui_") || type == "click" || type == "tap" || type == "type" || type == "scroll" || type == "swipe") delay(600)
+                executingAction = ""
+                if (type == "ui_read_screen" && r.startsWith("{")) {
+                    try {
+                        val sObj = JSONObject(r)
+                        val pkg = sObj.optString("package", "App")
+                        val textsArr = sObj.optJSONArray("texts")
+                        val summaryList = mutableListOf<String>()
+                        if (textsArr != null) {
+                            for (ti in 0 until minOf(textsArr.length(), 4)) {
+                                val t = textsArr.optString(ti)
+                                if (t.isNotBlank()) summaryList.add(t)
+                            }
                         }
+                        val spoken = if (summaryList.isNotEmpty()) {
+                            "Screen ($pkg): " + summaryList.joinToString(", ")
+                        } else {
+                            "Active app: $pkg"
+                        }
+                        chat.add(Msg(mine = false, text = "📱 $spoken", time = nowTime()))
+                        voice.speak(spoken)
+                    } catch (ignored: Exception) {}
+                }
+                when {
+                    r == "NEED_ACCESSIBILITY" -> {
+                        chat.add(Msg(mine = false, text = tr("need_a11y"), time = nowTime(), isError = true))
+                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                     }
-                    val spoken = if (summaryList.isNotEmpty()) {
-                        "Screen ($pkg): " + summaryList.joinToString(", ")
-                    } else {
-                        "Active app: $pkg"
+                    r.startsWith("SPEECH:") -> {
+                        val speechText = r.substring(7)
+                        chat.add(Msg(mine = false, text = speechText, time = nowTime()))
+                        voice.speak(speechText)
                     }
-                    chat.add(Msg(mine = false, text = "📱 $spoken", time = nowTime()))
-                    voice.speak(spoken)
-                } catch (ignored: Exception) {}
-            }
-            when {
-                r == "NEED_ACCESSIBILITY" -> {
-                    chat.add(Msg(mine = false, text = tr("need_a11y"), time = nowTime(), isError = true))
-                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                }
-                r.startsWith("SPEECH:") -> {
-                    val speechText = r.substring(7)
-                    chat.add(Msg(mine = false, text = speechText, time = nowTime()))
-                    voice.speak(speechText)
-                }
-                r.startsWith("ERR:NOT_FOUND_RETRY") -> {
-                    val msg = tr("action_failed_retry")
-                    chat.add(Msg(mine = false, text = "⚠ $msg", time = nowTime(), isError = true))
-                    voice.speak(msg)
-                }
-                r.startsWith("ERR:NEED_NOTIFICATION_LISTENER") -> {
-                    val msg = tr("notif_perm_btn")
-                    chat.add(Msg(mine = false, text = "⚠ $msg", time = nowTime(), isError = true))
-                    AgentNotificationListenerService.openSettings(this@MainActivity)
-                }
-                r.startsWith("ERR") -> {
-                    val errMsg = r.removePrefix("ERR:")
-                    chat.add(Msg(mine = false, text = "⚠ $errMsg", time = nowTime(), isError = true))
-                    voice.speak(errMsg)
+                    r.startsWith("ERR:NOT_FOUND_RETRY") -> {
+                        val msg = tr("action_failed_retry")
+                        chat.add(Msg(mine = false, text = "⚠ $msg", time = nowTime(), isError = true))
+                        voice.speak(msg)
+                    }
+                    r.startsWith("ERR:NEED_NOTIFICATION_LISTENER") -> {
+                        val msg = tr("notif_perm_btn")
+                        chat.add(Msg(mine = false, text = "⚠ $msg", time = nowTime(), isError = true))
+                        AgentNotificationListenerService.openSettings(this@MainActivity)
+                    }
+                    r.startsWith("ERR") -> {
+                        val errMsg = r.removePrefix("ERR:")
+                        chat.add(Msg(mine = false, text = "⚠ $errMsg", time = nowTime(), isError = true))
+                        voice.speak(errMsg)
+                    }
                 }
             }
+        } finally {
+            executingAction = ""
+            delay(1000)
+            AgentAccessibilityService.instance?.hideFloatingHud()
         }
     }
 

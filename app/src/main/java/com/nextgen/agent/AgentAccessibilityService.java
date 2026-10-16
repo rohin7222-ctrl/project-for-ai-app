@@ -11,6 +11,8 @@ import android.graphics.Rect;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
+import android.view.View;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
@@ -34,6 +36,75 @@ public class AgentAccessibilityService extends AccessibilityService {
     public static AgentAccessibilityService instance;
     public static volatile boolean autoConfirmUninstall = false;
     public static volatile String uninstallPackageName = "";
+
+    private View floatingHudView = null;
+    private WindowManager windowManager = null;
+    private android.widget.TextView hudTextView = null;
+
+    public void showFloatingHud(final String message) {
+        if (instance == null) return;
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (windowManager == null) {
+                        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+                    }
+                    if (floatingHudView == null && windowManager != null) {
+                        android.widget.LinearLayout layout = new android.widget.LinearLayout(AgentAccessibilityService.this);
+                        layout.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+                        layout.setGravity(android.view.Gravity.CENTER);
+                        layout.setPadding(36, 18, 36, 18);
+
+                        android.graphics.drawable.GradientDrawable gd = new android.graphics.drawable.GradientDrawable();
+                        gd.setColor(android.graphics.Color.parseColor("#E60B0F19"));
+                        gd.setCornerRadius(60f);
+                        gd.setStroke(3, android.graphics.Color.parseColor("#00E5FF"));
+                        layout.setBackground(gd);
+
+                        hudTextView = new android.widget.TextView(AgentAccessibilityService.this);
+                        hudTextView.setTextColor(android.graphics.Color.parseColor("#00E5FF"));
+                        hudTextView.setTextSize(12.5f);
+                        hudTextView.setTypeface(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD);
+                        layout.addView(hudTextView);
+
+                        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                            WindowManager.LayoutParams.WRAP_CONTENT,
+                            WindowManager.LayoutParams.WRAP_CONTENT,
+                            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                            android.graphics.PixelFormat.TRANSLUCENT
+                        );
+                        params.gravity = android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL;
+                        params.y = 110;
+
+                        floatingHudView = layout;
+                        windowManager.addView(floatingHudView, params);
+                    }
+                    if (hudTextView != null) {
+                        hudTextView.setText("⚡ " + message);
+                    }
+                    if (floatingHudView != null) {
+                        floatingHudView.setVisibility(View.VISIBLE);
+                    }
+                } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    public void hideFloatingHud() {
+        if (instance == null) return;
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (floatingHudView != null) {
+                        floatingHudView.setVisibility(View.GONE);
+                    }
+                } catch (Exception ignored) {}
+            }
+        });
+    }
 
     @Override
     protected void onServiceConnected() {
@@ -1074,6 +1145,27 @@ public class AgentAccessibilityService extends AccessibilityService {
     }
 
     /**
+     * Automatically clears any unexpected popup, update dialog, or permission banner that interrupts in-app workflows.
+     */
+    public boolean uiDismissPopup() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null || isOwnApp(root)) return false;
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null || !n.isVisibleToUser()) continue;
+            String l = label(n).toLowerCase(Locale.ROOT).trim();
+            if ((l.equals("not now") || l.equals("remind me later") || l.equals("later") ||
+                 l.equals("skip") || l.equals("cancel") || l.equals("close") || l.equals("dismiss") ||
+                 l.equals("x") || l.equals("✕") || l.equals("ரத்து") || l.equals("தவிர்")) &&
+                (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                AccessibilityNodeInfo target = clickableSelfOrParent(n);
+                if (target == null) target = n;
+                return click(target);
+            }
+        }
+        return false;
+    }
+
+    /**
      * Toggles a Switch or CheckBox for a setting inside any app.
      */
     public String uiToggleSwitch(String targetName, Boolean turnOn) {
@@ -1380,6 +1472,8 @@ public class AgentAccessibilityService extends AccessibilityService {
 
     private static boolean isCartQuery(String q) {
         return q.equals("cart") || q.equals("basket") || q.equals("add to cart") || q.equals("buy now") ||
+                q.equals("add") || q.equals("add to bag") || q.equals("order now") || q.contains("சேர்") ||
+                q.equals("+") || q.equals("add item") ||
                 q.contains("கார்ட்") || q.contains("கூடை") || q.contains("வாங்க") || q.equals("カート");
     }
 
@@ -1670,7 +1764,17 @@ public class AgentAccessibilityService extends AccessibilityService {
             "in.amazon.mShop.android.shopping:id/chrome_action_bar_cart_count",
             "com.amazon.mShop.android.shopping:id/action_bar_cart",
             "com.flipkart.android:id/cart_icon",
-            "in.amazon.mShop.android.shopping:id/add_to_cart_button"
+            "in.amazon.mShop.android.shopping:id/add_to_cart_button",
+            "com.application.zomato:id/add_button",
+            "com.application.zomato:id/btn_add",
+            "com.application.zomato:id/button_add",
+            "in.swiggy.android:id/add_to_cart_btn",
+            "in.swiggy.android:id/btn_add",
+            "in.swiggy.android:id/add_button",
+            "com.grofers.customerapp:id/btn_add",
+            "com.grofers.customerapp:id/add_to_cart",
+            "com.zeptoconsumerapp:id/btn_add",
+            "com.bigbasket.mobileapp:id/btn_add_to_cart"
         };
         for (String id : ids) {
             List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByViewId(id);
@@ -1682,8 +1786,11 @@ public class AgentAccessibilityService extends AccessibilityService {
         }
         for (AccessibilityNodeInfo n : all(root)) {
             if (n == null || !n.isVisibleToUser()) continue;
-            String l = label(n);
-            if ((l.contains("cart") || l.contains("add to cart") || l.contains("buy now") || l.contains("கார்ட்") || l.contains("கூடை")) &&
+            String l = label(n).toLowerCase(Locale.ROOT);
+            if ((l.equals("add") || l.equals("add to cart") || l.equals("add to bag") ||
+                 l.equals("buy now") || l.equals("order now") || l.contains("cart") ||
+                 l.contains("கார்ட்") || l.contains("கூடை") || l.equals("+") ||
+                 l.contains("சேர்") || l.equals("add item")) &&
                 (n.isClickable() || clickableSelfOrParent(n) != null)) {
                 return click(n);
             }

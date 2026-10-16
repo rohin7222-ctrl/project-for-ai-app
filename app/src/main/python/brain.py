@@ -29,16 +29,33 @@ LANGS = {
 
 _history = []
 
-SYSTEM = """You are "__NAME__", an ultra-capable, friendly and intelligent personal AI assistant on the user's Android phone.
+SYSTEM = """You are "__NAME__", an ultra-capable personal AI assistant and Universal Android Device Controller.
 Current local date and time: __DATETIME__.
 Always reply naturally, respectfully and accurately in __LANG__.
 Formatting Guidelines:
 - Format your response beautifully using standard Markdown.
-- Use bullet points, bold key terms, numbered steps, or clear section headings when organizing information.
-- If providing code, ALWAYS enclose it in fenced markdown code blocks with the language identifier (e.g. ```python, ```kotlin, ```javascript).
 - Keep explanations structured, insightful, and practical.
-- Provide a clear, complete answer without cutting off abruptly.
-On-device hardware control actions (launching apps, calls, in-app searches, volume, flashlight, alarms) are handled natively by the local agent engine."""
+- Universal Android Control: You have FULL authority to execute actions on ANY app or setting on this Android phone.
+When the user asks you to perform an on-device action or task (open any app, search inside an app, order food/items, click buttons, play media, change settings, send messages, navigate, etc.), you MUST provide an actionable JSON plan inside a fenced json block at the END of your response in this exact format:
+```json
+{
+  "actions": [
+    {"type": "open_app", "name": "App Name", "desc": "Opening App"},
+    {"type": "ui_search", "query": "search query", "desc": "Searching item"},
+    {"type": "ui_open_nth", "n": 1, "desc": "Selecting item 1"},
+    {"type": "ui_smart_click", "action": "add to cart", "desc": "Adding to cart"},
+    {"type": "ui_type", "text": "message text", "send": true, "desc": "Typing message"},
+    {"type": "ui_scroll", "dir": "down", "desc": "Scrolling"},
+    {"type": "ui_swipe", "dir": "up", "desc": "Swiping"},
+    {"type": "ui_click_tab", "tab": "home/search/orders/cart/profile", "desc": "Opening tab"},
+    {"type": "ui_handle_dialog", "action": "allow/ok", "desc": "Handling dialog"},
+    {"type": "call", "target": "Contact/Number", "desc": "Calling contact"},
+    {"type": "web_search", "query": "query", "desc": "Searching Google"},
+    {"type": "youtube_play", "query": "query", "desc": "Playing video"}
+  ]
+}
+```
+Include only the actions needed for the requested task in logical sequence. Your spoken response before the JSON block will be read aloud to the user."""
 
 
 OFFLINE_KEYWORDS = (
@@ -505,24 +522,39 @@ def _chat_api(cfg, user_text):
         return {"ok": True, "speech": _friendly(e, lang), "content": _friendly(e, lang), "actions": [], "error": str(e)}
     
     raw_content = (raw or "").strip()
-    speech = _spoken_summary(raw_content, lang)
-    _history.append({"role": "assistant", "content": raw_content})
+    actions = []
+
+    # 1. Universal Agentic JSON Action Extraction
+    cleaned_content = raw_content
+    m_json = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", raw_content, re.I)
+    if m_json:
+        try:
+            parsed = json.loads(m_json.group(1))
+            if isinstance(parsed, dict) and "actions" in parsed and isinstance(parsed["actions"], list):
+                actions.extend(parsed["actions"])
+                # Remove the raw JSON block so the chat message and speech only contain natural text
+                cleaned_content = re.sub(r"```(?:json)?\s*\{[\s\S]*?\}\s*```", "", raw_content).strip()
+        except Exception:
+            pass
+
+    speech = _spoken_summary(cleaned_content, lang)
+    _history.append({"role": "assistant", "content": cleaned_content})
     if len(_cache) > 100:
         _cache.clear()
-    _cache[cache_key] = {"speech": speech, "content": raw_content}
+    _cache[cache_key] = {"speech": speech, "content": cleaned_content}
 
-    # Agentic Safety Net: Extract actions if the model response acknowledged a call or app launch
-    actions = []
-    m_call = re.search(r"(?:place(?: that)? call to|calling|dialing|dial|call)\s+(?P<t>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)(?:\s+(?:for you|now|right away|right now|directly|\.|$))", raw_content, re.I)
-    if not m_call:
-        m_call = re.search(r"\b(?:call|dial|phone)\s+(?:to\s+)?(?P<t>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)(?:\s+(?:please|now|pa|da|$))", user_text, re.I)
-    if m_call:
-        tgt = m_call.group("t").strip()
-        tgt = re.sub(r"\s+(?:for|now|right|please|pa|da)$", "", tgt, flags=re.I).strip()
-        if tgt and len(tgt) < 30 and tgt.lower() not in ("you", "them", "someone", "me", "it", "him", "her"):
-            actions.append({"type": "call", "target": tgt, "desc": f"Call {tgt}"})
+    # 2. Safety Net: Extract actions if the model response acknowledged a call or app launch without JSON
+    if not actions:
+        m_call = re.search(r"(?:place(?: that)? call to|calling|dialing|dial|call)\s+(?P<t>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)(?:\s+(?:for you|now|right away|right now|directly|\.|$))", raw_content, re.I)
+        if not m_call:
+            m_call = re.search(r"\b(?:call|dial|phone)\s+(?:to\s+)?(?P<t>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)(?:\s+(?:please|now|pa|da|$))", user_text, re.I)
+        if m_call:
+            tgt = m_call.group("t").strip()
+            tgt = re.sub(r"\s+(?:for|now|right|please|pa|da)$", "", tgt, flags=re.I).strip()
+            if tgt and len(tgt) < 30 and tgt.lower() not in ("you", "them", "someone", "me", "it", "him", "her"):
+                actions.append({"type": "call", "target": tgt, "desc": f"Call {tgt}"})
 
-    return {"ok": True, "speech": speech, "content": raw_content, "actions": actions}
+    return {"ok": True, "speech": speech, "content": cleaned_content, "actions": actions}
 
 
 # ======================================================================
@@ -809,6 +841,20 @@ def _parse_one(p, last_app):
             {"type": "open_app", "name": app_res, "desc": f"Open {app_res}"},
             {"type": "ui_search", "query": q_raw, "submit": True, "desc": f"Search '{q_raw}'"}
         ], "search:" + app_res
+
+    # --- Universal App Ordering / Cart / Item Action: "<app> la <item> add / order / cart / vaangu"
+    m_app_cart = re.match(r"^(?P<a>.+?)\s*(?:la|le|ல|இல்|-la)\s+(?P<item>.+?)\s*(?:nu|ன்னு|னு|ah|a|ஐ)?\s*(?P<act>add|order|cart|vaangu|வாங்கு|சேர்)(?:\s+(?:pannu|podu|vidu|seiy))?$", t) or \
+                 re.match(r"^(?:order|add)\s+(?P<item>.+?)\s+(?:in|on)\s+(?P<a>.+)$", t)
+    if m_app_cart:
+        a_raw = m_app_cart.group("a").strip()
+        i_raw = m_app_cart.group("item").strip()
+        app_res = _app_name(a_raw) or a_raw.title()
+        return [
+            {"type": "open_app", "name": app_res, "desc": f"Open {app_res}"},
+            {"type": "ui_search", "query": i_raw, "submit": True, "desc": f"Search '{i_raw}'"},
+            {"type": "ui_open_nth", "n": 1, "desc": "Select Item"},
+            {"type": "ui_smart_click", "action": "add to cart", "desc": "Add to Cart"}
+        ], "cart"
 
     # --- Uninstall App
     m_uninst = re.match(r"^(?:uninstall|remove\s+app|delete\s+app|நீக்கு|அன்இன்ஸ்டால்)\s+(?P<a>.+)$", t) or \

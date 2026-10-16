@@ -230,22 +230,35 @@ public class DeviceController {
                 case "stop_assistant": return "OK";
                 case "answer_call": return telecom(true);
                 case "end_call": return telecom(false);
-                case "ui_search": return ui(0, a);
-                case "ui_open_nth": return ui(1, a);
-                case "ui_click": return ui(2, a);
-                case "ui_type": return ui(3, a);
-                case "ui_scroll": return ui(4, a);
+                case "ui_search":
+                case "search": return ui(0, a);
+                case "ui_open_nth":
+                case "open_nth":
+                case "select_nth": return ui(1, a);
+                case "ui_click":
+                case "click":
+                case "tap": return ui(2, a);
+                case "ui_type":
+                case "type": return ui(3, a);
+                case "ui_scroll":
+                case "scroll": return ui(4, a);
                 case "ui_clear_text": return ui(5, a);
                 case "ui_open_last_file": return ui(6, a);
-                case "ui_smart_click": return ui(7, a);
+                case "ui_smart_click":
+                case "smart_click": return ui(7, a);
                 case "ui_swipe_reels": return ui(8, a);
                 case "ui_type_composer": return ui(9, a);
                 case "ui_read_screen": return ui(10, a);
                 case "ui_open_item": return ui(11, a);
-                case "ui_swipe": return ui(12, a);
-                case "ui_click_tab": return ui(13, a);
+                case "ui_swipe":
+                case "swipe": return ui(12, a);
+                case "ui_click_tab":
+                case "click_tab": return ui(13, a);
                 case "ui_menu": return ui(14, a);
-                case "ui_dialog": return ui(15, a);
+                case "ui_dialog":
+                case "ui_handle_dialog": return ui(15, a);
+                case "ui_dismiss_popup":
+                case "dismiss_popup": return (AgentAccessibilityService.instance != null && AgentAccessibilityService.instance.uiDismissPopup()) ? "OK" : "NO_POPUP";
                 case "ui_toggle": return ui(16, a);
                 case "ui_feature": return ui(17, a);
                 case "battery_status": return batteryStatus();
