@@ -10,6 +10,7 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
@@ -42,7 +44,9 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -97,8 +101,6 @@ fun CornerHelmWheel(
     items: List<WheelItem>,
     modifier: Modifier = Modifier
 ) {
-    if (!isExpanded) return
-
     val coroutineScope = rememberCoroutineScope()
     val isDark = isSystemInDarkTheme()
     val density = LocalDensity.current
@@ -110,6 +112,17 @@ fun CornerHelmWheel(
     val rotationAngle = remember { Animatable(initialAngle) }
     var spinningItemId by remember { mutableStateOf<String?>(null) }
     var isSpinning by remember { mutableStateOf(false) }
+
+    // Initial entrance flourish spin when expanded
+    LaunchedEffect(isExpanded) {
+        if (isExpanded) {
+            rotationAngle.snapTo(initialAngle - 25f)
+            rotationAngle.animateTo(
+                targetValue = initialAngle,
+                animationSpec = spring(dampingRatio = 0.72f, stiffness = 340f)
+            )
+        }
+    }
 
     // Haptic feedback tick on spoke crossing
     var lastHapticSector by remember { mutableStateOf((initialAngle / 45f).toInt()) }
@@ -214,92 +227,132 @@ fun CornerHelmWheel(
         WheelPosition.BOTTOM_RIGHT -> Alignment.BottomEnd
     }
 
-    // Transparent tap-outside listener (no dark scrim covering the screen!)
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) {
-                if (!isSpinning) onDismissRequest()
-            }
-    ) {
-        // Active Floating Tooltip Label Chip
-        activeItem?.let { act ->
-            val chipAlignment = when (position) {
-                WheelPosition.TOP_RIGHT -> Alignment.TopStart
-                WheelPosition.BOTTOM_RIGHT -> Alignment.BottomStart
-            }
-            val chipPadding = when (position) {
-                WheelPosition.TOP_RIGHT -> Modifier.padding(start = 20.dp, top = 80.dp)
-                WheelPosition.BOTTOM_RIGHT -> Modifier.padding(start = 20.dp, bottom = 125.dp)
-            }
+    val transformOrigin = when (position) {
+        WheelPosition.TOP_RIGHT -> TransformOrigin(1f, 0f)
+        WheelPosition.BOTTOM_RIGHT -> TransformOrigin(1f, 1f)
+    }
 
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = if (isDark) Color(0xFF131722).copy(alpha = 0.96f) else Color.White.copy(alpha = 0.96f),
-                border = BorderStroke(1.8.dp, act.accentColor.copy(alpha = 0.85f)),
-                shadowElevation = 10.dp,
-                modifier = Modifier
-                    .align(chipAlignment)
-                    .then(chipPadding)
-                    .clip(RoundedCornerShape(20.dp))
-                    .clickable(enabled = !isSpinning) {
-                        isSpinning = true
-                        spinningItemId = act.id
-                        try {
-                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        } catch (ignored: Exception) {}
-                        coroutineScope.launch {
-                            shockwaveAnim.snapTo(0f)
-                            launch { shockwaveAnim.animateTo(1f, tween(480, easing = FastOutSlowInEasing)) }
-                            rotationAngle.animateTo(
-                                targetValue = rotationAngle.value + 360f,
-                                animationSpec = tween(520, easing = CubicBezierEasing(0.22f, 0.95f, 0.3f, 1.0f))
-                            )
-                            isSpinning = false
-                            spinningItemId = null
-                            act.onClick()
-                        }
-                    }
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(9.dp)
+    fun snapAngle(angle: Float, sweetSpot: Float, step: Float): Float {
+        var diff = (sweetSpot - (angle % 360f)) % step
+        if (diff < 0f) diff += step
+        if (diff > step / 2f) diff -= step
+        return angle + diff
+    }
+
+    AnimatedVisibility(
+        visible = isExpanded,
+        enter = fadeIn(tween(200)) + scaleIn(
+            initialScale = 0.25f,
+            transformOrigin = transformOrigin,
+            animationSpec = spring(dampingRatio = 0.72f, stiffness = 380f)
+        ),
+        exit = fadeOut(tween(180)) + scaleOut(
+            targetScale = 0.25f,
+            transformOrigin = transformOrigin,
+            animationSpec = tween(180)
+        )
+    ) {
+        // Transparent tap-outside listener (no dark scrim covering the screen!)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(act.accentColor.copy(alpha = 0.20f)),
-                        contentAlignment = Alignment.Center
+                    if (!isSpinning) onDismissRequest()
+                }
+        ) {
+            // Active Floating Tooltip Label Chip
+            activeItem?.let { act ->
+                val chipAlignment = when (position) {
+                    WheelPosition.TOP_RIGHT -> Alignment.TopStart
+                    WheelPosition.BOTTOM_RIGHT -> Alignment.BottomStart
+                }
+                val chipPadding = when (position) {
+                    WheelPosition.TOP_RIGHT -> Modifier.padding(start = 20.dp, top = 80.dp)
+                    WheelPosition.BOTTOM_RIGHT -> Modifier.padding(start = 20.dp, bottom = 125.dp)
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(22.dp),
+                    color = if (isDark) Color(0xFF131722).copy(alpha = 0.94f) else Color.White.copy(alpha = 0.95f),
+                    border = BorderStroke(2.dp, Brush.horizontalGradient(listOf(act.accentColor, act.accentColor.copy(alpha = 0.45f)))),
+                    shadowElevation = 12.dp,
+                    modifier = Modifier
+                        .align(chipAlignment)
+                        .then(chipPadding)
+                        .clip(RoundedCornerShape(22.dp))
+                        .clickable(enabled = !isSpinning) {
+                            isSpinning = true
+                            spinningItemId = act.id
+                            try {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            } catch (ignored: Exception) {}
+                            coroutineScope.launch {
+                                shockwaveAnim.snapTo(0f)
+                                launch { shockwaveAnim.animateTo(1f, tween(480, easing = FastOutSlowInEasing)) }
+                                rotationAngle.animateTo(
+                                    targetValue = rotationAngle.value + 360f,
+                                    animationSpec = tween(520, easing = CubicBezierEasing(0.22f, 0.95f, 0.3f, 1.0f))
+                                )
+                                isSpinning = false
+                                spinningItemId = null
+                                act.onClick()
+                            }
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Icon(
-                            imageVector = act.icon,
-                            contentDescription = act.label,
-                            modifier = Modifier.size(17.dp),
-                            tint = act.accentColor
-                        )
-                    }
-                    Column {
-                        Text(
-                            text = act.label,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "தட்டவும் • Tap to spin",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = act.accentColor
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.radialGradient(
+                                        listOf(act.accentColor.copy(alpha = 0.32f), act.accentColor.copy(alpha = 0.08f))
+                                    )
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = act.icon,
+                                contentDescription = act.label,
+                                modifier = Modifier.size(19.dp),
+                                tint = act.accentColor
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = act.label,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "தட்டவும் • Tap to activate",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = act.accentColor
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.Bolt,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(11.dp),
+                                    tint = act.accentColor
+                                )
+                            }
+                        }
                     }
                 }
             }
-        }
 
         // Corner Helm Wheel Container
         Box(
@@ -333,18 +386,31 @@ fun CornerHelmWheel(
                             }
                         },
                         onDragEnd = {
-                            // Fling momentum physics: continue spinning with friction decay
-                            if (abs(lastDelta) > 1.2f) {
-                                coroutineScope.launch {
-                                    val momentum = lastDelta * 35f
+                            // Magnetic spoke snapping with inertia momentum & friction decay
+                            val momentum = if (abs(lastDelta) > 1.2f) lastDelta * 28f else 0f
+                            val estAngle = rotationAngle.value + momentum
+                            val targetSnapped = snapAngle(estAngle, sweetSpotAngle.toFloat(), stepDeg)
+
+                            coroutineScope.launch {
+                                if (momentum != 0f) {
                                     rotationAngle.animateTo(
-                                        targetValue = rotationAngle.value + momentum,
+                                        targetValue = estAngle,
                                         animationSpec = tween(
-                                            durationMillis = 750,
-                                            easing = CubicBezierEasing(0.1f, 0.9f, 0.2f, 1.0f)
+                                            durationMillis = 380,
+                                            easing = CubicBezierEasing(0.12f, 0.85f, 0.25f, 1.0f)
                                         )
                                     )
                                 }
+                                rotationAngle.animateTo(
+                                    targetValue = targetSnapped,
+                                    animationSpec = spring(
+                                        dampingRatio = 0.68f,
+                                        stiffness = 320f
+                                    )
+                                )
+                                try {
+                                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                } catch (ignored: Exception) {}
                             }
                         }
                     )
@@ -529,6 +595,41 @@ fun CornerHelmWheel(
                     radius = hubRadiusPx * 0.75f,
                     style = Stroke(width = 1.2.dp.toPx())
                 )
+
+                // Astrolabe 8-pointed Nautical Compass Star in Center Hub
+                val starPoints = 8
+                val starStep = (2 * PI / starPoints).toFloat()
+                val rOuterStar = hubRadiusPx * 0.65f
+                val rInnerStar = hubRadiusPx * 0.30f
+                val starPath = Path()
+                for (s in 0 until (starPoints * 2)) {
+                    val a = s * (starStep / 2f) - (PI / 2).toFloat()
+                    val r = if (s % 2 == 0) rOuterStar else rInnerStar
+                    val px = cx + r * cos(a)
+                    val py = cy + r * sin(a)
+                    if (s == 0) starPath.moveTo(px, py) else starPath.lineTo(px, py)
+                }
+                starPath.close()
+                drawPath(
+                    path = starPath,
+                    color = (activeItem?.accentColor ?: hubBorder).copy(alpha = if (isDark) 0.50f else 0.35f)
+                )
+
+                // Outer Orbiting Satellite Particle
+                val satAngle = Math.toRadians((currentRot * 1.5).toDouble()).toFloat()
+                val satR = outerRimPx
+                val satX = cx + satR * cos(satAngle)
+                val satY = cy + satR * sin(satAngle)
+                drawCircle(
+                    color = (activeItem?.accentColor ?: Cyan).copy(alpha = 0.30f),
+                    center = Offset(satX, satY),
+                    radius = 8.dp.toPx()
+                )
+                drawCircle(
+                    color = Color.White,
+                    center = Offset(satX, satY),
+                    radius = 3.2.dp.toPx()
+                )
             }
 
             // 2. Action Node Badges mounted along the spokes
@@ -666,6 +767,7 @@ fun CornerHelmWheel(
             }
         }
     }
+}
 }
 
 /**

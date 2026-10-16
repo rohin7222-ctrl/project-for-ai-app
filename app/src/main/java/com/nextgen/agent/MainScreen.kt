@@ -51,6 +51,10 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PhoneInTalk
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -62,7 +66,6 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiTethering
-import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -297,6 +300,13 @@ internal fun MainActivity.MainScreen() {
             icon = Icons.Default.AdminPanelSettings,
             accentColor = Color(0xFFF97316),
             onClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+        ),
+        WheelItem(
+            id = "full_settings",
+            label = tr("settings_title"),
+            icon = Icons.Default.Settings,
+            accentColor = Color(0xFF8B5CF6),
+            onClick = { showSettingsModal = true }
         )
     )
 
@@ -310,11 +320,39 @@ internal fun MainActivity.MainScreen() {
             onClick = { quickCall() }
         ),
         WheelItem(
-            id = "quick_bluetooth",
-            label = tr("chip_bt"),
-            icon = Icons.Default.Bluetooth,
-            accentColor = Color(0xFF3B82F6),
-            onClick = { toggleBluetooth() }
+            id = "quick_whatsapp",
+            label = tr("chip_whatsapp"),
+            icon = Icons.AutoMirrored.Filled.Chat,
+            accentColor = Color(0xFF22C55E),
+            onClick = { quickWhatsApp() }
+        ),
+        WheelItem(
+            id = "quick_reels",
+            label = tr("chip_reels"),
+            icon = Icons.Default.VideoLibrary,
+            accentColor = Color(0xFFEC4899),
+            onClick = { quickReels() }
+        ),
+        WheelItem(
+            id = "quick_music",
+            label = tr("chip_music"),
+            icon = Icons.Default.MusicNote,
+            accentColor = Color(0xFF1DB954),
+            onClick = { quickMusic() }
+        ),
+        WheelItem(
+            id = "quick_screen_read",
+            label = tr("chip_screen_read"),
+            icon = Icons.Default.Visibility,
+            accentColor = Cyan,
+            onClick = { quickScreenRead() }
+        ),
+        WheelItem(
+            id = "quick_camera",
+            label = tr("chip_camera"),
+            icon = Icons.Default.CameraAlt,
+            accentColor = Color(0xFFE1306C),
+            onClick = { quickCamera() }
         ),
         WheelItem(
             id = "quick_torch",
@@ -324,25 +362,25 @@ internal fun MainActivity.MainScreen() {
             onClick = { toggleTorch() }
         ),
         WheelItem(
-            id = "quick_alarm",
-            label = tr("chip_alarm"),
-            icon = Icons.Default.Alarm,
-            accentColor = Color(0xFFEC4899),
-            onClick = { quickAlarm() }
-        ),
-        WheelItem(
-            id = "quick_whatsapp",
-            label = tr("chip_whatsapp"),
-            icon = Icons.AutoMirrored.Filled.Chat,
-            accentColor = Color(0xFF22C55E),
-            onClick = { quickWhatsApp() }
-        ),
-        WheelItem(
             id = "quick_wifi",
             label = tr("chip_wifi"),
             icon = Icons.Default.Wifi,
             accentColor = Cyan,
             onClick = { quickWifi() }
+        ),
+        WheelItem(
+            id = "quick_bluetooth",
+            label = tr("chip_bt"),
+            icon = Icons.Default.Bluetooth,
+            accentColor = Color(0xFF3B82F6),
+            onClick = { toggleBluetooth() }
+        ),
+        WheelItem(
+            id = "quick_alarm",
+            label = tr("chip_alarm"),
+            icon = Icons.Default.Alarm,
+            accentColor = Color(0xFFA855F7),
+            onClick = { quickAlarm() }
         ),
         WheelItem(
             id = "quick_screenshot",
@@ -366,11 +404,11 @@ internal fun MainActivity.MainScreen() {
             onClick = { quickYouTube() }
         ),
         WheelItem(
-            id = "quick_instagram",
-            label = tr("chip_insta"),
-            icon = Icons.Default.CameraAlt,
-            accentColor = Color(0xFFE1306C),
-            onClick = { quickInstagram() }
+            id = "quick_google",
+            label = tr("chip_google"),
+            icon = Icons.Default.Search,
+            accentColor = Color(0xFF4285F4),
+            onClick = { quickGoogleSearch() }
         ),
         WheelItem(
             id = "quick_hotspot",
@@ -378,13 +416,6 @@ internal fun MainActivity.MainScreen() {
             icon = Icons.Default.WifiTethering,
             accentColor = Color(0xFFF59E0B),
             onClick = { quickHotspot() }
-        ),
-        WheelItem(
-            id = "quick_google",
-            label = tr("chip_google"),
-            icon = Icons.Default.Search,
-            accentColor = Color(0xFF4285F4),
-            onClick = { quickGoogleSearch() }
         )
     )
 

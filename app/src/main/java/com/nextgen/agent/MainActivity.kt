@@ -505,6 +505,29 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    internal fun quickReels() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            device.openInstagramReels()
+        }
+    }
+
+    internal fun quickMusic() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            device.playMusic("trending songs", "spotify")
+        }
+    }
+
+    internal fun quickCamera() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            device.openApp("camera")
+        }
+    }
+
+    internal fun quickScreenRead() {
+        val prompt = if (cfg.lang == "ta-IN") "திரையை படி" else "Read Screen"
+        handleUser(prompt)
+    }
+
     internal fun cycleLanguage() {
         val langs = listOf("ta-IN", "en-US", "ja-JP")
         val currentIndex = langs.indexOf(cfg.lang).coerceAtLeast(0)

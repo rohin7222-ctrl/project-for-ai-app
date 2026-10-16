@@ -136,6 +136,10 @@ object S {
         "raise_to_answer" to listOf("காதில் வைத்தால் அழைப்பை ஏற்கவும் (Ear to Call)", "Raise to Ear to Answer Call", "耳に当てて通話に応答"),
         "raise_to_answer_sub" to listOf("போன் அடிக்கும்போது காதின் அருகே கொண்டு சென்றால் அழைப்பு தானாக ஏற்கப்படும் (ஆப் மூடப்பட்டிருந்தாலும் வேலை செய்யும்)", "Automatically answer incoming calls when brought near your ear (Works even when app is closed)", "着信時にスマホを耳に近づけると自動的に通話を開始（アプリ終了時も有効）"),
         "raise_to_answer_bg_badge" to listOf("⚡ 24/7 பின்னணியில் இயங்கும்", "⚡ 24/7 Background Ready", "⚡ バックグラウンド常時有効"),
+        "chip_music" to listOf("இசை இயக்கு", "Play Music", "音楽を再生"),
+        "chip_reels" to listOf("ரீல்ஸ் / ஷார்ட்ஸ்", "Reels & Shorts", "リール動画"),
+        "chip_camera" to listOf("கேமரா", "Camera", "カメラ"),
+        "chip_screen_read" to listOf("திரை பார்வை", "Screen Vision", "画面を読み取り"),
         "raise_to_ear_wheel" to listOf("காதில் ஏற்க", "Raise to Ear", "耳で応答")
     )
 
