@@ -510,8 +510,8 @@ fun CornerHelmWheel(
                     style = Stroke(width = 1.6.dp.toPx())
                 )
 
-                // Draw 8 Spokes & Handles with Turned Peg Knobs & 3D Specular Highlights
-                val totalSpokes = 8
+                // Draw Dynamic Spokes & Handles with Turned Peg Knobs & 3D Specular Highlights
+                val totalSpokes = totalItems.coerceAtLeast(8)
                 val stepAngle = (2 * PI / totalSpokes).toFloat()
 
                 for (i in 0 until totalSpokes) {

@@ -131,7 +131,10 @@ data class Msg(
     val text: String,
     val time: String = "",
     val actions: List<String> = emptyList(),
-    val isError: Boolean = false
+    val isError: Boolean = false,
+    val rawMarkdown: String = "",
+    val spokenSummary: String = "",
+    val isAiResponse: Boolean = false
 )
 
 internal val Indigo = Color(0xFF6366F1)
@@ -601,6 +604,54 @@ class MainActivity : FragmentActivity() {
         Toast.makeText(this, "Language: $langName", Toast.LENGTH_SHORT).show()
     }
 
+    var currentlySpeakingText by mutableStateOf<String?>(null)
+
+    fun speakText(text: String) {
+        val clean = text.trim()
+        if (clean.isBlank()) return
+        if (currentlySpeakingText == clean) {
+            voice.stopSpeakingOnly()
+            currentlySpeakingText = null
+        } else {
+            currentlySpeakingText = clean
+            voice.speak(clean)
+        }
+    }
+
+    fun stopSpeaking() {
+        voice.stopSpeakingOnly()
+        currentlySpeakingText = null
+    }
+
+    fun shareText(text: String) {
+        try {
+            val sendIntent = Intent().apply {
+                action = Intent.ACTION_SEND
+                putExtra(Intent.EXTRA_TEXT, text)
+                type = "text/plain"
+            }
+            val shareIntent = Intent.createChooser(sendIntent, "Share AI Response")
+            startActivity(shareIntent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Unable to share", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    internal fun quickReadNotifications() {
+        val prompt = if (cfg.lang == "ta-IN") "வந்த செய்திகளைப் படி" else "Read notifications"
+        handleUser(prompt)
+    }
+
+    internal fun quickReadSms() {
+        val prompt = if (cfg.lang == "ta-IN") "சமீபத்திய SMS படி" else "Read recent SMS"
+        handleUser(prompt)
+    }
+
+    internal fun quickMobileData() {
+        val prompt = if (cfg.lang == "ta-IN") "மொபைல் டேட்டா ஆன்" else "Turn on mobile data"
+        handleUser(prompt)
+    }
+
     internal fun handleUser(text: String) {
         val t = text.trim()
         if (t.isBlank()) return
@@ -634,7 +685,19 @@ class MainActivity : FragmentActivity() {
             thinking = false
             if (r.ok) {
                 val actionDescs = r.actions.mapNotNull { it.optString("desc").takeIf { s -> s.isNotBlank() } }
-                chat.add(Msg(mine = false, text = r.speech, time = nowTime(), actions = actionDescs))
+                val displayText = r.content.ifBlank { r.speech }
+                val isAi = r.actions.isEmpty()
+                chat.add(
+                    Msg(
+                        mine = false,
+                        text = displayText,
+                        time = nowTime(),
+                        actions = actionDescs,
+                        rawMarkdown = r.content,
+                        spokenSummary = r.speech,
+                        isAiResponse = isAi
+                    )
+                )
                 voice.speak(r.speech)
                 delay(1200)                       // let the voice reply start before apps open
                 runList(r.actions)                // Run all actions directly without blocking modal!

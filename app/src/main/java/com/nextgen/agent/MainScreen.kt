@@ -38,8 +38,10 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
@@ -52,6 +54,7 @@ import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.CameraAlt
@@ -62,6 +65,9 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SignalCellularAlt
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Wifi
@@ -233,11 +239,46 @@ internal fun MainActivity.MainScreen() {
     // 1. TOP WHEEL ITEMS (Settings & Preferences Wheel)
     val topWheelItems = listOf(
         WheelItem(
-            id = "clear_chat",
-            label = tr("clear_chat"),
-            icon = Icons.Default.DeleteSweep,
-            accentColor = Color(0xFFEF4444),
-            onClick = { showClearDialog = true }
+            id = "full_settings",
+            label = tr("settings_title"),
+            icon = Icons.Default.Settings,
+            accentColor = Color(0xFF8B5CF6),
+            onClick = { showSettingsModal = true }
+        ),
+        WheelItem(
+            id = "brain_config",
+            label = tr("ai_model"),
+            icon = Icons.Default.Bolt,
+            accentColor = Indigo,
+            onClick = { changeModel = true; screen = Screen.BRAIN }
+        ),
+        WheelItem(
+            id = "lang_switch",
+            label = tr("app_lang"),
+            icon = Icons.Default.Language,
+            accentColor = Cyan,
+            onClick = { cycleLanguage() }
+        ),
+        WheelItem(
+            id = "theme_toggle",
+            label = if (isDark) "Light Mode" else "Dark Mode",
+            icon = if (isDark) Icons.Default.LightMode else Icons.Default.DarkMode,
+            accentColor = Amber,
+            onClick = { upd { it.copy(dark = !isDark, darkCustom = true) } }
+        ),
+        WheelItem(
+            id = "accessibility",
+            label = "Accessibility",
+            icon = Icons.Default.AdminPanelSettings,
+            accentColor = Color(0xFFF97316),
+            onClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+        ),
+        WheelItem(
+            id = "battery_ignore",
+            label = tr("battery_ignore_btn"),
+            icon = Icons.Default.BatteryChargingFull,
+            accentColor = Color(0xFF10B981),
+            onClick = { requestIgnoreBatteryOptimization() }
         ),
         WheelItem(
             id = "raise_to_ear",
@@ -262,27 +303,6 @@ internal fun MainActivity.MainScreen() {
             }
         ),
         WheelItem(
-            id = "theme_toggle",
-            label = if (isDark) "Light Mode" else "Dark Mode",
-            icon = if (isDark) Icons.Default.LightMode else Icons.Default.DarkMode,
-            accentColor = Amber,
-            onClick = { upd { it.copy(dark = !isDark, darkCustom = true) } }
-        ),
-        WheelItem(
-            id = "lang_switch",
-            label = tr("app_lang"),
-            icon = Icons.Default.Language,
-            accentColor = Cyan,
-            onClick = { cycleLanguage() }
-        ),
-        WheelItem(
-            id = "brain_config",
-            label = tr("ai_model"),
-            icon = Icons.Default.Bolt,
-            accentColor = Indigo,
-            onClick = { changeModel = true; screen = Screen.BRAIN }
-        ),
-        WheelItem(
             id = "auto_wake",
             label = tr("auto_wake"),
             icon = Icons.Default.RecordVoiceOver,
@@ -295,18 +315,18 @@ internal fun MainActivity.MainScreen() {
             }
         ),
         WheelItem(
-            id = "accessibility",
-            label = "Accessibility",
-            icon = Icons.Default.AdminPanelSettings,
-            accentColor = Color(0xFFF97316),
-            onClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+            id = "crash_logs",
+            label = tr("crash_log_title"),
+            icon = Icons.Default.BugReport,
+            accentColor = Color(0xFFF43F5E),
+            onClick = { showSettingsModal = true }
         ),
         WheelItem(
-            id = "full_settings",
-            label = tr("settings_title"),
-            icon = Icons.Default.Settings,
-            accentColor = Color(0xFF8B5CF6),
-            onClick = { showSettingsModal = true }
+            id = "clear_chat",
+            label = tr("clear_chat"),
+            icon = Icons.Default.DeleteSweep,
+            accentColor = Color(0xFFEF4444),
+            onClick = { showClearDialog = true }
         )
     )
 
@@ -327,25 +347,18 @@ internal fun MainActivity.MainScreen() {
             onClick = { quickWhatsApp() }
         ),
         WheelItem(
-            id = "quick_reels",
-            label = tr("chip_reels"),
-            icon = Icons.Default.VideoLibrary,
-            accentColor = Color(0xFFEC4899),
-            onClick = { quickReels() }
+            id = "quick_notif",
+            label = tr("chip_notif"),
+            icon = Icons.Default.Notifications,
+            accentColor = Color(0xFF38BDF8),
+            onClick = { quickReadNotifications() }
         ),
         WheelItem(
-            id = "quick_music",
-            label = tr("chip_music"),
-            icon = Icons.Default.MusicNote,
-            accentColor = Color(0xFF1DB954),
-            onClick = { quickMusic() }
-        ),
-        WheelItem(
-            id = "quick_screen_read",
-            label = tr("chip_screen_read"),
-            icon = Icons.Default.Visibility,
-            accentColor = Cyan,
-            onClick = { quickScreenRead() }
+            id = "quick_sms",
+            label = tr("chip_sms"),
+            icon = Icons.Default.Sms,
+            accentColor = Color(0xFF6366F1),
+            onClick = { quickReadSms() }
         ),
         WheelItem(
             id = "quick_camera",
@@ -369,6 +382,13 @@ internal fun MainActivity.MainScreen() {
             onClick = { quickWifi() }
         ),
         WheelItem(
+            id = "quick_data",
+            label = tr("chip_data"),
+            icon = Icons.Default.SignalCellularAlt,
+            accentColor = Color(0xFF0284C7),
+            onClick = { quickMobileData() }
+        ),
+        WheelItem(
             id = "quick_bluetooth",
             label = tr("chip_bt"),
             icon = Icons.Default.Bluetooth,
@@ -376,32 +396,25 @@ internal fun MainActivity.MainScreen() {
             onClick = { toggleBluetooth() }
         ),
         WheelItem(
-            id = "quick_alarm",
-            label = tr("chip_alarm"),
-            icon = Icons.Default.Alarm,
+            id = "quick_screen_read",
+            label = tr("chip_screen_read"),
+            icon = Icons.Default.Visibility,
             accentColor = Color(0xFFA855F7),
-            onClick = { quickAlarm() }
+            onClick = { quickScreenRead() }
         ),
         WheelItem(
-            id = "quick_screenshot",
-            label = tr("chip_screenshot"),
-            icon = Icons.Default.PhotoCamera,
-            accentColor = Violet,
-            onClick = { quickScreenshot() }
+            id = "quick_music",
+            label = tr("chip_music"),
+            icon = Icons.Default.MusicNote,
+            accentColor = Color(0xFF1DB954),
+            onClick = { quickMusic() }
         ),
         WheelItem(
-            id = "quick_volume",
-            label = "Volume",
-            icon = Icons.AutoMirrored.Filled.VolumeUp,
-            accentColor = Color(0xFF06B6D4),
-            onClick = { quickVolume() }
-        ),
-        WheelItem(
-            id = "quick_youtube",
-            label = tr("chip_yt"),
-            icon = Icons.Default.PlayCircle,
-            accentColor = Color(0xFFEF4444),
-            onClick = { quickYouTube() }
+            id = "quick_reels",
+            label = tr("chip_reels"),
+            icon = Icons.Default.VideoLibrary,
+            accentColor = Color(0xFFEC4899),
+            onClick = { quickReels() }
         ),
         WheelItem(
             id = "quick_google",
@@ -411,11 +424,18 @@ internal fun MainActivity.MainScreen() {
             onClick = { quickGoogleSearch() }
         ),
         WheelItem(
-            id = "quick_hotspot",
-            label = tr("chip_hotspot"),
-            icon = Icons.Default.WifiTethering,
-            accentColor = Color(0xFFF59E0B),
-            onClick = { quickHotspot() }
+            id = "quick_alarm",
+            label = tr("chip_alarm"),
+            icon = Icons.Default.Alarm,
+            accentColor = Color(0xFFA855F7),
+            onClick = { quickAlarm() }
+        ),
+        WheelItem(
+            id = "quick_stop",
+            label = tr("chip_stop"),
+            icon = Icons.Default.Stop,
+            accentColor = Color(0xFFEF4444),
+            onClick = { stopVoiceWithAck() }
         )
     )
 
@@ -737,92 +757,12 @@ internal fun MainActivity.MainScreen() {
                                     }
                                 }
                             } else {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.Start,
-                                    verticalAlignment = Alignment.Top
-                                ) {
-                                    Surface(
-                                        modifier = Modifier
-                                            .padding(top = 2.dp)
-                                            .size(30.dp),
-                                        shape = RoundedCornerShape(10.dp),
-                                        border = BorderStroke(1.dp, GeminiPurple.copy(alpha = 0.5f)),
-                                        color = MaterialTheme.colorScheme.surfaceVariant
-                                    ) {
-                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                            GeminiSparkle(size = 18.dp)
-                                        }
-                                    }
-
-                                    Spacer(Modifier.width(8.dp))
-
-                                    Column(modifier = Modifier.widthIn(max = 300.dp)) {
-                                        Surface(
-                                            shape = RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp),
-                                            color = if (m.isError) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface,
-                                            tonalElevation = 2.dp,
-                                            shadowElevation = 2.dp,
-                                            border = BorderStroke(1.dp, if (m.isError) MaterialTheme.colorScheme.error.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                                        ) {
-                                            Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
-                                                Text(
-                                                    text = m.text,
-                                                    color = if (m.isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface,
-                                                    fontSize = 15.sp,
-                                                    lineHeight = 21.sp
-                                                )
-
-                                                if (m.actions.isNotEmpty()) {
-                                                    Spacer(Modifier.height(8.dp))
-                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                        m.actions.forEach { act ->
-                                                            Surface(
-                                                                shape = RoundedCornerShape(8.dp),
-                                                                color = Indigo.copy(alpha = 0.12f),
-                                                                border = BorderStroke(0.5.dp, Indigo.copy(alpha = 0.4f))
-                                                            ) {
-                                                                Row(
-                                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                                                    verticalAlignment = Alignment.CenterVertically,
-                                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                                ) {
-                                                                    Icon(Icons.Default.Bolt, null, Modifier.size(13.dp), tint = Indigo)
-                                                                    Text(act, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Indigo)
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        Row(
-                                            modifier = Modifier.padding(top = 3.dp, start = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            if (m.time.isNotBlank()) {
-                                                Text(
-                                                    text = m.time,
-                                                    fontSize = 10.sp,
-                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
-                                                )
-                                            }
-                                            Icon(
-                                                imageVector = Icons.Default.ContentCopy,
-                                                contentDescription = "Copy message",
-                                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
-                                                modifier = Modifier
-                                                    .size(13.dp)
-                                                    .clickable {
-                                                        copyToClipboard(m.text)
-                                                        Toast.makeText(activity, tr("copy_done"), Toast.LENGTH_SHORT).show()
-                                                    }
-                                            )
-                                        }
-                                    }
-                                }
+                                AiAnswerCard(
+                                    msg = m,
+                                    activity = activity,
+                                    isDark = isDark,
+                                    onFollowUp = { handleUser(it) }
+                                )
                             }
                         }
 

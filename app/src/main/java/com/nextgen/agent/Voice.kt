@@ -382,6 +382,16 @@ class Voice(
         }
     }
 
+    /** Stops current TTS speech playback immediately without disturbing recognizer */
+    fun stopSpeakingOnly() {
+        try {
+            tts?.stop()
+        } catch (ignored: Exception) {}
+        ttsWatchdogRunnable?.let { main.removeCallbacks(it) }
+        ttsWatchdogRunnable = null
+        holding = false
+    }
+
     private fun applyVoiceAndPitch(t: TextToSpeech, loc: Locale, isFemale: Boolean) {
         val langCode = loc.language.lowercase(Locale.ROOT)
         val allVoices = t.voices?.filter { it.locale.language.equals(langCode, ignoreCase = true) }

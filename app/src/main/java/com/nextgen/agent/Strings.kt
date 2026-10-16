@@ -154,7 +154,22 @@ object S {
         "action_failed_retry" to listOf("பொத்தான் திரையில் கிடைக்கவில்லை, தயவுசெய்து கைமுறையாகத் தொடவும்", "Target button not found on screen, please tap manually", "画面にボタンが見つかりません。手動で操作してください"),
         "all_perms_title" to listOf("அனைத்து அனுமதிகளையும் சரிபார்க்கவும்", "System Permissions Overview", "システム権限一覧"),
         "perm_granted" to listOf("வழங்கப்பட்டது", "Granted", "許可済み"),
-        "perm_missing" to listOf("அனுமதி தேவை", "Required", "未許可")
+        "perm_missing" to listOf("அனுமதி தேவை", "Required", "未許可"),
+        "copy_code" to listOf("கோட் நகலெடு", "Copy Code", "コードをコピー"),
+        "code_copied" to listOf("கோட் நகலெடுக்கப்பட்டது", "Code copied to clipboard", "コードをコピーしました"),
+        "listen_speech" to listOf("குரலில் கேள்", "Listen", "音声で再生"),
+        "stop_speech" to listOf("குரலை நிறுத்து", "Stop Audio", "音声を停止"),
+        "share_response" to listOf("பகிர்", "Share", "共有"),
+        "explain_simple" to listOf("சுருக்கமாகச் சொல்", "Explain simply", "わかりやすく要約"),
+        "translate_tamil" to listOf("தமிழில் சொல்", "Translate to Tamil", "タミル語に翻訳"),
+        "search_google" to listOf("Google-ல் தேடு", "Search on Google", "Googleで検索"),
+        "chip_sms" to listOf("SMS படி", "Read SMS", "SMS読み上げ"),
+        "chip_data" to listOf("மொபைல் டேட்டா", "Mobile Data", "モバイル通信"),
+        "chip_notif" to listOf("செய்திகளைப் படி", "Read Notifications", "通知読み上げ"),
+        "chip_stop" to listOf("நிறுத்து", "Emergency Stop", "緊急停止"),
+        "chip_photo" to listOf("புகைப்படம்", "Take Photo", "写真を撮影"),
+        "read_more" to listOf("முழுமையாகக் காட்டு", "Read more", "もっと見る"),
+        "show_less" to listOf("சுருக்கு", "Show less", "折りたたむ")
     )
 
     fun t(lang: String, k: String): String {

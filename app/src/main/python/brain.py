@@ -23,11 +23,16 @@ LANGS = {"ta-IN": "Tamil", "en-US": "English", "ja-JP": "Japanese"}
 
 _history = []
 
-SYSTEM = """You are "__NAME__", a highly capable, friendly personal AI voice assistant on the user's Android phone.
+SYSTEM = """You are "__NAME__", an ultra-capable, friendly and intelligent personal AI assistant on the user's Android phone.
 Current local date and time: __DATETIME__.
-Always reply naturally in __LANG__.
-Your response will be spoken aloud to the user: provide 1-3 concise, helpful, conversational sentences in plain text only. Do not use asterisks, markdown, emojis, or bullet points.
-You handle general knowledge, conversation, reasoning, and questions. On-device hardware control actions (launching apps, calls, in-app searches, volume, flashlight, alarms) are handled natively by the local agent engine."""
+Always reply naturally, respectfully and accurately in __LANG__.
+Formatting Guidelines:
+- Format your response beautifully using standard Markdown.
+- Use bullet points, bold key terms, numbered steps, or clear section headings when organizing information.
+- If providing code, ALWAYS enclose it in fenced markdown code blocks with the language identifier (e.g. ```python, ```kotlin, ```javascript).
+- Keep explanations structured, insightful, and practical.
+- Provide a clear, complete answer without cutting off abruptly.
+On-device hardware control actions (launching apps, calls, in-app searches, volume, flashlight, alarms) are handled natively by the local agent engine."""
 
 
 OFFLINE_KEYWORDS = (
@@ -198,7 +203,7 @@ def _complete(cfg, system, hist):
             "systemInstruction": {"parts": [{"text": system}]},
             "contents": [{"role": "user" if m["role"] == "user" else "model",
                           "parts": [{"text": m["content"]}]} for m in hist],
-            "generationConfig": {"temperature": 0.6, "maxOutputTokens": 200},
+            "generationConfig": {"temperature": 0.6, "maxOutputTokens": 2048},
         }
         d = _http(GEMINI + "/models/" + model + ":generateContent", body,
                   {"x-goog-api-key": key})
@@ -206,7 +211,7 @@ def _complete(cfg, system, hist):
         return "".join(p.get("text", "") for p in parts if not p.get("thought"))
     if t == "api" and prov == "anthropic":
         d = _http(ANTHROPIC + "/messages",
-                  {"model": model, "max_tokens": 250, "system": system, "messages": hist},
+                  {"model": model, "max_tokens": 2048, "system": system, "messages": hist},
                   {"x-api-key": key, "anthropic-version": "2023-06-01"})
         return "".join(b.get("text", "") for b in d["content"])
     msgs = [{"role": "system", "content": system}] + hist
@@ -220,7 +225,7 @@ def _complete(cfg, system, hist):
             return d["message"]["content"]
         headers = {}
     d = _http(base + "/chat/completions",
-              {"model": model, "messages": msgs, "temperature": 0.6, "max_tokens": 200}, headers, timeout=180)
+              {"model": model, "messages": msgs, "temperature": 0.6, "max_tokens": 2048}, headers, timeout=180)
     return d["choices"][0]["message"]["content"]
 
 
@@ -299,6 +304,22 @@ def _fallback_models_lazy(cfg):
         return _fallback_models(cfg)
     except Exception:
         return []
+
+
+def _spoken_summary(raw, lang):
+    if not raw:
+        return ""
+    code_sub = "(கோட் திரையில் கொடுக்கப்பட்டுள்ளது)" if lang == "ta-IN" else ("(コードは画面に表示されています)" if lang == "ja-JP" else "(Code shown on screen)")
+    text = re.sub(r"```[\w]*\n[\s\S]*?```", code_sub, raw)
+    text = re.sub(r"[*#`_>~]+", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) > 280:
+        m = re.match(r"^(.{80,260}?[.?!])\s+", text)
+        if m:
+            text = m.group(1).strip()
+        else:
+            text = text[:250].rstrip() + "..."
+    return text
 
 
 def _clean(text):
@@ -382,10 +403,12 @@ def _quick_local_answer(text, cfg):
 
 def _chat_api(cfg, user_text):
     lang = cfg.get("lang", "en-US")
-    # Response cache check to prevent redundant API token burn
     cache_key = (cfg.get("model", ""), lang, user_text.strip().lower())
     if cache_key in _cache:
-        return {"ok": True, "speech": _cache[cache_key], "actions": []}
+        c_entry = _cache[cache_key]
+        if isinstance(c_entry, dict):
+            return {"ok": True, "speech": c_entry.get("speech", ""), "content": c_entry.get("content", ""), "actions": []}
+        return {"ok": True, "speech": c_entry, "content": c_entry, "actions": []}
 
     now_str = time.strftime("%A, %d %B %Y, %I:%M %p")
     system = SYSTEM.replace("__NAME__", cfg.get("name") or "AI") \
@@ -400,19 +423,19 @@ def _chat_api(cfg, user_text):
     except Exception as e:
         if _history and _history[-1]["role"] == "user":
             _history.pop()
-        return {"ok": True, "speech": _friendly(e, lang), "actions": [], "error": str(e)}
-    speech = _clean(raw)
-    _history.append({"role": "assistant", "content": speech})
+        return {"ok": True, "speech": _friendly(e, lang), "content": _friendly(e, lang), "actions": [], "error": str(e)}
+    
+    raw_content = (raw or "").strip()
+    speech = _spoken_summary(raw_content, lang)
+    _history.append({"role": "assistant", "content": raw_content})
     if len(_cache) > 100:
         _cache.clear()
-    _cache[cache_key] = speech
+    _cache[cache_key] = {"speech": speech, "content": raw_content}
 
     # Agentic Safety Net: Extract actions if the model response acknowledged a call or app launch
     actions = []
-    # e.g. "I will place that call to Appa for you right now." or "Calling Appa right away"
-    m_call = re.search(r"(?:place(?: that)? call to|calling|dialing|dial|call)\s+(?P<t>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)(?:\s+(?:for you|now|right away|right now|directly|\.|$))", speech, re.I)
+    m_call = re.search(r"(?:place(?: that)? call to|calling|dialing|dial|call)\s+(?P<t>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)(?:\s+(?:for you|now|right away|right now|directly|\.|$))", raw_content, re.I)
     if not m_call:
-        # Check user text if user was asking to call
         m_call = re.search(r"\b(?:call|dial|phone)\s+(?:to\s+)?(?P<t>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)(?:\s+(?:please|now|pa|da|$))", user_text, re.I)
     if m_call:
         tgt = m_call.group("t").strip()
@@ -420,7 +443,7 @@ def _chat_api(cfg, user_text):
         if tgt and len(tgt) < 30 and tgt.lower() not in ("you", "them", "someone", "me", "it", "him", "her"):
             actions.append({"type": "call", "target": tgt, "desc": f"Call {tgt}"})
 
-    return {"ok": True, "speech": speech, "actions": actions}
+    return {"ok": True, "speech": speech, "content": raw_content, "actions": actions}
 
 
 # ======================================================================

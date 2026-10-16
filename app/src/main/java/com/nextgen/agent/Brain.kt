@@ -8,6 +8,7 @@ object Brain {
     data class Reply(
         val ok: Boolean,
         val speech: String = "",
+        val content: String = "",
         val actions: List<JSONObject> = emptyList(),
         val error: String = ""
     )
@@ -36,8 +37,10 @@ object Brain {
             .put("stop_word", c.commandingStopWord)
         val j = JSONObject(py().callAttr("chat", cfg.toString(), text).toString())
         if (j.getBoolean("ok")) {
-            val arr = j.getJSONArray("actions")
-            Reply(true, j.optString("speech"), (0 until arr.length()).map { arr.getJSONObject(it) })
+            val arr = j.optJSONArray("actions") ?: org.json.JSONArray()
+            val speech = j.optString("speech", "")
+            val content = j.optString("content", speech)
+            Reply(true, speech = speech, content = content, actions = (0 until arr.length()).map { arr.getJSONObject(it) })
         } else Reply(false, error = j.optString("error"))
     } catch (e: Exception) {
         Reply(false, error = e.message ?: "error")
