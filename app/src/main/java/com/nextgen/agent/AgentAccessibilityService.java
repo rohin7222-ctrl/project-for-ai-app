@@ -365,11 +365,97 @@ public class AgentAccessibilityService extends AccessibilityService {
             path.moveTo(x, y);
             path.lineTo(x + 1f, y + 1f); // Essential: path must have length so path.isEmpty() is false
             android.accessibilityservice.GestureDescription.Builder builder = new android.accessibilityservice.GestureDescription.Builder();
-            builder.addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 50));
+            builder.addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 75));
+            boolean dispatched = instance.dispatchGesture(builder.build(), null, null);
+            if (dispatched) return true;
+        } catch (Exception ignored) {}
+
+        // High-reliability Fallback: Node-level click on the element under (x, y)
+        try {
+            AccessibilityNodeInfo root = instance.getRootInActiveWindow();
+            if (root != null) {
+                AccessibilityNodeInfo node = findInnermostClickableNodeAt(root, (int) x, (int) y);
+                if (node != null) {
+                    boolean clicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                    node.recycle();
+                    return clicked;
+                }
+            }
+        } catch (Exception ignored) {}
+
+        return false;
+    }
+
+    public static boolean performLongClickAt(float x, float y) {
+        if (instance == null) return false;
+        try {
+            android.graphics.Path path = new android.graphics.Path();
+            path.moveTo(x, y);
+            path.lineTo(x + 1f, y + 1f);
+            android.accessibilityservice.GestureDescription.Builder builder = new android.accessibilityservice.GestureDescription.Builder();
+            builder.addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 650));
+            boolean dispatched = instance.dispatchGesture(builder.build(), null, null);
+            if (dispatched) return true;
+        } catch (Exception ignored) {}
+
+        try {
+            AccessibilityNodeInfo root = instance.getRootInActiveWindow();
+            if (root != null) {
+                AccessibilityNodeInfo node = findInnermostClickableNodeAt(root, (int) x, (int) y);
+                if (node != null) {
+                    boolean clicked = node.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK);
+                    node.recycle();
+                    return clicked;
+                }
+            }
+        } catch (Exception ignored) {}
+
+        return false;
+    }
+
+    public static boolean performDoubleTapAt(float x, float y) {
+        if (instance == null) return false;
+        try {
+            android.graphics.Path path = new android.graphics.Path();
+            path.moveTo(x, y);
+            path.lineTo(x + 1f, y + 1f);
+            android.accessibilityservice.GestureDescription.Builder builder = new android.accessibilityservice.GestureDescription.Builder();
+            builder.addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 60));
+            builder.addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, 140, 60));
             return instance.dispatchGesture(builder.build(), null, null);
-        } catch (Exception e) {
+        } catch (Exception ignored) {
             return false;
         }
+    }
+
+    private static AccessibilityNodeInfo findInnermostClickableNodeAt(AccessibilityNodeInfo root, int x, int y) {
+        if (root == null) return null;
+        android.graphics.Rect rect = new android.graphics.Rect();
+        root.getBoundsInScreen(rect);
+        if (!rect.contains(x, y)) return null;
+
+        for (int i = 0; i < root.getChildCount(); i++) {
+            AccessibilityNodeInfo child = root.getChild(i);
+            if (child != null) {
+                AccessibilityNodeInfo hit = findInnermostClickableNodeAt(child, x, y);
+                if (hit != null) {
+                    return hit;
+                }
+                child.recycle();
+            }
+        }
+        if (root.isClickable() || root.isCheckable() || root.isLongClickable()) {
+            return root;
+        }
+        return null;
+    }
+
+    public static void openAccessibilitySettings(Context ctx) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(intent);
+        } catch (Exception ignored) {}
     }
 
     public static boolean performSwipe(float startX, float startY, float endX, float endY, long duration) {
