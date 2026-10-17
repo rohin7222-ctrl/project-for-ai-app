@@ -412,7 +412,8 @@ fun MouseButtonsTabContent(
                     S.t(cfg.lang, "mouse_step2"),
                     S.t(cfg.lang, "mouse_step3"),
                     S.t(cfg.lang, "mouse_step4"),
-                    S.t(cfg.lang, "mouse_step5")
+                    S.t(cfg.lang, "mouse_step5"),
+                    S.t(cfg.lang, "mouse_step6")
                 ).forEach { step ->
                     Text(
                         text = step,

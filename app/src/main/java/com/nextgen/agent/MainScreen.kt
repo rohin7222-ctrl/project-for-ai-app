@@ -2,6 +2,7 @@ package com.nextgen.agent
 
 import android.Manifest
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
@@ -58,6 +59,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PhoneInTalk
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -302,6 +304,32 @@ internal fun MainActivity.MainScreen() {
                     if (cfg.lang == "ta-IN") "காதுக்கு கொண்டுவா இயக்கம்: ஆஃப்" else "Raise to Ear Answer: OFF"
                 }
                 Toast.makeText(activity, msg, Toast.LENGTH_SHORT).show()
+            }
+        ),
+        WheelItem(
+            id = "mouse_ball_toggle",
+            label = if (cfg.mouseBallEnabled) "Mouse Ball: ON" else "Mouse Ball: OFF",
+            icon = Icons.Default.TouchApp,
+            accentColor = if (cfg.mouseBallEnabled) Color(0xFF00E5FF) else Color(0xFF94A3B8),
+            onClick = {
+                val next = !cfg.mouseBallEnabled
+                if (next && !Settings.canDrawOverlays(activity)) {
+                    Toast.makeText(activity, "Overlay permission required", Toast.LENGTH_SHORT).show()
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + activity.packageName)
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    activity.startActivity(intent)
+                } else {
+                    upd { it.copy(mouseBallEnabled = next) }
+                    MouseButtonManager.getInstance(activity).setBallEnabled(next, activity)
+                    val msg = if (next) {
+                        if (cfg.lang == "ta-IN") "⚡ மிதக்கும் பந்து (Mouse Ball): ஆன்" else "⚡ Mouse Floating Ball: ON"
+                    } else {
+                        if (cfg.lang == "ta-IN") "மிதக்கும் பந்து (Mouse Ball): ஆஃப்" else "Mouse Floating Ball: OFF"
+                    }
+                    Toast.makeText(activity, msg, Toast.LENGTH_SHORT).show()
+                }
             }
         ),
         WheelItem(

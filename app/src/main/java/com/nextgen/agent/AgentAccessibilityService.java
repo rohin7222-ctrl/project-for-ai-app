@@ -363,8 +363,23 @@ public class AgentAccessibilityService extends AccessibilityService {
         try {
             android.graphics.Path path = new android.graphics.Path();
             path.moveTo(x, y);
+            path.lineTo(x + 1f, y + 1f); // Essential: path must have length so path.isEmpty() is false
             android.accessibilityservice.GestureDescription.Builder builder = new android.accessibilityservice.GestureDescription.Builder();
-            builder.addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 60));
+            builder.addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 50));
+            return instance.dispatchGesture(builder.build(), null, null);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean performSwipe(float startX, float startY, float endX, float endY, long duration) {
+        if (instance == null) return false;
+        try {
+            android.graphics.Path path = new android.graphics.Path();
+            path.moveTo(startX, startY);
+            path.lineTo(endX, endY);
+            android.accessibilityservice.GestureDescription.Builder builder = new android.accessibilityservice.GestureDescription.Builder();
+            builder.addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, Math.max(duration, 50)));
             return instance.dispatchGesture(builder.build(), null, null);
         } catch (Exception e) {
             return false;
