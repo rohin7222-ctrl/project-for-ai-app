@@ -343,6 +343,7 @@ class MainActivity : FragmentActivity() {
         setupMediaPlaybackMonitoring()
         // Attempt automatic accessibility configuration silently
         AgentAccessibilityService.autoEnable(this)
+        MouseButtonManager.getInstance(this).syncWithConfig(cfg)
 
         val wasUnlocked = savedInstanceState?.getBoolean(KEY_UNLOCKED, false) == true || sessionUnlocked
         if (store.isReady()) {

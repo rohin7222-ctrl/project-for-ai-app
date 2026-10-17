@@ -358,6 +358,19 @@ public class AgentAccessibilityService extends AccessibilityService {
         return instance != null && instance.performGlobalAction(globalAction);
     }
 
+    public static boolean performClickAt(float x, float y) {
+        if (instance == null) return false;
+        try {
+            android.graphics.Path path = new android.graphics.Path();
+            path.moveTo(x, y);
+            android.accessibilityservice.GestureDescription.Builder builder = new android.accessibilityservice.GestureDescription.Builder();
+            builder.addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 60));
+            return instance.dispatchGesture(builder.build(), null, null);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     /**
      * Finds and triggers the call answer action / button across all phone dialers (Google, Samsung, Xiaomi, etc.)
      */

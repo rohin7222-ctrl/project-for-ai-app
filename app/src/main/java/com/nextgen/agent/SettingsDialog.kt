@@ -6,6 +6,7 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -101,13 +102,15 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                     }
                 }
 
-                // 4-Tab Segmented Selector
+                // 5-Tab Segmented Selector
                 val tabs = listOf(
                     0 to tr("tab_voice"),
                     1 to tr("tab_shortcut"),
                     2 to tr("tab_system"),
-                    3 to tr("tab_security")
+                    3 to tr("tab_security"),
+                    4 to tr("tab_mouse")
                 )
+                val tabRowScrollState = rememberScrollState()
                 Surface(
                     shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
@@ -116,8 +119,10 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                         .padding(horizontal = 14.dp, vertical = 2.dp)
                 ) {
                     Row(
-                        modifier = Modifier.padding(3.dp),
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        modifier = Modifier
+                            .horizontalScroll(tabRowScrollState)
+                            .padding(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         tabs.forEach { (index, title) ->
                             val isSelected = selectedTab == index
@@ -127,17 +132,16 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                                 border = BorderStroke(1.dp, if (isSelected) Indigo.copy(alpha = 0.35f) else Color.Transparent),
                                 shadowElevation = if (isSelected) 2.dp else 0.dp,
                                 modifier = Modifier
-                                    .weight(1f)
                                     .clip(RoundedCornerShape(10.dp))
                                     .clickable { selectedTab = index }
                             ) {
                                 Box(
-                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         text = title,
-                                        fontSize = 11.sp,
+                                        fontSize = 11.5.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                         color = if (isSelected) Indigo else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
                                         maxLines = 1
@@ -1031,6 +1035,14 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                                     }
                                 }
                             }
+                        }
+                        4 -> {
+                            // TAB 4: MOUSE & BUTTONS (Floating Ball, Custom Size, Virtual Cursor & Analog Stick)
+                            MouseButtonsTabContent(
+                                cfg = cfg,
+                                upd = { transform -> upd(transform) },
+                                activity = activity
+                            )
                         }
                     }
                 }

@@ -22,7 +22,10 @@ data class Config(
     val voicePitchStd: Float = 0f,
     val voiceEnrolled: Boolean = false,
     val darkCustom: Boolean = false,
-    val raiseToAnswer: Boolean = true
+    val raiseToAnswer: Boolean = true,
+    val mouseBallEnabled: Boolean = false,
+    val mouseBallSize: Int = 52,
+    val mouseSpeed: Float = 1.0f
 )
 
 /** All settings (including the API key) live in AES-256 encrypted preferences backed by the Android Keystore. */
@@ -45,7 +48,10 @@ class Store(val ctx: Context) {
         sp.getBoolean("voice_match", false), sp.getFloat("pitch_mean", 0f),
         sp.getFloat("pitch_std", 0f), sp.getBoolean("voice_enrolled", false),
         sp.getBoolean("dark_custom", false),
-        sp.getBoolean("raise_to_answer", true)
+        sp.getBoolean("raise_to_answer", true),
+        sp.getBoolean("mouse_ball_enabled", false),
+        sp.getInt("mouse_ball_size", 52),
+        sp.getFloat("mouse_speed", 1.0f)
     )
 
     fun save(c: Config) {
@@ -58,7 +64,10 @@ class Store(val ctx: Context) {
             .putBoolean("auto_wake", c.autoWakeEnabled)
             .putBoolean("voice_match", c.voiceMatchEnabled).putFloat("pitch_mean", c.voicePitchMean)
             .putFloat("pitch_std", c.voicePitchStd).putBoolean("voice_enrolled", c.voiceEnrolled)
-            .putBoolean("raise_to_answer", c.raiseToAnswer).apply()
+            .putBoolean("raise_to_answer", c.raiseToAnswer)
+            .putBoolean("mouse_ball_enabled", c.mouseBallEnabled)
+            .putInt("mouse_ball_size", c.mouseBallSize)
+            .putFloat("mouse_speed", c.mouseSpeed).apply()
     }
 
     fun isReady() = sp.getBoolean("ready", false)
