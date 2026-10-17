@@ -21,7 +21,7 @@ import kotlin.math.hypot
 /**
  * Premium Virtual Mouse & Touchpad Manager.
  * Controls the Floating Ball, Mouse Pointer, and Cyber Touchpad/Joystick HUD overlay windows.
- * Executes accessibility actions (Click, Double Click, Long Press, Back, Scroll) across all Android apps.
+ * Executes accessibility actions (Click, Double Click, Long Press, Drag & Drop, Back, Scroll) across all Android apps.
  */
 class MouseButtonManager private constructor(private val appContext: Context) {
 
@@ -37,6 +37,22 @@ class MouseButtonManager private constructor(private val appContext: Context) {
     var pointerSpeed: Float = 1.0f
         private set
     var currentPadMode: MousePadMode = MousePadMode.TRACKPAD
+    var padScale: Float = 1.0f
+        private set
+    var padAlpha: Float = 0.92f
+        private set
+    var pointerScale: Float = 1.0f
+        private set
+    var pointerColor: String = "white"
+        private set
+    var hapticsEnabled: Boolean = true
+        private set
+
+    // Drag & Drop State
+    var isDragActive: Boolean = false
+        private set
+    private var dragStartX: Float = 0f
+    private var dragStartY: Float = 0f
 
     // Active overlay states
     var isBallShowing: Boolean = false
@@ -84,8 +100,8 @@ class MouseButtonManager private constructor(private val appContext: Context) {
         screenWidth = dm.widthPixels
         screenHeight = dm.heightPixels
 
-        val pointerWidth = (24f * dm.density)
-        val pointerHeight = (30f * dm.density)
+        val pointerWidth = (24f * dm.density * pointerScale)
+        val pointerHeight = (30f * dm.density * pointerScale)
         minPointerX = 0f
         minPointerY = 0f
         maxPointerX = (screenWidth - pointerWidth).coerceAtLeast(0f)
@@ -118,6 +134,28 @@ class MouseButtonManager private constructor(private val appContext: Context) {
             ballSizeDp = cfg.mouseBallSize
             pointerSpeed = cfg.mouseSpeed
             isBallEnabled = cfg.mouseBallEnabled
+            currentPadMode = if (cfg.mousePadMode.equals("analog", ignoreCase = true)) {
+                MousePadMode.JOYSTICK
+            } else {
+                MousePadMode.TRACKPAD
+            }
+            padScale = cfg.mousePadScale
+            padAlpha = cfg.mousePadAlpha
+            pointerScale = cfg.mousePointerSize
+            pointerColor = cfg.mousePointerColor
+            hapticsEnabled = cfg.mouseHaptics
+
+            updateScreenDimensions()
+
+            // Update live views if active
+            mousePointerView?.let {
+                it.setPointerScale(pointerScale)
+                it.setPointerTheme(pointerColor)
+            }
+            mouseControllerView?.let {
+                it.currentPadMode = currentPadMode
+                it.applyCustomization(padAlpha)
+            }
 
             if (isBallEnabled) {
                 if (canDrawOverlays()) {
@@ -145,7 +183,6 @@ class MouseButtonManager private constructor(private val appContext: Context) {
                 return
             }
             showFloatingBall()
-            // Check Accessibility Service to inform user right away
             if (AgentAccessibilityService.instance == null && !AgentAccessibilityService.isEnabled(appContext)) {
                 context?.let {
                     Toast.makeText(
@@ -179,6 +216,64 @@ class MouseButtonManager private constructor(private val appContext: Context) {
 
     fun setPointerSpeed(speed: Float) {
         pointerSpeed = speed.coerceIn(0.4f, 3.0f)
+    }
+
+    fun setPadMode(mode: MousePadMode) {
+        currentPadMode = mode
+        mainHandler.post {
+            mouseControllerView?.let {
+                it.currentPadMode = mode
+                it.invalidate()
+            }
+        }
+    }
+
+    fun setPadScale(scale: Float) {
+        padScale = scale.coerceIn(0.75f, 1.4f)
+        mainHandler.post {
+            if (isPointerAndControllerShowing && mouseControllerView != null && controllerParams != null) {
+                val density = appContext.resources.displayMetrics.density
+                controllerParams?.width = (226 * density * padScale).toInt()
+                controllerParams?.height = (230 * density * padScale).toInt()
+                try {
+                    windowManager.updateViewLayout(mouseControllerView, controllerParams)
+                } catch (ignored: Exception) {}
+            }
+        }
+    }
+
+    fun setPadAlpha(alpha: Float) {
+        padAlpha = alpha.coerceIn(0.4f, 1.0f)
+        mainHandler.post {
+            mouseControllerView?.applyCustomization(padAlpha)
+        }
+    }
+
+    fun setPointerScale(scale: Float) {
+        pointerScale = scale.coerceIn(0.6f, 1.8f)
+        updateScreenDimensions()
+        mainHandler.post {
+            mousePointerView?.setPointerScale(pointerScale)
+            if (mousePointerView != null && pointerParams != null) {
+                val density = appContext.resources.displayMetrics.density
+                pointerParams?.width = (28 * density * pointerScale).toInt()
+                pointerParams?.height = (34 * density * pointerScale).toInt()
+                try {
+                    windowManager.updateViewLayout(mousePointerView, pointerParams)
+                } catch (ignored: Exception) {}
+            }
+        }
+    }
+
+    fun setPointerColor(color: String) {
+        pointerColor = color
+        mainHandler.post {
+            mousePointerView?.setPointerTheme(color)
+        }
+    }
+
+    fun setHapticsEnabled(enabled: Boolean) {
+        hapticsEnabled = enabled
     }
 
     // ==========================================
@@ -275,10 +370,11 @@ class MouseButtonManager private constructor(private val appContext: Context) {
                     AgentAccessibilityService.openAccessibilitySettings(appContext)
                 }
 
-                // 1. Show Authentic Native Mouse Pointer Overlay
                 val density = appContext.resources.displayMetrics.density
-                val pointerWidthPx = (24 * density).toInt()
-                val pointerHeightPx = (30 * density).toInt()
+
+                // 1. Show Authentic Native Mouse Pointer Overlay
+                val pointerWidthPx = (28 * density * pointerScale).toInt()
+                val pointerHeightPx = (34 * density * pointerScale).toInt()
 
                 if (mousePointerView == null) {
                     pointerParams = WindowManager.LayoutParams(
@@ -294,15 +390,22 @@ class MouseButtonManager private constructor(private val appContext: Context) {
                         x = cursorX.toInt()
                         y = cursorY.toInt()
                     }
-                    mousePointerView = MousePointerView(appContext)
+                    mousePointerView = MousePointerView(appContext).apply {
+                        setPointerScale(this@MouseButtonManager.pointerScale)
+                        setPointerTheme(this@MouseButtonManager.pointerColor)
+                        setDragActive(this@MouseButtonManager.isDragActive)
+                    }
                     windowManager.addView(mousePointerView, pointerParams)
                 } else {
                     mousePointerView?.visibility = View.VISIBLE
+                    mousePointerView?.setPointerScale(pointerScale)
+                    mousePointerView?.setPointerTheme(pointerColor)
+                    mousePointerView?.setDragActive(isDragActive)
                 }
 
                 // 2. Show Dual-Mode Touchpad/Joystick Controller HUD Overlay
-                val padWidthPx = (222 * density).toInt()
-                val padHeightPx = (226 * density).toInt()
+                val padWidthPx = (226 * density * padScale).toInt()
+                val padHeightPx = (230 * density * padScale).toInt()
 
                 if (mouseControllerView == null) {
                     controllerParams = WindowManager.LayoutParams(
@@ -320,6 +423,8 @@ class MouseButtonManager private constructor(private val appContext: Context) {
 
                     mouseControllerView = CyberMouseControllerView(appContext).apply {
                         this.currentPadMode = this@MouseButtonManager.currentPadMode
+                        this.applyCustomization(this@MouseButtonManager.padAlpha)
+                        this.setDragState(this@MouseButtonManager.isDragActive)
                         onTrackpadMove = { dx, dy ->
                             moveCursorBy(dx, dy)
                         }
@@ -327,7 +432,11 @@ class MouseButtonManager private constructor(private val appContext: Context) {
                             moveCursorAnalog(normX, normY)
                         }
                         onLeftClick = {
-                            performMouseClick()
+                            if (isDragActive) {
+                                toggleDragMode()
+                            } else {
+                                performMouseClick()
+                            }
                         }
                         onRightClick = {
                             performRightClick()
@@ -338,11 +447,15 @@ class MouseButtonManager private constructor(private val appContext: Context) {
                         onLongClick = {
                             performLongClick()
                         }
+                        onDragToggle = {
+                            toggleDragMode()
+                        }
                         onScroll = { scrollUp ->
                             performScroll(scrollUp)
                         }
                         onModeToggled = { mode ->
                             this@MouseButtonManager.currentPadMode = mode
+                            vibrate(25)
                         }
                         onDismiss = {
                             hidePointerAndController()
@@ -362,6 +475,9 @@ class MouseButtonManager private constructor(private val appContext: Context) {
                     windowManager.addView(mouseControllerView, controllerParams)
                 } else {
                     mouseControllerView?.visibility = View.VISIBLE
+                    mouseControllerView?.currentPadMode = currentPadMode
+                    mouseControllerView?.applyCustomization(padAlpha)
+                    mouseControllerView?.setDragState(isDragActive)
                     mouseControllerView?.refreshAccessibilityStatus()
                 }
 
@@ -377,6 +493,9 @@ class MouseButtonManager private constructor(private val appContext: Context) {
     fun hidePointerAndController() {
         mainHandler.post {
             try {
+                if (isDragActive) {
+                    isDragActive = false
+                }
                 if (mousePointerView != null) {
                     windowManager.removeView(mousePointerView)
                     mousePointerView = null
@@ -397,11 +516,10 @@ class MouseButtonManager private constructor(private val appContext: Context) {
     }
 
     /**
-     * Precision Trackpad Movement (1:1 finger displacement with natural acceleration curve)
+     * Precision Trackpad Movement (1:1 finger displacement with natural velocity acceleration)
      */
     private fun moveCursorBy(dx: Float, dy: Float) {
         val dist = hypot(dx.toDouble(), dy.toDouble()).toFloat()
-        // Natural velocity acceleration (slow for pixel precision, fast flick for cross-screen sweep)
         val accel = (1.0f + (dist / 14f)).coerceIn(1.0f, 3.2f)
         val moveX = dx * pointerSpeed * accel
         val moveY = dy * pointerSpeed * accel
@@ -442,6 +560,30 @@ class MouseButtonManager private constructor(private val appContext: Context) {
     }
 
     /**
+     * Drag & Drop Toggle
+     */
+    fun toggleDragMode() {
+        if (!isDragActive) {
+            isDragActive = true
+            dragStartX = cursorX
+            dragStartY = cursorY
+            vibrate(50)
+            mousePointerView?.setDragActive(true)
+            mouseControllerView?.setDragState(true)
+            Toast.makeText(appContext, "✋ Drag Held! Move pointer to destination, then tap DROP / CLICK", Toast.LENGTH_SHORT).show()
+        } else {
+            isDragActive = false
+            mousePointerView?.setDragActive(false)
+            mouseControllerView?.setDragState(false)
+            vibrate(70)
+            val dropX = cursorX
+            val dropY = cursorY
+            AgentAccessibilityService.performDrag(dragStartX, dragStartY, dropX, dropY, 400)
+            Toast.makeText(appContext, "✅ Item Dropped", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
      * Primary Mouse Click (Left-Click) inside ANY active Android app.
      */
     fun performMouseClick() {
@@ -460,7 +602,6 @@ class MouseButtonManager private constructor(private val appContext: Context) {
                     AgentAccessibilityService.openAccessibilitySettings(appContext)
                 }
             } else {
-                // Micro retry
                 mainHandler.postDelayed({
                     AgentAccessibilityService.performClickAt(cursorX, cursorY)
                 }, 40)
@@ -507,11 +648,9 @@ class MouseButtonManager private constructor(private val appContext: Context) {
         val endY: Float
 
         if (scrollUp) {
-            // Scroll content up (swipe down)
             startY = screenHeight * 0.35f
             endY = screenHeight * 0.70f
         } else {
-            // Scroll content down (swipe up)
             startY = screenHeight * 0.70f
             endY = screenHeight * 0.35f
         }
@@ -519,6 +658,7 @@ class MouseButtonManager private constructor(private val appContext: Context) {
     }
 
     private fun vibrate(ms: Long) {
+        if (!hapticsEnabled) return
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 vibrator?.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE))

@@ -13,8 +13,8 @@ import kotlin.math.hypot
 
 /**
  * Controller operating modes:
- * - TRACKPAD: 1:1 Laptop touchpad experience (swipe to move, tap to click, right-edge scroll strip).
- * - JOYSTICK: 3D Thumbstick with dynamic acceleration and cardinal LED indicators.
+ * - TRACKPAD: 1:1 Laptop touchpad experience (swipe to move, tap to click, right-edge scroll strip, drag lock).
+ * - JOYSTICK: 3D Thumbstick with dynamic velocity acceleration and cardinal LED indicators.
  */
 enum class MousePadMode {
     TRACKPAD, JOYSTICK
@@ -26,6 +26,7 @@ enum class ControllerTouchTarget {
     TRACKPAD_SCROLL_STRIP,
     JOYSTICK_STICK,
     BTN_L_CLICK,
+    BTN_DRAG_TOGGLE,
     BTN_R_CLICK,
     BTN_SCROLL_UP,
     BTN_SCROLL_DOWN,
@@ -184,6 +185,9 @@ class MousePointerView(context: Context) : View(context) {
     private val density = resources.displayMetrics.density
     private val cursorPath = android.graphics.Path()
 
+    private var pointerScale = 1.0f
+    private var isDragActive = false
+
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
         color = android.graphics.Color.WHITE
@@ -210,11 +214,13 @@ class MousePointerView(context: Context) : View(context) {
 
     private var rippleRadius = 0f
     private var rippleAlpha = 0
-    private var cursorScale = 1.0f
+    private var cursorBounceScale = 1.0f
 
     init {
-        // Standard AOSP / Desktop Native Mouse Arrow Path
-        // Hotspot is strictly at (0, 0)
+        buildCursorPath()
+    }
+
+    private fun buildCursorPath() {
         val s = density
         cursorPath.reset()
         cursorPath.moveTo(0f, 0f)
@@ -227,19 +233,53 @@ class MousePointerView(context: Context) : View(context) {
         cursorPath.close()
     }
 
+    fun setPointerScale(scale: Float) {
+        pointerScale = scale.coerceIn(0.6f, 2.0f)
+        invalidate()
+    }
+
+    fun setPointerTheme(color: String) {
+        when (color.lowercase()) {
+            "cyan" -> {
+                fillPaint.color = android.graphics.Color.parseColor("#00E5FF")
+                outlinePaint.color = android.graphics.Color.parseColor("#002830")
+                ripplePaint.color = android.graphics.Color.parseColor("#00E5FF")
+            }
+            "green" -> {
+                fillPaint.color = android.graphics.Color.parseColor("#10B981")
+                outlinePaint.color = android.graphics.Color.parseColor("#043B2C")
+                ripplePaint.color = android.graphics.Color.parseColor("#10B981")
+            }
+            "black" -> {
+                fillPaint.color = android.graphics.Color.parseColor("#0F172A")
+                outlinePaint.color = android.graphics.Color.parseColor("#F8FAFC")
+                ripplePaint.color = android.graphics.Color.parseColor("#94A3B8")
+            }
+            else -> { // "white"
+                fillPaint.color = android.graphics.Color.WHITE
+                outlinePaint.color = android.graphics.Color.parseColor("#111622")
+                ripplePaint.color = android.graphics.Color.parseColor("#00E5FF")
+            }
+        }
+        invalidate()
+    }
+
+    fun setDragActive(active: Boolean) {
+        isDragActive = active
+        invalidate()
+    }
+
     fun triggerClickAnimation() {
-        // Crisp micro-bounce
         ValueAnimator.ofFloat(0.90f, 1.0f).apply {
             duration = 160
             interpolator = OvershootInterpolator(1.8f)
             addUpdateListener {
-                cursorScale = it.animatedValue as Float
+                cursorBounceScale = it.animatedValue as Float
                 invalidate()
             }
             start()
         }
 
-        // Expanding tactile click ring
         ValueAnimator.ofFloat(0f, 16f * density).apply {
             duration = 220
             interpolator = DecelerateInterpolator()
@@ -262,19 +302,30 @@ class MousePointerView(context: Context) : View(context) {
         }
 
         canvas.save()
-        canvas.scale(cursorScale, cursorScale, 0f, 0f)
+        val finalScale = cursorBounceScale * pointerScale
+        canvas.scale(finalScale, finalScale, 0f, 0f)
 
-        // Subtle drop shadow
+        // Drop shadow
         canvas.save()
         canvas.translate(1.2f * density, 1.8f * density)
         canvas.drawPath(cursorPath, shadowPaint)
         canvas.restore()
 
-        // Pure White Native Arrow Body
+        // Pure Arrow Body
         canvas.drawPath(cursorPath, fillPaint)
 
-        // Sharp Dark Precision Outline
+        // Sharp Precision Outline
         canvas.drawPath(cursorPath, outlinePaint)
+
+        // Active Drag Lock Halo Ring
+        if (isDragActive) {
+            val dragHalo = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = 2f * density
+                color = android.graphics.Color.parseColor("#F59E0B")
+            }
+            canvas.drawCircle(0f, 0f, 6f * density, dragHalo)
+        }
 
         canvas.restore()
     }
@@ -290,12 +341,15 @@ class CyberMouseControllerView(context: Context) : View(context) {
     var onRightClick: (() -> Unit)? = null
     var onDoubleTap: (() -> Unit)? = null
     var onLongClick: (() -> Unit)? = null
+    var onDragToggle: (() -> Unit)? = null
     var onScroll: ((scrollUp: Boolean) -> Unit)? = null
     var onModeToggled: ((mode: MousePadMode) -> Unit)? = null
     var onDismiss: (() -> Unit)? = null
     var onControllerDrag: ((dx: Int, dy: Int) -> Unit)? = null
 
     var currentPadMode: MousePadMode = MousePadMode.TRACKPAD
+    var isDragActive: Boolean = false
+    var padAlpha: Float = 0.92f
 
     private val density = resources.displayMetrics.density
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
@@ -378,6 +432,18 @@ class CyberMouseControllerView(context: Context) : View(context) {
         invalidate()
     }
 
+    fun setDragState(active: Boolean) {
+        isDragActive = active
+        invalidate()
+    }
+
+    fun applyCustomization(alpha: Float) {
+        padAlpha = alpha.coerceIn(0.4f, 1.0f)
+        chassisPaint.alpha = (padAlpha * 242).toInt().coerceIn(80, 255)
+        padBgPaint.alpha = (padAlpha * 230).toInt().coerceIn(70, 255)
+        invalidate()
+    }
+
     private fun getHeaderHeight() = 34f * density
     private fun getStatusBarHeight() = 18f * density
     private fun getDockHeight() = 44f * density
@@ -414,18 +480,18 @@ class CyberMouseControllerView(context: Context) : View(context) {
         val h = height.toFloat()
         val corner = 16f * density
 
-        // 1. Chassis Background & Border
+        // 1. Chassis Background & Cyber Border
         val chassisRect = RectF(0f, 0f, w, h)
         canvas.drawRoundRect(chassisRect, corner, corner, chassisPaint)
         canvas.drawRoundRect(chassisRect, corner, corner, chassisStrokePaint)
 
-        // 2. Top Header Bar (34dp)
+        // 2. Top Header Bar
         val headerRect = RectF(0f, 0f, w, getHeaderHeight())
         canvas.drawRoundRect(headerRect, corner, corner, headerBgPaint)
 
-        // Mode Toggle Pill [ 🖱️ TRACKPAD ] / [ 🕹️ STICK ]
+        // Mode Switch Pill [ 🖱️ TRACKPAD ] / [ 🕹️ ANALOG ]
         val isTrackpad = (currentPadMode == MousePadMode.TRACKPAD)
-        val modeRect = RectF(6f * density, 5f * density, 116f * density, getHeaderHeight() - (5f * density))
+        val modeRect = RectF(6f * density, 5f * density, 114f * density, getHeaderHeight() - (5f * density))
         val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
             color = if (isTrackpad) android.graphics.Color.parseColor("#00E5FF") else android.graphics.Color.parseColor("#818CF8")
@@ -435,10 +501,10 @@ class CyberMouseControllerView(context: Context) : View(context) {
         textPaint.textSize = 10f * density
         textPaint.color = android.graphics.Color.parseColor("#080D1A")
         textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        val modeLabel = if (isTrackpad) "🖱️ TRACKPAD" else "🕹️ JOYSTICK"
+        val modeLabel = if (isTrackpad) "🖱️ TRACKPAD" else "🕹️ ANALOG"
         canvas.drawText(modeLabel, modeRect.centerX(), modeRect.centerY() + (3.5f * density), textPaint)
 
-        // Drag handle grip in center
+        // Drag handle grip dots in center
         val gripPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = android.graphics.Color.parseColor("#80FFFFFF")
             style = Paint.Style.FILL
@@ -457,20 +523,26 @@ class CyberMouseControllerView(context: Context) : View(context) {
         }
         canvas.drawText("✕", w - (18f * density), getHeaderHeight() / 2f + (5f * density), closePaint)
 
-        // 3. Status Bar: Accessibility State & Coordinates
+        // 3. Status Bar: Drag State, Accessibility, & Coordinates
         val statusY = getHeaderHeight() + (13f * density)
         isAccessibilityReady = AgentAccessibilityService.instance != null
         if (!isAccessibilityReady) {
-            // Warning Banner
             val warnPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = android.graphics.Color.parseColor("#F59E0B")
                 textSize = 9.5f * density
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 textAlign = Paint.Align.CENTER
             }
-            canvas.drawText("⚠️ Accessibility OFF - Tap to Fix", w / 2f, statusY, warnPaint)
+            canvas.drawText("⚠️ Accessibility OFF - Tap to Enable", w / 2f, statusY, warnPaint)
+        } else if (isDragActive) {
+            val dragBannerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.parseColor("#F59E0B")
+                textSize = 9.5f * density
+                typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+                textAlign = Paint.Align.CENTER
+            }
+            canvas.drawText("✋ DRAG HELD - TAP TO DROP", w / 2f, statusY, dragBannerPaint)
         } else {
-            // Connected status + X/Y
             val statusPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = android.graphics.Color.parseColor("#00E5FF")
                 textSize = 9.5f * density
@@ -480,14 +552,13 @@ class CyberMouseControllerView(context: Context) : View(context) {
             canvas.drawText("⚡ READY  $coordText", w / 2f, statusY, statusPaint)
         }
 
-        // 4. Center Interaction Zone
+        // 4. Center Surface Area
         val padRect = getPadRect()
         canvas.drawRoundRect(padRect, 10f * density, 10f * density, padBgPaint)
         canvas.drawRoundRect(padRect, 10f * density, 10f * density, padBorderPaint)
 
         if (isTrackpad) {
-            // --- TRACKPAD MODE SURFACE ---
-            // Subtle precision grid dots
+            // Precision Grid Dots
             val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = android.graphics.Color.parseColor("#26FFFFFF")
                 style = Paint.Style.FILL
@@ -509,7 +580,7 @@ class CyberMouseControllerView(context: Context) : View(context) {
             }
             canvas.drawText("Swipe: Move  •  Tap: Click", padRect.centerX() - (12f * density), padRect.centerY() + (3.5f * density), guidePaint)
 
-            // Dedicated Scroll Strip on right edge
+            // Right-edge Dedicated Scroll Strip
             val strip = getScrollStripRect()
             canvas.drawRoundRect(strip, 6f * density, 6f * density, scrollStripPaint)
 
@@ -524,12 +595,11 @@ class CyberMouseControllerView(context: Context) : View(context) {
             canvas.drawText("▼", strip.centerX(), strip.bottom - (6f * density), arrowPaint)
 
         } else {
-            // --- JOYSTICK MODE SURFACE ---
+            // JOYSTICK MODE
             val stickCx = getStickCenterX()
             val stickCy = getStickCenterY()
             val wellR = getWellRadius()
 
-            // Inner well ring
             val wellRingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 style = Paint.Style.STROKE
                 strokeWidth = 2f * density
@@ -537,7 +607,7 @@ class CyberMouseControllerView(context: Context) : View(context) {
             }
             canvas.drawCircle(stickCx, stickCy, wellR, wellRingPaint)
 
-            // 4 Cardinal Direction LEDs (▲, ►, ▼, ◄)
+            // Cardinal Direction LEDs (▲, ►, ▼, ◄)
             val ledPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 textSize = 12f * density
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
@@ -582,24 +652,31 @@ class CyberMouseControllerView(context: Context) : View(context) {
         val padW = w - (16f * density)
         val startX = 8f * density
 
-        // Button 1: [ 🖱️ L-CLICK ] (Primary click)
-        val b1Right = startX + (padW * 0.42f)
+        // Button 1: [ 🖱️ CLICK ] (Primary Click) ~30%
+        val b1Right = startX + (padW * 0.30f)
         drawDockButton(canvas, RectF(startX, dockTop, b1Right, dockBot), "🖱️ CLICK", "#00E5FF", "#080D1A")
 
-        // Button 2: [ ▲ ] (Scroll up)
+        // Button 2: [ ✋ DRAG ] (Drag Lock Toggle) ~24%
         val b2Left = b1Right + (4f * density)
-        val b2Right = b2Left + (padW * 0.17f)
-        drawDockButton(canvas, RectF(b2Left, dockTop, b2Right, dockBot), "▲", "#1E293B", "#00E5FF")
+        val b2Right = b2Left + (padW * 0.23f)
+        val dragBg = if (isDragActive) "#F59E0B" else "#1E293B"
+        val dragTextCol = if (isDragActive) "#080D1A" else "#F59E0B"
+        drawDockButton(canvas, RectF(b2Left, dockTop, b2Right, dockBot), if (isDragActive) "✋ DROP" else "✋ DRAG", dragBg, dragTextCol)
 
-        // Button 3: [ ▼ ] (Scroll down)
+        // Button 3: [ ▲ ] (Scroll Up) ~11%
         val b3Left = b2Right + (4f * density)
-        val b3Right = b3Left + (padW * 0.17f)
-        drawDockButton(canvas, RectF(b3Left, dockTop, b3Right, dockBot), "▼", "#1E293B", "#00E5FF")
+        val b3Right = b3Left + (padW * 0.11f)
+        drawDockButton(canvas, RectF(b3Left, dockTop, b3Right, dockBot), "▲", "#1E293B", "#00E5FF")
 
-        // Button 4: [ 🔙 BACK ] (Right-click equivalent)
+        // Button 4: [ ▼ ] (Scroll Down) ~11%
         val b4Left = b3Right + (4f * density)
-        val b4Right = w - (8f * density)
-        drawDockButton(canvas, RectF(b4Left, dockTop, b4Right, dockBot), "🔙 BACK", "#334155", "#FFFFFF")
+        val b4Right = b4Left + (padW * 0.11f)
+        drawDockButton(canvas, RectF(b4Left, dockTop, b4Right, dockBot), "▼", "#1E293B", "#00E5FF")
+
+        // Button 5: [ 🔙 BACK ] (Right-Click Back) ~19%
+        val b5Left = b4Right + (4f * density)
+        val b5Right = w - (8f * density)
+        drawDockButton(canvas, RectF(b5Left, dockTop, b5Right, dockBot), "🔙 BACK", "#334155", "#FFFFFF")
     }
 
     private fun drawDockButton(canvas: Canvas, rect: RectF, text: String, bgColorHex: String, textColorHex: String) {
@@ -614,13 +691,13 @@ class CyberMouseControllerView(context: Context) : View(context) {
         }
         val tP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = android.graphics.Color.parseColor(textColorHex)
-            textSize = 10.5f * density
+            textSize = 10f * density
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.CENTER
         }
         canvas.drawRoundRect(rect, 8f * density, 8f * density, bgP)
         canvas.drawRoundRect(rect, 8f * density, 8f * density, borderP)
-        canvas.drawText(text, rect.centerX(), rect.centerY() + (3.8f * density), tP)
+        canvas.drawText(text, rect.centerX(), rect.centerY() + (3.5f * density), tP)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -652,7 +729,7 @@ class CyberMouseControllerView(context: Context) : View(context) {
                         activeTarget = ControllerTouchTarget.HEADER_DRAG
                     }
                 }
-                // 2. Status bar tap (launch accessibility settings if disabled)
+                // 2. Status bar tap
                 else if (y in getHeaderHeight()..(getHeaderHeight() + getStatusBarHeight())) {
                     if (!isAccessibilityReady) {
                         activeTarget = ControllerTouchTarget.STATUS_ACCESSIBILITY
@@ -669,7 +746,6 @@ class CyberMouseControllerView(context: Context) : View(context) {
                             activeTarget = ControllerTouchTarget.TRACKPAD_SURFACE
                         }
                     } else {
-                        // Joystick stick
                         activeTarget = ControllerTouchTarget.JOYSTICK_STICK
                         handleStickMove(x - getStickCenterX(), y - getStickCenterY())
                         Choreographer.getInstance().postFrameCallback(frameCallback)
@@ -679,15 +755,18 @@ class CyberMouseControllerView(context: Context) : View(context) {
                 else if (y >= dockTop) {
                     val padW = w - (16f * density)
                     val startX = 8f * density
-                    val b1Right = startX + (padW * 0.42f)
-                    val b2Right = b1Right + (4f * density) + (padW * 0.17f)
-                    val b3Right = b2Right + (4f * density) + (padW * 0.17f)
+                    val b1Right = startX + (padW * 0.30f)
+                    val b2Right = b1Right + (4f * density) + (padW * 0.23f)
+                    val b3Right = b2Right + (4f * density) + (padW * 0.11f)
+                    val b4Right = b3Right + (4f * density) + (padW * 0.11f)
 
                     if (x <= b1Right) {
                         activeTarget = ControllerTouchTarget.BTN_L_CLICK
                     } else if (x <= b2Right) {
-                        activeTarget = ControllerTouchTarget.BTN_SCROLL_UP
+                        activeTarget = ControllerTouchTarget.BTN_DRAG_TOGGLE
                     } else if (x <= b3Right) {
+                        activeTarget = ControllerTouchTarget.BTN_SCROLL_UP
+                    } else if (x <= b4Right) {
                         activeTarget = ControllerTouchTarget.BTN_SCROLL_DOWN
                     } else {
                         activeTarget = ControllerTouchTarget.BTN_R_CLICK
@@ -708,7 +787,7 @@ class CyberMouseControllerView(context: Context) : View(context) {
                     }
                     ControllerTouchTarget.TRACKPAD_SCROLL_STRIP -> {
                         val stripDy = event.rawY - lastRawY
-                        if (Math.abs(stripDy) >= (16f * density)) {
+                        if (Math.abs(stripDy) >= (14f * density)) {
                             onScroll?.invoke(stripDy > 0)
                             lastRawY = event.rawY
                         }
@@ -735,7 +814,7 @@ class CyberMouseControllerView(context: Context) : View(context) {
 
                 when (activeTarget) {
                     ControllerTouchTarget.TRACKPAD_SURFACE -> {
-                        // Tap on trackpad = Instant Left Click!
+                        // Tap on trackpad = Instant Left Click
                         if (moved < touchSlop && duration < 240) {
                             val now = System.currentTimeMillis()
                             if (now - lastTapTime < 280) {
@@ -745,6 +824,9 @@ class CyberMouseControllerView(context: Context) : View(context) {
                                 onLeftClick?.invoke()
                                 lastTapTime = now
                             }
+                        } else if (moved < touchSlop && duration >= 500) {
+                            // Long-press surface = Long click
+                            onLongClick?.invoke()
                         }
                     }
                     ControllerTouchTarget.JOYSTICK_STICK -> {
@@ -760,6 +842,9 @@ class CyberMouseControllerView(context: Context) : View(context) {
                         } else {
                             onLeftClick?.invoke()
                         }
+                    }
+                    ControllerTouchTarget.BTN_DRAG_TOGGLE -> {
+                        onDragToggle?.invoke()
                     }
                     ControllerTouchTarget.BTN_R_CLICK -> {
                         onRightClick?.invoke()

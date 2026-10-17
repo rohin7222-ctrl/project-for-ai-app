@@ -365,7 +365,7 @@ public class AgentAccessibilityService extends AccessibilityService {
             path.moveTo(x, y);
             path.lineTo(x + 1f, y + 1f); // Essential: path must have length so path.isEmpty() is false
             android.accessibilityservice.GestureDescription.Builder builder = new android.accessibilityservice.GestureDescription.Builder();
-            builder.addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 75));
+            builder.addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 50));
             boolean dispatched = instance.dispatchGesture(builder.build(), null, null);
             if (dispatched) return true;
         } catch (Exception ignored) {}
@@ -466,6 +466,21 @@ public class AgentAccessibilityService extends AccessibilityService {
             path.lineTo(endX, endY);
             android.accessibilityservice.GestureDescription.Builder builder = new android.accessibilityservice.GestureDescription.Builder();
             builder.addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, Math.max(duration, 50)));
+            return instance.dispatchGesture(builder.build(), null, null);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean performDrag(float startX, float startY, float endX, float endY, long duration) {
+        if (instance == null) return false;
+        try {
+            android.graphics.Path path = new android.graphics.Path();
+            path.moveTo(startX, startY);
+            path.lineTo(endX, endY);
+            android.accessibilityservice.GestureDescription.Builder builder = new android.accessibilityservice.GestureDescription.Builder();
+            // Drag gesture: press down at start for 100ms, then slide to end point over duration
+            builder.addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, Math.max(duration, 250)));
             return instance.dispatchGesture(builder.build(), null, null);
         } catch (Exception e) {
             return false;

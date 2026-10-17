@@ -25,7 +25,13 @@ data class Config(
     val raiseToAnswer: Boolean = true,
     val mouseBallEnabled: Boolean = false,
     val mouseBallSize: Int = 52,
-    val mouseSpeed: Float = 1.0f
+    val mouseSpeed: Float = 1.0f,
+    val mousePadMode: String = "trackpad",   // "trackpad" or "analog"
+    val mousePadScale: Float = 1.0f,         // 0.85f (compact), 1.0f (standard), 1.2f (large)
+    val mousePadAlpha: Float = 0.92f,        // 0.50f to 1.0f transparency
+    val mousePointerSize: Float = 1.0f,      // 0.8f, 1.0f, 1.3f
+    val mousePointerColor: String = "white", // "white", "cyan", "green", "black"
+    val mouseHaptics: Boolean = true
 )
 
 /** All settings (including the API key) live in AES-256 encrypted preferences backed by the Android Keystore. */
@@ -51,7 +57,13 @@ class Store(val ctx: Context) {
         sp.getBoolean("raise_to_answer", true),
         sp.getBoolean("mouse_ball_enabled", false),
         sp.getInt("mouse_ball_size", 52),
-        sp.getFloat("mouse_speed", 1.0f)
+        sp.getFloat("mouse_speed", 1.0f),
+        sp.getString("mouse_pad_mode", "trackpad")!!,
+        sp.getFloat("mouse_pad_scale", 1.0f),
+        sp.getFloat("mouse_pad_alpha", 0.92f),
+        sp.getFloat("mouse_pointer_size", 1.0f),
+        sp.getString("mouse_pointer_color", "white")!!,
+        sp.getBoolean("mouse_haptics", true)
     )
 
     fun save(c: Config) {
@@ -67,7 +79,13 @@ class Store(val ctx: Context) {
             .putBoolean("raise_to_answer", c.raiseToAnswer)
             .putBoolean("mouse_ball_enabled", c.mouseBallEnabled)
             .putInt("mouse_ball_size", c.mouseBallSize)
-            .putFloat("mouse_speed", c.mouseSpeed).apply()
+            .putFloat("mouse_speed", c.mouseSpeed)
+            .putString("mouse_pad_mode", c.mousePadMode)
+            .putFloat("mouse_pad_scale", c.mousePadScale)
+            .putFloat("mouse_pad_alpha", c.mousePadAlpha)
+            .putFloat("mouse_pointer_size", c.mousePointerSize)
+            .putString("mouse_pointer_color", c.mousePointerColor)
+            .putBoolean("mouse_haptics", c.mouseHaptics).apply()
     }
 
     fun isReady() = sp.getBoolean("ready", false)
