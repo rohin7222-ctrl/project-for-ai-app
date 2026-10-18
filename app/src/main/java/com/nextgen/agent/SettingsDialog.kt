@@ -281,7 +281,13 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                                             ) {
-                                                Text(tr("raise_to_answer"), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                                Text(
+                                                    tr("raise_to_answer"),
+                                                    fontSize = 13.5.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                )
                                                 if (cfg.raiseToAnswer) {
                                                     Surface(
                                                         shape = RoundedCornerShape(4.dp),
@@ -297,7 +303,14 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                                                     }
                                                 }
                                             }
-                                            Text(tr("raise_to_answer_sub"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                                            Text(
+                                                tr("raise_to_answer_sub"),
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                                lineHeight = 15.sp,
+                                                maxLines = 2,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                            )
                                         }
                                         Switch(
                                             checked = cfg.raiseToAnswer,

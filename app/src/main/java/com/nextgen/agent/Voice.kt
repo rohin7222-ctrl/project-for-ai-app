@@ -74,6 +74,7 @@ class Voice(
     var onEmergencyUninstallTriggered: (() -> Unit)? = null
     var onPartialText: ((String) -> Unit)? = null
     var onErrorDescription: ((errorCode: Int, description: String) -> Unit)? = null
+    private var lastRecognizedPartial: String = ""
 
     // Phone call & media playback pause states
     @Volatile var pausedForCall = false
@@ -565,10 +566,11 @@ class Voice(
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 10)
             putExtra("android.speech.extra.DICTATION_MODE", true)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1000L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1000L)
-            // EXTRA_PREFER_OFFLINE removed: prevents SpeechRecognizer errors on devices without offline packages
+            // Audio source 6 = MediaRecorder.AudioSource.VOICE_RECOGNITION: enables hardware noise suppression & echo canceler
+            putExtra("android.speech.extra.AUDIO_SOURCE", 6)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 600L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
         }
     }
 
@@ -586,10 +588,10 @@ class Voice(
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 10)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500L)
+            putExtra("android.speech.extra.AUDIO_SOURCE", 6)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1200L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2200L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1600L)
-            // EXTRA_PREFER_OFFLINE removed: ensures reliable wake-word standby across all Android devices
         }
     }
 
@@ -661,6 +663,7 @@ class Voice(
             if (!active || holding || pausedForCall || isPhoneCallActive() || pausedForMedia || isMediaPlaying()) return@post
             destroyRecognizerSafely()
             pitchSamples.clear()
+            lastRecognizedPartial = ""
 
             sr = SpeechRecognizer.createSpeechRecognizer(ctx).apply {
                 setRecognitionListener(object : RecognitionListener {
@@ -680,8 +683,12 @@ class Voice(
                             return
                         }
 
-                        // Select best hypothesis: prioritize stop command or cleanest match
-                        val text = results.firstOrNull { isStopCommand(it) } ?: results.firstOrNull { it.isNotBlank() }
+                        // Select best hypothesis: prioritize stop command, cleanly recognized text, or partial text rescued from noise
+                        var text = results.firstOrNull { isStopCommand(it) } ?: results.firstOrNull { it.isNotBlank() }
+                        if (text.isNullOrBlank() && lastRecognizedPartial.isNotBlank()) {
+                            text = lastRecognizedPartial
+                        }
+                        lastRecognizedPartial = ""
 
                         if (!text.isNullOrBlank()) {
                             // First check: Did the user say STOP?
@@ -731,6 +738,7 @@ class Voice(
                         }
                         val partial = list.firstOrNull { it.isNotBlank() }
                         if (partial != null) {
+                            lastRecognizedPartial = partial
                             onPartialText?.invoke(partial)
                             if (isStopCommand(partial)) {
                                 holding = true
@@ -744,6 +752,20 @@ class Voice(
                     override fun onError(e: Int) {
                         restoreBeep(immediate = true)
                         destroyRecognizerSafely()
+
+                        // Noise recovery: If noise prevented final match or caused speech timeout, rescue the partial text
+                        if ((e == SpeechRecognizer.ERROR_NO_MATCH || e == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && lastRecognizedPartial.isNotBlank()) {
+                            val savedPartial = lastRecognizedPartial
+                            lastRecognizedPartial = ""
+                            Log.i("VoiceEngine", "Rescued voice command in noisy environment: $savedPartial")
+                            holding = true
+                            onPartialText?.invoke("")
+                            onErrorDescription?.invoke(0, "")
+                            onText(savedPartial)
+                            return
+                        }
+                        lastRecognizedPartial = ""
+
                         onPartialText?.invoke("")
                         val errMsg = getErrorMessage(e)
                         Log.d("VoiceEngine", "Active Recognizer onError code: $e ($errMsg)")

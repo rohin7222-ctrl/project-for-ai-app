@@ -364,7 +364,7 @@ internal fun MainActivity.MainScreen() {
         )
     )
 
-    // 2. BOTTOM WHEEL ITEMS (Quick Actions Menu Wheel)
+    // 2. BOTTOM WHEEL ITEMS (Curated Decent Quick Actions - 45° Clean Helm Spacing)
     val bottomWheelItems = listOf(
         WheelItem(
             id = "quick_missed_call",
@@ -372,13 +372,6 @@ internal fun MainActivity.MainScreen() {
             icon = Icons.Default.PhoneInTalk,
             accentColor = Color(0xFF00E5FF),
             onClick = { quickMissedCall() }
-        ),
-        WheelItem(
-            id = "quick_agentic_auto",
-            label = tr("chip_agentic_auto"),
-            icon = Icons.Default.Bolt,
-            accentColor = Color(0xFFA855F7),
-            onClick = { handleUser(if (cfg.lang == "ta-IN") "திரையில் உள்ளவற்றை படித்து தானியங்கு செயல்களை செய்" else "Read screen and perform autonomous agent actions") }
         ),
         WheelItem(
             id = "quick_trackpad_hud",
@@ -409,60 +402,11 @@ internal fun MainActivity.MainScreen() {
             onClick = { quickWhatsApp() }
         ),
         WheelItem(
-            id = "quick_notif",
-            label = tr("chip_notif"),
-            icon = Icons.Default.Notifications,
-            accentColor = Color(0xFF38BDF8),
-            onClick = { quickReadNotifications() }
-        ),
-        WheelItem(
-            id = "quick_sms",
-            label = tr("chip_sms"),
-            icon = Icons.Default.Sms,
-            accentColor = Color(0xFF6366F1),
-            onClick = { quickReadSms() }
-        ),
-        WheelItem(
-            id = "quick_camera",
-            label = tr("chip_camera"),
-            icon = Icons.Default.CameraAlt,
-            accentColor = Color(0xFFE1306C),
-            onClick = { quickCamera() }
-        ),
-        WheelItem(
             id = "quick_torch",
             label = tr("chip_torch"),
             icon = Icons.Default.FlashlightOn,
             accentColor = Amber,
             onClick = { toggleTorch() }
-        ),
-        WheelItem(
-            id = "quick_wifi",
-            label = tr("chip_wifi"),
-            icon = Icons.Default.Wifi,
-            accentColor = Cyan,
-            onClick = { quickWifi() }
-        ),
-        WheelItem(
-            id = "quick_data",
-            label = tr("chip_data"),
-            icon = Icons.Default.SignalCellularAlt,
-            accentColor = Color(0xFF0284C7),
-            onClick = { quickMobileData() }
-        ),
-        WheelItem(
-            id = "quick_bluetooth",
-            label = tr("chip_bt"),
-            icon = Icons.Default.Bluetooth,
-            accentColor = Color(0xFF3B82F6),
-            onClick = { toggleBluetooth() }
-        ),
-        WheelItem(
-            id = "quick_screen_read",
-            label = tr("chip_screen_read"),
-            icon = Icons.Default.Visibility,
-            accentColor = Color(0xFFA855F7),
-            onClick = { quickScreenRead() }
         ),
         WheelItem(
             id = "quick_music",
@@ -472,53 +416,18 @@ internal fun MainActivity.MainScreen() {
             onClick = { quickMusic() }
         ),
         WheelItem(
-            id = "quick_reels",
-            label = tr("chip_reels"),
-            icon = Icons.Default.VideoLibrary,
-            accentColor = Color(0xFFEC4899),
-            onClick = { quickReels() }
+            id = "quick_camera",
+            label = tr("chip_camera"),
+            icon = Icons.Default.CameraAlt,
+            accentColor = Color(0xFFE1306C),
+            onClick = { quickCamera() }
         ),
         WheelItem(
-            id = "quick_google",
-            label = tr("chip_google"),
-            icon = Icons.Default.Search,
-            accentColor = Color(0xFF4285F4),
-            onClick = { quickGoogleSearch() }
-        ),
-        WheelItem(
-            id = "quick_alarm",
-            label = tr("chip_alarm"),
-            icon = Icons.Default.Alarm,
+            id = "quick_notif",
+            label = tr("chip_notif"),
+            icon = Icons.Default.Notifications,
             accentColor = Color(0xFFA855F7),
-            onClick = { quickAlarm() }
-        ),
-        WheelItem(
-            id = "quick_screenshot",
-            label = tr("chip_screenshot"),
-            icon = Icons.Default.PhotoCamera,
-            accentColor = Color(0xFFF59E0B),
-            onClick = { quickScreenshot() }
-        ),
-        WheelItem(
-            id = "quick_skip_ad",
-            label = tr("chip_skip_ad"),
-            icon = Icons.Default.PlayCircle,
-            accentColor = Color(0xFF10B981),
-            onClick = { quickSkipAd() }
-        ),
-        WheelItem(
-            id = "quick_reels_cruise",
-            label = tr("chip_reels_cruise"),
-            icon = Icons.Default.VideoLibrary,
-            accentColor = Color(0xFFEC4899),
-            onClick = { quickReelsCruise() }
-        ),
-        WheelItem(
-            id = "quick_stop",
-            label = tr("chip_stop"),
-            icon = Icons.Default.Stop,
-            accentColor = Color(0xFFEF4444),
-            onClick = { stopVoiceWithAck() }
+            onClick = { quickReadNotifications() }
         )
     )
 
@@ -843,27 +752,7 @@ internal fun MainActivity.MainScreen() {
                             modifier = Modifier.padding(horizontal = 24.dp)
                         )
 
-                        Spacer(Modifier.height(20.dp))
 
-                        // Futuristic Agentic Quick-Deck Carousel (10x Action Center)
-                        AgenticActionDeck(
-                            isDark = isDark,
-                            onExecute = { prompt ->
-                                handleUser(prompt)
-                            },
-                            onMissedCall = {
-                                quickMissedCall()
-                            },
-                            onToggleTrackpad = {
-                                val mgr = MouseButtonManager.getInstance(activity)
-                                if (mgr.isPointerAndControllerShowing) {
-                                    mgr.hidePointerAndController()
-                                } else {
-                                    mgr.showPointerAndController()
-                                }
-                            },
-                            tr = { tr(it) }
-                        )
                     }
                 } else {
                     // Active Chat Conversation History

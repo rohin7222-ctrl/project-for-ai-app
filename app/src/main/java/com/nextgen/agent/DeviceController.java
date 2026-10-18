@@ -146,31 +146,16 @@ public class DeviceController {
         KNOWN_PACKAGES.put("bookmyshow", new String[]{"com.bt.bms"});
     }
 
-    /** Actions that cost money / affect other people / delete data: the UI asks the user to confirm first. */
+    /** Actions that delete data or perform irreversible sensitive tasks: the UI asks the user to confirm first. */
     public static boolean isSensitive(String type) {
-        return "call".equals(type) || "missed_call".equals(type) || "sms".equals(type) ||
-               "chat".equals(type) || "ui_type".equals(type) || "ui_type_composer".equals(type) || "end_call".equals(type);
+        return "delete_all".equals(type) || "wipe".equals(type) || "factory_reset".equals(type);
     }
 
     public static boolean isSensitive(JSONObject a) {
         if (a == null) return false;
         String type = a.optString("type", "");
-        if ("call".equals(type) || "missed_call".equals(type) || "sms".equals(type) || "end_call".equals(type)) return true;
-
-        // Auto-sending messages via chat (WhatsApp/Telegram/Instagram)
-        if ("chat".equals(type)) {
-            String txt = a.optString("text", "").trim();
-            if (!txt.isEmpty()) return true;
-        }
-
-        // Auto-sending messages via ui_type or composer
-        if ("ui_type".equals(type) || "type".equals(type) || "ui_type_composer".equals(type)) {
-            boolean send = a.optBoolean("send", false) || a.optBoolean("auto_send", false);
-            String txt = a.optString("text", "").trim();
-            if (send || !txt.isEmpty()) {
-                return true;
-            }
-        }
+        if ("delete_all".equals(type) || "wipe".equals(type) || "factory_reset".equals(type)) return true;
+        if (a.optBoolean("require_confirm", false)) return true;
 
         if ("open_app".equals(type)) {
             String name = a.optString("name", "").toLowerCase(Locale.ROOT);

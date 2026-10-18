@@ -727,6 +727,25 @@ class MainActivity : FragmentActivity() {
             return
         }
 
+        // 3.1 Confirmation for Pending Sensitive Action via Voice / Chat
+        if (pending.isNotEmpty()) {
+            val lower = t.lowercase(java.util.Locale.ROOT).trim()
+            if (lower in listOf("yes", "ok", "allow", "confirm", "sure", "proceed", "சரி", "ஆம்", "செய்", "கால் பண்ணு", "பண்ணு", "அனுமதி")) {
+                val l = pending
+                pending = emptyList()
+                chat.add(Msg(mine = true, text = t, time = nowTime()))
+                lifecycleScope.launch { runList(l, skipSensitiveCheck = true) }
+                return
+            } else if (lower in listOf("no", "deny", "cancel", "stop", "வேண்டாம்", "நிறுத்து", "இல்லை", "ரத்து")) {
+                pending = emptyList()
+                chat.add(Msg(mine = true, text = t, time = nowTime()))
+                val msg = if (cfg.lang == "ta-IN") "ரத்து செய்யப்பட்டது" else "Cancelled"
+                chat.add(Msg(mine = false, text = msg, time = nowTime()))
+                voice.speak(msg)
+                return
+            }
+        }
+
         // 4. Custom Voice Shortcut resolution
         val resolvedAction = shortcutManager.resolve(t)
         val effectiveText = if (resolvedAction != null) {
@@ -809,7 +828,7 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    private suspend fun runList(list: List<JSONObject>) {
+    private suspend fun runList(list: List<JSONObject>, skipSensitiveCheck: Boolean = false) {
         try {
             for (a in list) {
                 val type = a.optString("type")
@@ -840,8 +859,8 @@ class MainActivity : FragmentActivity() {
                     continue
                 }
 
-                // Sensitive action check (Item 14): Confirmation required for money transfers, delete, bulk SMS
-                if (DeviceController.isSensitive(a)) {
+                // Sensitive action check: Irreversible action confirmation required
+                if (!skipSensitiveCheck && DeviceController.isSensitive(a)) {
                     pending = listOf(a)
                     val confirmPrompt = tr("confirm_sensitive_action")
                     chat.add(Msg(mine = false, text = "⚠️ $confirmPrompt", time = nowTime()))
@@ -1188,7 +1207,7 @@ class MainActivity : FragmentActivity() {
                     title = { Text(tr("confirm_title")) },
                     text = { Column { pending.forEach { Text("• " + describe(it)) } } },
                     confirmButton = {
-                        TextButton(onClick = { val l = pending; pending = emptyList(); lifecycleScope.launch { runList(l) } }) { Text(tr("allow")) }
+                        TextButton(onClick = { val l = pending; pending = emptyList(); lifecycleScope.launch { runList(l, skipSensitiveCheck = true) } }) { Text(tr("allow")) }
                     },
                     dismissButton = { TextButton(onClick = { pending = emptyList() }) { Text(tr("deny")) } }
                 )
