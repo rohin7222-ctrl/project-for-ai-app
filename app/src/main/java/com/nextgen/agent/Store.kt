@@ -26,8 +26,8 @@ data class Config(
     val mouseBallEnabled: Boolean = false,
     val mouseBallSize: Int = 52,
     val mouseSpeed: Float = 1.0f,
-    val mousePadMode: String = "trackpad",   // "trackpad" or "analog"
-    val mousePadScale: Float = 1.0f,         // 0.85f (compact), 1.0f (standard), 1.2f (large)
+    val mousePadMode: String = "trackpad",   // Dedicated precision trackpad mode
+    val mousePadScale: Float = 1.0f,         // 0.70f to 1.50f scale
     val mousePadAlpha: Float = 0.92f,        // 0.50f to 1.0f transparency
     val mousePointerSize: Float = 1.0f,      // 0.8f, 1.0f, 1.3f
     val mousePointerColor: String = "white", // "white", "cyan", "green", "black"

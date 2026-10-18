@@ -134,11 +134,7 @@ class MouseButtonManager private constructor(private val appContext: Context) {
             ballSizeDp = cfg.mouseBallSize
             pointerSpeed = cfg.mouseSpeed
             isBallEnabled = cfg.mouseBallEnabled
-            currentPadMode = if (cfg.mousePadMode.equals("analog", ignoreCase = true)) {
-                MousePadMode.JOYSTICK
-            } else {
-                MousePadMode.TRACKPAD
-            }
+            currentPadMode = MousePadMode.TRACKPAD
             padScale = cfg.mousePadScale
             padAlpha = cfg.mousePadAlpha
             pointerScale = cfg.mousePointerSize
@@ -218,28 +214,46 @@ class MouseButtonManager private constructor(private val appContext: Context) {
         pointerSpeed = speed.coerceIn(0.4f, 3.0f)
     }
 
-    fun setPadMode(mode: MousePadMode) {
-        currentPadMode = mode
+    fun setPadMode(mode: MousePadMode = MousePadMode.TRACKPAD) {
+        currentPadMode = MousePadMode.TRACKPAD
         mainHandler.post {
             mouseControllerView?.let {
-                it.currentPadMode = mode
+                it.currentPadMode = MousePadMode.TRACKPAD
                 it.invalidate()
             }
         }
     }
 
     fun setPadScale(scale: Float) {
-        padScale = scale.coerceIn(0.75f, 1.4f)
+        padScale = scale.coerceIn(0.70f, 1.50f)
         mainHandler.post {
             if (isPointerAndControllerShowing && mouseControllerView != null && controllerParams != null) {
                 val density = appContext.resources.displayMetrics.density
-                controllerParams?.width = (226 * density * padScale).toInt()
-                controllerParams?.height = (230 * density * padScale).toInt()
+                controllerParams?.width = (248 * density * padScale).toInt()
+                controllerParams?.height = (250 * density * padScale).toInt()
                 try {
                     windowManager.updateViewLayout(mouseControllerView, controllerParams)
                 } catch (ignored: Exception) {}
             }
         }
+    }
+
+    /** Quick cycle trackpad dimensions (Compact 85% ➔ Standard 100% ➔ Large 125%) */
+    fun cyclePadScale(onNewScale: ((Float) -> Unit)? = null) {
+        val nextScale = when {
+            padScale < 0.95f -> 1.0f
+            padScale < 1.15f -> 1.25f
+            else -> 0.85f
+        }
+        setPadScale(nextScale)
+        vibrate(30)
+        val label = when {
+            nextScale < 0.95f -> "Compact (85%)"
+            nextScale < 1.15f -> "Standard (100%)"
+            else -> "Large (125%)"
+        }
+        Toast.makeText(appContext, "📐 Trackpad: $label", Toast.LENGTH_SHORT).show()
+        onNewScale?.invoke(nextScale)
     }
 
     fun setPadAlpha(alpha: Float) {
@@ -250,7 +264,7 @@ class MouseButtonManager private constructor(private val appContext: Context) {
     }
 
     fun setPointerScale(scale: Float) {
-        pointerScale = scale.coerceIn(0.6f, 1.8f)
+        pointerScale = scale.coerceIn(0.5f, 2.4f)
         updateScreenDimensions()
         mainHandler.post {
             mousePointerView?.setPointerScale(pointerScale)
@@ -403,9 +417,9 @@ class MouseButtonManager private constructor(private val appContext: Context) {
                     mousePointerView?.setDragActive(isDragActive)
                 }
 
-                // 2. Show Dual-Mode Touchpad/Joystick Controller HUD Overlay
-                val padWidthPx = (226 * density * padScale).toInt()
-                val padHeightPx = (230 * density * padScale).toInt()
+                // 2. Show Precision Trackpad Controller HUD Overlay
+                val padWidthPx = (248 * density * padScale).toInt()
+                val padHeightPx = (250 * density * padScale).toInt()
 
                 if (mouseControllerView == null) {
                     controllerParams = WindowManager.LayoutParams(
@@ -422,14 +436,11 @@ class MouseButtonManager private constructor(private val appContext: Context) {
                     }
 
                     mouseControllerView = CyberMouseControllerView(appContext).apply {
-                        this.currentPadMode = this@MouseButtonManager.currentPadMode
+                        this.currentPadMode = MousePadMode.TRACKPAD
                         this.applyCustomization(this@MouseButtonManager.padAlpha)
                         this.setDragState(this@MouseButtonManager.isDragActive)
                         onTrackpadMove = { dx, dy ->
                             moveCursorBy(dx, dy)
-                        }
-                        onStickMove = { normX, normY ->
-                            moveCursorAnalog(normX, normY)
                         }
                         onLeftClick = {
                             if (isDragActive) {
@@ -450,12 +461,16 @@ class MouseButtonManager private constructor(private val appContext: Context) {
                         onDragToggle = {
                             toggleDragMode()
                         }
-                        onScroll = { scrollUp ->
-                            performScroll(scrollUp)
+                        onScroll = { dir ->
+                            performScroll(dir)
                         }
-                        onModeToggled = { mode ->
-                            this@MouseButtonManager.currentPadMode = mode
-                            vibrate(25)
+                        onResizeRequested = {
+                            cyclePadScale { s ->
+                                try {
+                                    val store = Store(appContext)
+                                    store.save(store.load().copy(mousePadScale = s))
+                                } catch (ignored: Exception) {}
+                            }
                         }
                         onDismiss = {
                             hidePointerAndController()
@@ -475,7 +490,7 @@ class MouseButtonManager private constructor(private val appContext: Context) {
                     windowManager.addView(mouseControllerView, controllerParams)
                 } else {
                     mouseControllerView?.visibility = View.VISIBLE
-                    mouseControllerView?.currentPadMode = currentPadMode
+                    mouseControllerView?.currentPadMode = MousePadMode.TRACKPAD
                     mouseControllerView?.applyCustomization(padAlpha)
                     mouseControllerView?.setDragState(isDragActive)
                     mouseControllerView?.refreshAccessibilityStatus()
@@ -516,11 +531,20 @@ class MouseButtonManager private constructor(private val appContext: Context) {
     }
 
     /**
-     * Precision Trackpad Movement (1:1 finger displacement with natural velocity acceleration)
+     * Precision Trackpad Movement (Sub-pixel micro precision + progressive exponential ballistics)
      */
     private fun moveCursorBy(dx: Float, dy: Float) {
         val dist = hypot(dx.toDouble(), dy.toDouble()).toFloat()
-        val accel = (1.0f + (dist / 14f)).coerceIn(1.0f, 3.2f)
+        // Apple/Windows Precision Ballistics Curve:
+        // Slow strokes (<2.5dp) get fine-dampened 0.85x for micro precision.
+        // Medium strokes get smooth linear tracking.
+        // Swift flicks get dynamic acceleration up to 3.5x.
+        val accel = when {
+            dist < 2.5f -> 0.85f
+            dist < 8.0f -> 1.0f + (dist / 14f)
+            dist < 18.0f -> 1.35f + ((dist - 8f) / 10f)
+            else -> (2.4f + (dist / 25f)).coerceAtMost(3.5f)
+        }
         val moveX = dx * pointerSpeed * accel
         val moveY = dy * pointerSpeed * accel
 
@@ -529,23 +553,6 @@ class MouseButtonManager private constructor(private val appContext: Context) {
         cursorY = (cursorY + moveY).coerceIn(minPointerY, maxPointerY)
 
         updatePointerPositionOnScreen()
-    }
-
-    /**
-     * Joystick Movement (Continuous speed proportional to thumb tilt)
-     */
-    private fun moveCursorAnalog(normX: Float, normY: Float) {
-        val mag = hypot(normX.toDouble(), normY.toDouble()).toFloat()
-        if (mag > 0.05f) {
-            val speedFactor = (20f * pointerSpeed) * (mag * mag.coerceAtLeast(0.35f))
-            val moveX = (normX / mag) * speedFactor
-            val moveY = (normY / mag) * speedFactor
-
-            cursorX = (cursorX + moveX).coerceIn(minPointerX, maxPointerX)
-            cursorY = (cursorY + moveY).coerceIn(minPointerY, maxPointerY)
-
-            updatePointerPositionOnScreen()
-        }
     }
 
     private fun updatePointerPositionOnScreen() {
@@ -639,22 +646,44 @@ class MouseButtonManager private constructor(private val appContext: Context) {
     }
 
     /**
+     * 4-Way directional scroll gesture (UP, DOWN, LEFT, RIGHT) across any third-party app
+     */
+    fun performScroll(direction: ScrollDirection) {
+        vibrate(22)
+        val midX = screenWidth / 2f
+        val midY = screenHeight / 2f
+
+        when (direction) {
+            ScrollDirection.UP -> {
+                val startY = screenHeight * 0.35f
+                val endY = screenHeight * 0.70f
+                AgentAccessibilityService.performSwipe(midX, startY, midX, endY, 200)
+            }
+            ScrollDirection.DOWN -> {
+                val startY = screenHeight * 0.70f
+                val endY = screenHeight * 0.35f
+                AgentAccessibilityService.performSwipe(midX, startY, midX, endY, 200)
+            }
+            ScrollDirection.LEFT -> {
+                // Swipe content left: swipe finger from left to right across screen
+                val startX = screenWidth * 0.25f
+                val endX = screenWidth * 0.75f
+                AgentAccessibilityService.performSwipe(startX, midY, endX, midY, 200)
+            }
+            ScrollDirection.RIGHT -> {
+                // Swipe content right: swipe finger from right to left across screen
+                val startX = screenWidth * 0.75f
+                val endX = screenWidth * 0.25f
+                AgentAccessibilityService.performSwipe(startX, midY, endX, midY, 200)
+            }
+        }
+    }
+
+    /**
      * Smooth page scroll gesture (swipe up / swipe down) across any third-party app
      */
     fun performScroll(scrollUp: Boolean) {
-        vibrate(25)
-        val midX = screenWidth / 2f
-        val startY: Float
-        val endY: Float
-
-        if (scrollUp) {
-            startY = screenHeight * 0.35f
-            endY = screenHeight * 0.70f
-        } else {
-            startY = screenHeight * 0.70f
-            endY = screenHeight * 0.35f
-        }
-        AgentAccessibilityService.performSwipe(midX, startY, midX, endY, 240)
+        performScroll(if (scrollUp) ScrollDirection.UP else ScrollDirection.DOWN)
     }
 
     private fun vibrate(ms: Long) {

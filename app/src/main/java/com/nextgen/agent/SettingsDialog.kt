@@ -1037,7 +1037,7 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                             }
                         }
                         4 -> {
-                            // TAB 4: MOUSE & BUTTONS (Floating Ball, Custom Size, Virtual Cursor & Analog Stick)
+                            // TAB 4: MOUSE & BUTTONS (Floating Ball, Custom Size, Virtual Cursor & Precision Trackpad)
                             MouseButtonsTabContent(
                                 cfg = cfg,
                                 upd = { transform -> upd(transform) },

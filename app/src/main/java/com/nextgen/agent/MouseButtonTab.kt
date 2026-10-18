@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,7 +23,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -31,16 +35,65 @@ import androidx.compose.ui.unit.sp
 /**
  * Settings Tab: Mouse & Buttons Composable UI
  * Provides full user customization for:
- * - Floating Ball Toggle & Live Size Preview
- * - Mode Selector (1:1 Laptop Trackpad vs Continuous 3D Analog Stick)
+ * - Precision Trackpad with 4-Way Directional Controls (◀, ▲, ▼, ▶)
+ * - 2-Finger Multi-Touch Scroll & Dedicated Right-Edge Scroll Strip
  * - Pointer Speed & Sensitivity
  * - Controller Scale (HUD Size)
  * - Controller Opacity / Transparency
  * - Cursor Theme (Color & Pointer Size)
  * - Haptic Vibration Feedback
  * - Accessibility & Overlay Permissions
- * - Interactive Instructions
  */
+/**
+ * Real-time animated canvas preview of the native mouse cursor arrow
+ */
+@Composable
+fun CursorPreview(
+    scale: Float,
+    colorName: String,
+    modifier: Modifier = Modifier
+) {
+    val cursorColor = when (colorName.lowercase()) {
+        "cyan" -> Color(0xFF00E5FF)
+        "green" -> Color(0xFF10B981)
+        "black" -> Color(0xFF0F172A)
+        else -> Color.White
+    }
+    val outlineColor = if (colorName.lowercase() == "black") Color.White else Color(0xFF111622)
+
+    Box(
+        modifier = modifier
+            .size(62.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF090D1A))
+            .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(14.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.size(44.dp)) {
+            val s = density * 0.95f * scale.coerceIn(0.5f, 2.2f)
+            val path = Path().apply {
+                moveTo(2f, 2f)
+                lineTo(2f, 2f + 18.5f * s)
+                lineTo(2f + 4.6f * s, 2f + 14.8f * s)
+                lineTo(2f + 7.6f * s, 2f + 21.8f * s)
+                lineTo(2f + 10.2f * s, 2f + 20.6f * s)
+                lineTo(2f + 7.2f * s, 2f + 13.8f * s)
+                lineTo(2f + 12.8f * s, 2f + 13.8f * s)
+                close()
+            }
+            // Shadow
+            val shadowPath = Path().apply {
+                addPath(path, Offset(2.5f, 3.5f))
+            }
+            drawPath(shadowPath, color = Color.Black.copy(alpha = 0.5f))
+            // Body
+            drawPath(path, color = cursorColor)
+            // Outline
+            drawPath(path, color = outlineColor, style = Stroke(width = 1.3f * density))
+        }
+    }
+}
+
 @Composable
 fun MouseButtonsTabContent(
     cfg: Config,
@@ -157,7 +210,7 @@ fun MouseButtonsTabContent(
             }
         }
 
-        // 3. CONTROL MODE SELECTOR CARD: ANALOG vs TRACKPAD
+        // 3. PRECISION TRACKPAD & 4-WAY D-PAD OVERVIEW
         Surface(
             shape = RoundedCornerShape(18.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
@@ -182,75 +235,55 @@ fun MouseButtonsTabContent(
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
                         )
                     }
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = cyan.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, cyan.copy(alpha = 0.4f))
+                    ) {
+                        Text(
+                            text = "⚡ ACTIVE",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = cyan,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
 
-                // Dual Mode Selectors: Trackpad vs Analog
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    val isTrackpad = cfg.mousePadMode.equals("trackpad", ignoreCase = true)
+                // 6 Feature Pills Grid
+                val trackpadFeatures = listOf(
+                    "🖱️ 1:1 Laptop Glide" to "Sub-pixel precision ballistics with flick inertia",
+                    "🧭 4-Way D-Pad" to "◀, ▲, ▼, ▶ buttons (Hold down for auto-repeat scroll)",
+                    "📜 Scroll Strip" to "Dedicated right-edge vertical scroll slider strip",
+                    "✌️ 2-Finger Scroll" to "Slide 2 fingers anywhere on the pad to scroll pages",
+                    "✋ Drag & Drop Lock" to "Lock target item & glide to destination with DROP",
+                    "📐 In-HUD Quick Resize" to "Tap [ ⤢ ] inside the trackpad header to cycle size"
+                )
 
-                    // Trackpad Mode Button
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (isTrackpad) cyan.copy(alpha = 0.20f) else Color.Transparent,
-                        border = BorderStroke(1.5.dp, if (isTrackpad) cyan else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable {
-                                upd { it.copy(mousePadMode = "trackpad") }
-                                mouseManager.setPadMode(MousePadMode.TRACKPAD)
-                            }
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    trackpadFeatures.chunked(2).forEach { row ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(
-                                text = S.t(cfg.lang, "mouse_mode_trackpad"),
-                                fontSize = 13.sp,
-                                fontWeight = if (isTrackpad) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isTrackpad) cyan else MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "1:1 Laptop Touchpad",
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                            )
-                        }
-                    }
-
-                    // Analog Stick Mode Button
-                    val isAnalog = !isTrackpad
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (isAnalog) indigo.copy(alpha = 0.20f) else Color.Transparent,
-                        border = BorderStroke(1.5.dp, if (isAnalog) indigo else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable {
-                                upd { it.copy(mousePadMode = "analog") }
-                                mouseManager.setPadMode(MousePadMode.JOYSTICK)
+                            row.forEach { (title, desc) ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.45f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text(title, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = cyan)
+                                        Text(
+                                            desc,
+                                            fontSize = 9.5.sp,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.70f),
+                                            lineHeight = 13.sp
+                                        )
+                                    }
+                                }
                             }
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = S.t(cfg.lang, "mouse_mode_analog"),
-                                fontSize = 13.sp,
-                                fontWeight = if (isAnalog) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isAnalog) indigo else MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "3D Continuous Joystick",
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                            )
                         }
                     }
                 }
@@ -425,7 +458,7 @@ fun MouseButtonsTabContent(
             }
         }
 
-        // 6. CONTROLLER HUD SCALE & OPACITY CUSTOMIZATION
+        // 6. TRACKPAD HUD SIZE & OPACITY CUSTOMIZATION
         Surface(
             shape = RoundedCornerShape(18.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
@@ -433,7 +466,7 @@ fun MouseButtonsTabContent(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                // Scale / Dimensions
+                // Scale / Dimensions Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -451,16 +484,41 @@ fun MouseButtonsTabContent(
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
                         )
                     }
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = cyan.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, cyan.copy(alpha = 0.4f))
+                    ) {
+                        Text(
+                            text = "${(248 * cfg.mousePadScale).toInt()} × ${(250 * cfg.mousePadScale).toInt()} dp",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = cyan,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
 
+                Slider(
+                    value = cfg.mousePadScale,
+                    onValueChange = { scale ->
+                        upd { it.copy(mousePadScale = scale) }
+                        mouseManager.setPadScale(scale)
+                    },
+                    valueRange = 0.70f..1.50f,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // 4 Presets: Compact, Standard, Large, Ultra
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     val scalePresets = listOf(
                         0.85f to "Compact (85%)",
-                        1.0f to "Standard (100%)",
-                        1.20f to "Large (120%)"
+                        1.00f to "Standard (100%)",
+                        1.20f to "Large (120%)",
+                        1.40f to "Ultra (140%)"
                     )
                     scalePresets.forEach { (scale, label) ->
                         val isSel = kotlin.math.abs(cfg.mousePadScale - scale) < 0.05f
@@ -479,7 +537,7 @@ fun MouseButtonsTabContent(
                         ) {
                             Text(
                                 text = label,
-                                fontSize = 10.5.sp,
+                                fontSize = 10.sp,
                                 fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
                                 color = if (isSel) cyan else MaterialTheme.colorScheme.onSurface
                             )
@@ -540,7 +598,7 @@ fun MouseButtonsTabContent(
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text(
                     text = S.t(cfg.lang, "mouse_pointer_color"),
                     fontSize = 14.sp,
@@ -594,34 +652,92 @@ fun MouseButtonsTabContent(
                     }
                 }
 
-                // Cursor Pointer Size
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                // Cursor Pointer Size Slider & Live Preview
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        text = S.t(cfg.lang, "mouse_pointer_size"),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = S.t(cfg.lang, "mouse_pointer_size"),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Control arrow pointer scale & hotspot tip size",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = cyan.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, cyan.copy(alpha = 0.4f))
+                    ) {
+                        Text(
+                            text = String.format("%.2fx", cfg.mousePointerSize),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = cyan,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // Live Animated Cursor Preview
+                    CursorPreview(scale = cfg.mousePointerSize, colorName = cfg.mousePointerColor)
+
+                    Slider(
+                        value = cfg.mousePointerSize,
+                        onValueChange = { sz ->
+                            upd { it.copy(mousePointerSize = sz) }
+                            mouseManager.setPointerScale(sz)
+                        },
+                        valueRange = 0.50f..2.20f,
+                        modifier = Modifier.weight(1f)
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf(0.85f to "S", 1.0f to "M", 1.30f to "L").forEach { (sz, label) ->
-                            val isSel = kotlin.math.abs(cfg.mousePointerSize - sz) < 0.05f
-                            OutlinedButton(
-                                onClick = {
-                                    upd { it.copy(mousePointerSize = sz) }
-                                    mouseManager.setPointerScale(sz)
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = if (isSel) cyan.copy(alpha = 0.15f) else Color.Transparent
-                                ),
-                                border = BorderStroke(1.dp, if (isSel) cyan else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
-                            ) {
-                                Text(label, fontSize = 11.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal)
-                            }
+                }
+
+                // 4 Presets (S, M, L, XL)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val pointerPresets = listOf(
+                        0.75f to "Small (0.75x)",
+                        1.00f to "Medium (1.0x)",
+                        1.40f to "Large (1.4x)",
+                        1.80f to "XL (1.8x)"
+                    )
+                    pointerPresets.forEach { (sz, label) ->
+                        val isSel = kotlin.math.abs(cfg.mousePointerSize - sz) < 0.08f
+                        OutlinedButton(
+                            onClick = {
+                                upd { it.copy(mousePointerSize = sz) }
+                                mouseManager.setPointerScale(sz)
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = if (isSel) cyan.copy(alpha = 0.15f) else Color.Transparent
+                            ),
+                            border = BorderStroke(1.dp, if (isSel) cyan else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(vertical = 4.dp, horizontal = 2.dp)
+                        ) {
+                            Text(
+                                label,
+                                fontSize = 10.sp,
+                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSel) cyan else MaterialTheme.colorScheme.onSurface
+                            )
                         }
                     }
                 }
