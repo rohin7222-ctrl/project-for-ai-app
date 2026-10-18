@@ -663,6 +663,21 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    internal fun quickSkipAd() {
+        val prompt = if (cfg.lang == "ta-IN") "விளம்பரம் தவிர்" else "Skip ad"
+        handleUser(prompt)
+    }
+
+    internal fun quickReelsCruise() {
+        val prompt = if (cfg.lang == "ta-IN") "ரீல்ஸ் தானாக மேலே நகர்த்து" else "Reels cruise on"
+        handleUser(prompt)
+    }
+
+    internal fun quickBattery() {
+        val prompt = if (cfg.lang == "ta-IN") "பேட்டரி எவ்வளவு இருக்கு?" else "What is battery status?"
+        handleUser(prompt)
+    }
+
     internal fun handleUser(text: String) {
         val t = text.trim()
         if (t.isBlank()) return

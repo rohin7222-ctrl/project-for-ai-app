@@ -40,10 +40,21 @@ public class AgentAccessibilityService extends AccessibilityService {
     private View floatingHudView = null;
     private WindowManager windowManager = null;
     private android.widget.TextView hudTextView = null;
+    private final android.os.Handler hudHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable hudAutoDismissRunnable = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                if (floatingHudView != null) {
+                    floatingHudView.setVisibility(View.GONE);
+                }
+            } catch (Exception ignored) {}
+        }
+    };
 
     public void showFloatingHud(final String message) {
         if (instance == null) return;
-        new android.os.Handler(android.os.Looper.getMainLooper()).post(new Runnable() {
+        hudHandler.post(new Runnable() {
             @Override
             public void run() {
                 try {
@@ -87,6 +98,8 @@ public class AgentAccessibilityService extends AccessibilityService {
                     if (floatingHudView != null) {
                         floatingHudView.setVisibility(View.VISIBLE);
                     }
+                    hudHandler.removeCallbacks(hudAutoDismissRunnable);
+                    hudHandler.postDelayed(hudAutoDismissRunnable, 4000);
                 } catch (Exception ignored) {}
             }
         });
@@ -94,10 +107,11 @@ public class AgentAccessibilityService extends AccessibilityService {
 
     public void hideFloatingHud() {
         if (instance == null) return;
-        new android.os.Handler(android.os.Looper.getMainLooper()).post(new Runnable() {
+        hudHandler.post(new Runnable() {
             @Override
             public void run() {
                 try {
+                    hudHandler.removeCallbacks(hudAutoDismissRunnable);
                     if (floatingHudView != null) {
                         floatingHudView.setVisibility(View.GONE);
                     }

@@ -226,7 +226,7 @@ public class DeviceController {
                 case "read_notifications": return readNotifications();
                 case "read_sms": return readSms();
                 case "calendar_event": return calendarEvent(a.optString("title"), a.optString("time"));
-                case "volume": return volume(a.optString("dir"));
+                case "volume": return volume(a.optString("dir"), a.optInt("value", -1));
                 case "media": return media(a.optString("cmd"));
                 case "clipboard": return clipboard(a.optString("text"));
                 case "system": return system(a.optString("name"));
@@ -1041,11 +1041,24 @@ public class DeviceController {
         }
     }
 
-    private String volume(String dir) {
-        AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
-        int d = "down".equals(dir) ? AudioManager.ADJUST_LOWER
-                : "mute".equals(dir) ? AudioManager.ADJUST_MUTE : AudioManager.ADJUST_RAISE;
-        am.adjustStreamVolume(AudioManager.STREAM_MUSIC, d, AudioManager.FLAG_SHOW_UI);
+    private String volume(String dir, int val) {
+        try {
+            AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+            if (am != null) {
+                if (val >= 0) {
+                    int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                    int target = (int) Math.round((Math.min(100, Math.max(0, val)) / 100.0) * max);
+                    am.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI);
+                    return "OK";
+                }
+                int d = "down".equals(dir) ? AudioManager.ADJUST_LOWER
+                        : "mute".equals(dir) ? AudioManager.ADJUST_MUTE : AudioManager.ADJUST_RAISE;
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC, d, AudioManager.FLAG_SHOW_UI);
+                return "OK";
+            }
+        } catch (Exception e) {
+            return "ERR:" + e.getMessage();
+        }
         return "OK";
     }
 
@@ -1064,6 +1077,13 @@ public class DeviceController {
             case "quick_settings": act = AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS; break;
             case "lock": act = AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN; break;
             case "screenshot": act = AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT; break;
+            case "power_dialog": act = AccessibilityService.GLOBAL_ACTION_POWER_DIALOG; break;
+            case "split_screen":
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    act = AccessibilityService.GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN;
+                    break;
+                }
+                return "ERR:split screen not supported";
             default: return "ERR:unknown system action " + name;
         }
         if (AgentAccessibilityService.instance == null) return "NEED_ACCESSIBILITY";

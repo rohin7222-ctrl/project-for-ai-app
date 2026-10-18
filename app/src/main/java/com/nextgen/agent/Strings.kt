@@ -215,7 +215,25 @@ object S {
         "quick_prompt_battery" to listOf("பேட்டரி எவ்வளவு இருக்கு?", "What is battery status?", "バッテリー残量は？"),
         "chip_missed_call" to listOf("மிஸ்ட் கால் (3 ரிங்)", "Missed Call (3 Rings)", "ワン切り (3コール)"),
         "chip_agentic_auto" to listOf("AI ஆட்டோமேஷன்", "Agentic Automation", "AI自動化"),
-        "chip_trackpad" to listOf("டிராக்க்பேட் HUD", "Trackpad HUD", "トラックパッドHUD")
+        "chip_trackpad" to listOf("டிராக்க்பேட் HUD", "Trackpad HUD", "トラックパッドHUD"),
+        "chip_skip_ad" to listOf("விளம்பரம் தவிர்", "Skip YouTube Ad", "広告スキップ"),
+        "chip_reels_cruise" to listOf("ரீல்ஸ் க்ரூஸ்", "Reels Auto-Cruise", "リールクルーズ"),
+        "card_missed_call" to listOf("மிஸ்ட் கால் (3 ரிங்)", "3-Ring Missed Call", "ワン切り (3コール)"),
+        "card_missed_call_sub" to listOf("3 முறை ரிங் அடித்ததும் தானாகவே துண்டிக்கும்", "Auto-cuts call exactly after 3 rings", "3コール後に自動切断"),
+        "card_zomato" to listOf("Zomato பிரியாணி", "Zomato Biryani", "Zomato ビリヤニ"),
+        "card_zomato_sub" to listOf("Zomato திறந்து பிரியாணி தேடு", "Launch Zomato & search biryani", "Zomatoを開いてビリヤニを検索"),
+        "card_reels" to listOf("ரீல்ஸ் ஆட்டோ-க்ரூஸ்", "Reels Auto-Cruise", "リール自動送り"),
+        "card_reels_sub" to listOf("ரீல்ஸ் & ஷார்ட்ஸ் தானாகவே மேலே நகரும்", "Hands-free continuous reels scrolling", "ハンズフリー自動スクロール"),
+        "card_skip_ad" to listOf("விளம்பரம் தவிர்", "Auto Skip Ads", "広告スキップ"),
+        "card_skip_ad_sub" to listOf("யூடியூப் வீடியோ விளம்பரங்களை தவிர்", "Instantly skips YouTube video ads", "動画広告を瞬時にスキップ"),
+        "card_trackpad" to listOf("டிராக்க்பேட் HUD", "Trackpad & Pointer", "精密トラックパッド"),
+        "card_trackpad_sub" to listOf("AI மேக்னட்டிக் ஸ்னாப் மவுஸ் பாயிண்டர்", "AI magnetic element snapping cursor", "AI吸着バーチャルマウス"),
+        "card_screenshot" to listOf("ஸ்கிரீன்ஷாட்", "Fast Screenshot", "スクリーンショット"),
+        "card_screenshot_sub" to listOf("திரையை உடனடியாக புகைப்படம் எடு", "Capture active screen in 1-tap", "画面を瞬時に撮影"),
+        "card_battery" to listOf("பேட்டரி & சிஸ்டம்", "Battery & Health", "端末とバッテリー"),
+        "card_battery_sub" to listOf("பேட்டரி சதவிகிதம் & நிலை", "Check power status and battery level", "バッテリー残量を確認"),
+        "card_volume_max" to listOf("முழு வால்யூம்", "Max Volume", "音量最大"),
+        "card_volume_max_sub" to listOf("மீடியா சத்தத்தை 100% ஆக உயர்த்து", "Boost audio volume to 100%", "音量を100%に設定")
     )
 
     fun t(lang: String, k: String): String {

@@ -770,8 +770,16 @@ def _parse_one(p, last_app):
 
     # --- Brightness & Display
     if any(w in t for w in ("brightness", "பிரகாசம்", "வெளிச்சம்")):
+        m_pct = re.search(r"\b(\d{1,3})\s*%?\b", t)
+        val = int(m_pct.group(1)) if m_pct and 0 <= int(m_pct.group(1)) <= 100 else -1
         is_down = any(w in t for w in ("down", "decrease", "reduce", "குறை", "low", "கம்மி"))
-        return [{"type": "brightness", "dir": "down" if is_down else "up", "desc": "Brightness"}], "ok"
+        if any(w in t for w in ("max", "full", "100", "அதிகம்", "முழு")):
+            val = 255
+        elif val >= 0:
+            val = int((val / 100.0) * 255)
+        act = {"type": "brightness", "dir": "down" if is_down else "up", "desc": "Brightness"}
+        if val >= 0: act["value"] = val
+        return [act], "ok"
 
     # --- Screen Auto-Rotate
     if any(w in t for w in ("auto rotate", "screen rotation", "ரொட்டேஷன்", "சுழற்சி")):
@@ -929,13 +937,20 @@ def _parse_one(p, last_app):
 
     # --- volume
     if any(w in t for w in ("volume", "வால்யூம்", "சத்தம்", "ஒலி", "mute", "silent", "மியூட்", "சைலன்ட்")):
+        m_pct = re.search(r"\b(\d{1,3})\s*%?\b", t)
+        val = int(m_pct.group(1)) if m_pct and 0 <= int(m_pct.group(1)) <= 100 else -1
         if any(w in t for w in ("mute", "silent", "மியூட்", "சைலன்ட்")):
             d = "mute"
         elif any(w in t for w in ("down", "kura", "kuraa", "kurai", "less", "decrease", "low", "குறை", "இறக்கு")):
             d = "down"
+        elif any(w in t for w in ("max", "full", "100", "அதிகம்", "முழு")):
+            d = "up"
+            if val < 0: val = 100
         else:
             d = "up"
-        return [{"type": "volume", "dir": d, "desc": f"Volume {d}"}], "ok"
+        act = {"type": "volume", "dir": d, "desc": f"Volume {val}%" if val >= 0 else f"Volume {d}"}
+        if val >= 0: act["value"] = val
+        return [act], "ok"
 
     # --- media playback controls
     if any(w in t for w in ("next song", "next track", "next paattu", "அடுத்த பாட்டு", "அடுத்த பாடல்")):

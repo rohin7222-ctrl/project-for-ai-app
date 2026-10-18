@@ -25,6 +25,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -489,6 +490,27 @@ internal fun MainActivity.MainScreen() {
             onClick = { quickAlarm() }
         ),
         WheelItem(
+            id = "quick_screenshot",
+            label = tr("chip_screenshot"),
+            icon = Icons.Default.PhotoCamera,
+            accentColor = Color(0xFFF59E0B),
+            onClick = { quickScreenshot() }
+        ),
+        WheelItem(
+            id = "quick_skip_ad",
+            label = tr("chip_skip_ad"),
+            icon = Icons.Default.PlayCircle,
+            accentColor = Color(0xFF10B981),
+            onClick = { quickSkipAd() }
+        ),
+        WheelItem(
+            id = "quick_reels_cruise",
+            label = tr("chip_reels_cruise"),
+            icon = Icons.Default.VideoLibrary,
+            accentColor = Color(0xFFEC4899),
+            onClick = { quickReelsCruise() }
+        ),
+        WheelItem(
             id = "quick_stop",
             label = tr("chip_stop"),
             icon = Icons.Default.Stop,
@@ -817,6 +839,28 @@ internal fun MainActivity.MainScreen() {
                             lineHeight = 19.sp,
                             modifier = Modifier.padding(horizontal = 24.dp)
                         )
+
+                        Spacer(Modifier.height(20.dp))
+
+                        // Futuristic Agentic Quick-Deck Carousel (10x Action Center)
+                        AgenticActionDeck(
+                            isDark = isDark,
+                            onExecute = { prompt ->
+                                handleUser(prompt)
+                            },
+                            onMissedCall = {
+                                quickMissedCall()
+                            },
+                            onToggleTrackpad = {
+                                val mgr = MouseButtonManager.getInstance(activity)
+                                if (mgr.isPointerAndControllerShowing) {
+                                    mgr.hidePointerAndController()
+                                } else {
+                                    mgr.showPointerAndController()
+                                }
+                            },
+                            tr = { tr(it) }
+                        )
                     }
                 } else {
                     // Active Chat Conversation History
@@ -1123,5 +1167,211 @@ internal fun MainActivity.MainScreen() {
             onHubClick = { showBottomWheel = false },
             items = bottomWheelItems
         )
+    }
+}
+
+internal data class AgenticActionCard(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val badge: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val accent: Color,
+    val onClick: () -> Unit
+)
+
+@Composable
+internal fun AgenticActionDeck(
+    isDark: Boolean,
+    onExecute: (String) -> Unit,
+    onMissedCall: () -> Unit,
+    onToggleTrackpad: () -> Unit,
+    tr: (String) -> String
+) {
+    val cards = listOf(
+        AgenticActionCard(
+            id = "missed_call",
+            title = tr("card_missed_call"),
+            subtitle = tr("card_missed_call_sub"),
+            badge = "📞 3-Ring Auto-Cut",
+            icon = Icons.Default.PhoneInTalk,
+            accent = Color(0xFF00E5FF),
+            onClick = onMissedCall
+        ),
+        AgenticActionCard(
+            id = "zomato",
+            title = tr("card_zomato"),
+            subtitle = tr("card_zomato_sub"),
+            badge = "🍔 Food Agent",
+            icon = Icons.Default.Bolt,
+            accent = Color(0xFFEF4444),
+            onClick = { onExecute(tr("quick_prompt_zomato")) }
+        ),
+        AgenticActionCard(
+            id = "reels",
+            title = tr("card_reels"),
+            subtitle = tr("card_reels_sub"),
+            badge = "📱 Auto-Cruise",
+            icon = Icons.Default.VideoLibrary,
+            accent = Color(0xFFEC4899),
+            onClick = { onExecute("reels cruise on") }
+        ),
+        AgenticActionCard(
+            id = "skip_ad",
+            title = tr("card_skip_ad"),
+            subtitle = tr("card_skip_ad_sub"),
+            badge = "⚡ Instant Skip",
+            icon = Icons.Default.PlayCircle,
+            accent = Color(0xFF10B981),
+            onClick = { onExecute("skip ad") }
+        ),
+        AgenticActionCard(
+            id = "trackpad",
+            title = tr("card_trackpad"),
+            subtitle = tr("card_trackpad_sub"),
+            badge = "🎯 AI Snap Cursor",
+            icon = Icons.Default.TouchApp,
+            accent = Color(0xFF38BDF8),
+            onClick = onToggleTrackpad
+        ),
+        AgenticActionCard(
+            id = "screenshot",
+            title = tr("card_screenshot"),
+            subtitle = tr("card_screenshot_sub"),
+            badge = "📸 Instant Snap",
+            icon = Icons.Default.PhotoCamera,
+            accent = Color(0xFFF59E0B),
+            onClick = { onExecute("take screenshot") }
+        ),
+        AgenticActionCard(
+            id = "battery",
+            title = tr("card_battery"),
+            subtitle = tr("card_battery_sub"),
+            badge = "🔋 Device Status",
+            icon = Icons.Default.BatteryChargingFull,
+            accent = Color(0xFF22C55E),
+            onClick = { onExecute(tr("quick_prompt_battery")) }
+        ),
+        AgenticActionCard(
+            id = "volume",
+            title = tr("card_volume_max"),
+            subtitle = tr("card_volume_max_sub"),
+            badge = "🔊 Boost 100%",
+            icon = Icons.AutoMirrored.Filled.VolumeUp,
+            accent = Color(0xFF8B5CF6),
+            onClick = { onExecute("volume 100") }
+        )
+    )
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.Start
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "⚡ AGENTIC COMMAND DECK",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.6.sp,
+                color = if (isDark) Color(0xFF00E5FF).copy(alpha = 0.85f) else Color(0xFF4F46E5)
+            )
+            Text(
+                text = "10X AUTONOMOUS",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.sp,
+                color = if (isDark) Color(0xFFA855F7) else Color(0xFF7C3AED)
+            )
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(cards) { card ->
+                Surface(
+                    modifier = Modifier
+                        .width(200.dp)
+                        .height(116.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { card.onClick() },
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isDark) Color(0xFF0C101D) else Color(0xFFF8FAFC),
+                    border = BorderStroke(
+                        1.2.dp,
+                        Brush.horizontalGradient(
+                            listOf(
+                                card.accent.copy(alpha = if (isDark) 0.55f else 0.40f),
+                                card.accent.copy(alpha = if (isDark) 0.15f else 0.10f)
+                            )
+                        )
+                    ),
+                    shadowElevation = 6.dp
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(card.accent.copy(alpha = 0.16f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = card.icon,
+                                    contentDescription = card.title,
+                                    modifier = Modifier.size(19.dp),
+                                    tint = card.accent
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = card.accent.copy(alpha = 0.14f)
+                            ) {
+                                Text(
+                                    text = card.badge,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = card.accent,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = card.title,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color.White else Color(0xFF0F172A),
+                                maxLines = 1
+                            )
+                            Text(
+                                text = card.subtitle,
+                                fontSize = 10.sp,
+                                lineHeight = 13.sp,
+                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                maxLines = 2
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
