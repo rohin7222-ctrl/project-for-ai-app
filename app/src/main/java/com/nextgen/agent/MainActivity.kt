@@ -212,8 +212,11 @@ class MainActivity : FragmentActivity() {
     internal var unlocked by mutableStateOf(true)
     internal var executingAction by mutableStateOf("")
     internal var liveSpeechText by mutableStateOf("")
+    internal var voiceErrorMessage by mutableStateOf<String?>(null)
     internal var pending by mutableStateOf<List<JSONObject>>(emptyList())
     internal val chat = mutableStateListOf<Msg>()
+    internal var showTopWheel by mutableStateOf(false)
+    internal var showBottomWheel by mutableStateOf(false)
 
     internal fun getAllRequiredPermissions(): Array<String> {
         val list = mutableListOf(
@@ -311,12 +314,19 @@ class MainActivity : FragmentActivity() {
         cfg = store.load(isSystemDark())
         voice = Voice(this, onText = { 
             liveSpeechText = ""
+            voiceErrorMessage = null
             handleUser(it) 
         }, onState = { 
             listening = it 
             if (!it) liveSpeechText = ""
         })
-        voice.onPartialText = { liveSpeechText = it }
+        voice.onPartialText = { 
+            liveSpeechText = it 
+            if (it.isNotBlank()) voiceErrorMessage = null
+        }
+        voice.onErrorDescription = { code, desc ->
+            voiceErrorMessage = if (desc.isNotBlank()) desc else null
+        }
         syncVoiceConfig()
         voice.onWakeWordTriggered = { cmd ->
             if (!cmd.isNullOrBlank()) {
@@ -371,6 +381,7 @@ class MainActivity : FragmentActivity() {
         if (!isChangingConfigurations) {
             teardownMediaPlaybackMonitoring()
             teardownCallStateMonitoring()
+            voice.restoreBeep(immediate = true)
             voice.shutdown()
         }
         super.onDestroy()
@@ -425,6 +436,7 @@ class MainActivity : FragmentActivity() {
     }
 
     internal fun startVoice() {
+        voiceErrorMessage = null
         syncVoiceConfig()
         voice.start()
     }
@@ -707,7 +719,49 @@ class MainActivity : FragmentActivity() {
 
         thinking = true
         lifecycleScope.launch {
-            val r = withContext(Dispatchers.IO) { Brain.chat(cfg, effectiveText) }
+            // 1. Try local command first (phone commands run locally in brain.py without external API)
+            val local = withContext(Dispatchers.IO) { Brain.checkLocalCommand(cfg.lang, effectiveText) }
+            val r = if (local != null) {
+                local
+            } else if (cfg.smartUiMode && cfg.key.isNotBlank() && AgentAccessibilityService.instance != null) {
+                // 2. Smart UI Mode: screen snapshot + LLM agentic UI loop
+                var loopReply: Brain.Reply? = null
+                val service = AgentAccessibilityService.instance!!
+                var step = 0
+                var lastScreen = ""
+                while (step < 3) {
+                    step++
+                    val snapshotJson = withContext(Dispatchers.Main) { service.compactScreenSnapshot?.toString() ?: "" }
+                    if (snapshotJson.isBlank() || snapshotJson == "{}" || snapshotJson == lastScreen) break
+                    lastScreen = snapshotJson
+
+                    val nextAct = withContext(Dispatchers.IO) {
+                        Brain.decideUiAction(cfg, effectiveText, snapshotJson)
+                    } ?: break
+
+                    val actType = nextAct.optString("action", nextAct.optString("type", ""))
+                    if (actType == "done") {
+                        loopReply = Brain.Reply(true, speech = tr("ok"), content = tr("ok"))
+                        break
+                    }
+
+                    if (DeviceController.isSensitive(nextAct)) {
+                        pending = listOf(nextAct)
+                        val confirmPrompt = tr("confirm_sensitive_action")
+                        chat.add(Msg(mine = false, text = "⚠️ $confirmPrompt", time = nowTime()))
+                        voice.speak(confirmPrompt)
+                        thinking = false
+                        return@launch
+                    }
+
+                    val executed = withContext(Dispatchers.Main) { service.executeSnapshotAction(nextAct) }
+                    if (!executed) break
+                    delay(700)
+                }
+                loopReply ?: withContext(Dispatchers.IO) { Brain.chat(cfg, effectiveText) }
+            } else {
+                withContext(Dispatchers.IO) { Brain.chat(cfg, effectiveText) }
+            }
             thinking = false
             if (r.ok) {
                 val actionDescs = r.actions.mapNotNull { it.optString("desc").takeIf { s -> s.isNotBlank() } }
@@ -742,6 +796,28 @@ class MainActivity : FragmentActivity() {
                 if (type == "stop_assistant") {
                     stopVoiceWithAck()
                     return
+                }
+
+                if (type == "wheel_top" || type == "top_wheel") {
+                    showTopWheel = true
+                    showBottomWheel = false
+                    continue
+                }
+
+                if (type == "wheel_bottom" || type == "wheel_down" || type == "down_wheel" || type == "bottom_wheel") {
+                    showBottomWheel = true
+                    showTopWheel = false
+                    continue
+                }
+
+                if (type == "wheel_top_close") {
+                    showTopWheel = false
+                    continue
+                }
+
+                if (type == "wheel_bottom_close") {
+                    showBottomWheel = false
+                    continue
                 }
 
                 // Sensitive action check (Item 14): Confirmation required for money transfers, delete, bulk SMS

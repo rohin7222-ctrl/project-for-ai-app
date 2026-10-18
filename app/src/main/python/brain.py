@@ -724,6 +724,23 @@ def _parse_one(p, last_app):
     if "quick settings" in t:
         return [{"type": "system", "name": "quick_settings", "desc": "Quick Settings"}], "ok"
 
+    # --- Top Wheel and Down / Bottom Wheel (Helm Corner Wheels)
+    if re.search(r"\b(?:close|moodu|mooduda|hide)\s*(?:top\s*wheel|topwheel|top\s*top\s*wheel|மேல்\s*சக்கரம்|டாப்\s*வீல்)\b", t) or \
+       re.search(r"\b(?:top\s*wheel|topwheel|top\s*top\s*wheel|மேல்\s*சக்கரம்|டாப்\s*வீல்)\s*(?:close|moodu|mooduda|hide)\b", t):
+        return [{"type": "wheel_top_close", "desc": "Closing Top Wheel"}], "wheel_top_close"
+
+    if re.search(r"\b(?:close|moodu|mooduda|hide)\s*(?:down\s*wheel|downwheel|bottom\s*wheel|bottomwheel|கீழ்\s*சக்கரம்|டவுன்\s*வீல்|பாட்டம்\s*வீல்)\b", t) or \
+       re.search(r"\b(?:down\s*wheel|downwheel|bottom\s*wheel|bottomwheel|கீழ்\s*சக்கரம்|டவுன்\s*வீல்|பாட்டம்\s*வீல்)\s*(?:close|moodu|mooduda|hide)\b", t):
+        return [{"type": "wheel_bottom_close", "desc": "Closing Down Wheel"}], "wheel_bottom_close"
+
+    if re.search(r"\b(?:actice|active|open|show|activate|enable|திற|காட்டு)?\s*(?:top\s*wheel|topwheel|top\s*top\s*wheel|மேல்\s*சக்கரம்|டாப்\s*வீல்)\b", t) or \
+       re.search(r"\b(?:top\s*wheel|topwheel|top\s*top\s*wheel|மேல்\s*சக்கரம்|டாப்\s*வீல்)\s*(?:actice|active|open|show|activate|pannu|kattu|kattuda|va|aganum)?\b", t):
+        return [{"type": "wheel_top", "desc": "Activating Top Wheel"}], "wheel_top"
+
+    if re.search(r"\b(?:actice|active|open|show|activate|enable|திற|காட்டு)?\s*(?:down\s*wheel|downwheel|bottom\s*wheel|bottomwheel|கீழ்\s*சக்கரம்|டவுன்\s*வீல்|பாட்டம்\s*வீல்)\b", t) or \
+       re.search(r"\b(?:down\s*wheel|downwheel|bottom\s*wheel|bottomwheel|கீழ்\s*சக்கரம்|டவுன்\s*வீல்|பாட்டம்\s*வீல்)\s*(?:actice|active|open|show|activate|pannu|kattu|kattuda|va|aganum)?\b", t):
+        return [{"type": "wheel_bottom", "desc": "Activating Down Wheel"}], "wheel_bottom"
+
     # --- assistant stop command: custom stop word + universal stop words
     custom_stop = (_assistant.get("stop_word") or "stop").strip().lower()
     stop_pat = r"^(?:hey\s+|ok\s+|please\s+)?(?:" + re.escape(custom_stop) + r")(?:\s+(?:please|pannu|panu|podu|vai|seiy|pa|da))?$"
@@ -1338,7 +1355,9 @@ SAY = {  # spoken confirmation per language
               "fill_otp": "ஓடிபி கண்டறியப்பட்டு நிரப்பப்படுகிறது.", "battery": "பேட்டரி அளவை சரிபார்க்கிறேன்.",
               "uninstall": "%s-ஐ நீக்க அன்இன்ஸ்டால் திரையை திறக்கிறேன்.", "grid_tap": "%s-ல் கிளிக் செய்கிறேன்.",
               "missed_call": "%s-க்கு மிஸ்ட் கால் (3 ரிங்) தருகிறேன்.",
-              "mouse_click": "மவுஸ் கிளிக் செய்யப்பட்டது.", "mouse_scroll": "மவுஸ் ஸ்க்ரோல் செய்யப்பட்டது.", "mouse_toggle": "டிராக்க்பேட் நிலை மாற்றப்பட்டது."},
+              "mouse_click": "மவுஸ் கிளிக் செய்யப்பட்டது.", "mouse_scroll": "மவுஸ் ஸ்க்ரோல் செய்யப்பட்டது.", "mouse_toggle": "டிராக்க்பேட் நிலை மாற்றப்பட்டது.",
+              "wheel_top": "டாப் வீல் திறக்கப்பட்டது.", "wheel_bottom": "டவுன் வீல் திறக்கப்பட்டது.",
+              "wheel_top_close": "டாப் வீல் மூடப்பட்டது.", "wheel_bottom_close": "டவுன் வீல் மூடப்பட்டது."},
     "en-US": {"app": "Opening %s.", "search": "Searching %s.", "call": "Calling %s right now.",
               "nth": "Opening number %d.", "ok": "Done.", "yt": "Playing %s on YouTube.",
               "google": "Searching %s on Google.", "google_page": "Opening Google.",
@@ -1370,7 +1389,9 @@ SAY = {  # spoken confirmation per language
               "fill_otp": "Reading and entering OTP.", "battery": "Checking battery level.",
               "uninstall": "Opening uninstaller for %s.", "grid_tap": "Tapping %s.",
               "missed_call": "Giving a missed call to %s (hanging up after 3 rings).",
-              "mouse_click": "Mouse clicked.", "mouse_scroll": "Mouse scrolled.", "mouse_toggle": "Mouse trackpad toggled."},
+              "mouse_click": "Mouse clicked.", "mouse_scroll": "Mouse scrolled.", "mouse_toggle": "Mouse trackpad toggled.",
+              "wheel_top": "Top wheel opened.", "wheel_bottom": "Down wheel opened.",
+              "wheel_top_close": "Top wheel closed.", "wheel_bottom_close": "Down wheel closed."},
     "ja-JP": {"app": "%sを開きます。", "search": "%sを検索します。", "call": "%sに電話をかけています。",
               "nth": "%d番目を開きます。", "ok": "はい。", "yt": "YouTubeで%sを再生します。",
               "google": "Googleで%sを検索します。", "google_page": "Googleを開きます。",
@@ -1400,7 +1421,9 @@ SAY = {  # spoken confirmation per language
               "skip_ad": "広告をスキップしました。", "cruise_on": "リール自動スクロールを開始しました。",
               "cruise_off": "リール自動スクロールを停止しました。", "fill_form": "フォームを自動入力しています。",
               "fill_otp": "OTPを入力しています。", "battery": "バッテリー残量を確認します。",
-              "uninstall": "%sのアンインストールを開きます。", "grid_tap": "%sをタップしました。"},
+              "uninstall": "%sのアンインストールを開きます。", "grid_tap": "%sをタップしました。",
+              "wheel_top": "上部ホイールを開きました。", "wheel_bottom": "下部ホイールを開きました。",
+              "wheel_top_close": "上部ホイールを閉じました。", "wheel_bottom_close": "下部ホイールを閉じました。"},
     "hi-IN": {"app": "%s खोल रहा हूँ।", "search": "%s खोज रहा हूँ।", "call": "%s को कॉल कर रहा हूँ।",
               "nth": "%d नंबर खोल रहा हूँ।", "ok": "ठीक है।", "yt": "YouTube पर %s चला रहा हूँ।",
               "google": "Google पर %s खोज रहा हूँ।", "google_page": "Google खोल रहा हूँ।",
@@ -1526,6 +1549,10 @@ def local_command(text, lang="en-US"):
             elif kind == "battery": said.append(s.get("battery", "Checking battery level."))
             elif kind.startswith("uninstall:"): said.append(s.get("uninstall", "Opening uninstaller for %s.") % kind[10:])
             elif kind.startswith("grid_tap:"): said.append(s.get("grid_tap", "Tapping %s.") % kind[9:])
+            elif kind == "wheel_top": said.append(s.get("wheel_top", "Top wheel opened."))
+            elif kind == "wheel_bottom": said.append(s.get("wheel_bottom", "Down wheel opened."))
+            elif kind == "wheel_top_close": said.append(s.get("wheel_top_close", "Top wheel closed."))
+            elif kind == "wheel_bottom_close": said.append(s.get("wheel_bottom_close", "Down wheel closed."))
             else: said.append(s["ok"])
         return {"speech": " ".join(said), "actions": actions}
     except Exception as e:
@@ -1552,3 +1579,42 @@ def chat(cfg_json, user_text):
         return json.dumps(_chat_api(cfg, user_text))
     except Exception as e:
         return json.dumps({"ok": True, "speech": _friendly(e, lang), "actions": [], "error": str(e)})
+
+
+def check_local_command(user_text, lang="en-US"):
+    """Returns JSON string if local parser matches, or empty string if None."""
+    try:
+        cmd = local_command(user_text, lang)
+        if cmd:
+            cmd["ok"] = True
+            return json.dumps(cmd)
+    except Exception:
+        pass
+    return ""
+
+
+def decide_ui_action(cfg_json, user_text, snapshot_json):
+    """Smart UI Mode: analyze screen snapshot and return ONE structured JSON action."""
+    try:
+        cfg = json.loads(cfg_json)
+        system = (
+            "You are an Android Smart UI Agent. Given a user request and a JSON snapshot of "
+            "interactive nodes on the current screen, determine the single best NEXT action.\n"
+            "Respond ONLY with a valid JSON object matching one of these formats:\n"
+            '{"action": "click", "node": <nodeId>, "desc": "<short description>"}\n'
+            '{"action": "type", "node": <nodeId>, "text": "<text to enter>", "desc": "<short description>"}\n'
+            '{"action": "scroll", "dir": "down" or "up", "desc": "<short description>"}\n'
+            '{"action": "back", "desc": "Go back"}\n'
+            '{"action": "done", "desc": "Task finished"}\n'
+            "NO explanations. Output ONLY valid JSON."
+        )
+        prompt = "User Goal: %s\n\nInteractive Screen Nodes:\n%s\n\nAction JSON:" % (user_text, snapshot_json)
+        raw = _complete_resilient(cfg, system, [{"role": "user", "content": prompt}])
+        m = re.search(r"\{[\s\S]*?\}", raw or "")
+        if m:
+            act = json.loads(m.group(0))
+            return json.dumps({"ok": True, "action": act})
+        return json.dumps({"ok": False, "error": "No JSON action in LLM output"})
+    except Exception as e:
+        return json.dumps({"ok": False, "error": str(e)})
+

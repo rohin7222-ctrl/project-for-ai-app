@@ -199,10 +199,9 @@ internal fun GeminiLiveWave() {
 internal fun MainActivity.MainScreen() {
     val activity = this
     var showSettingsModal by remember { mutableStateOf(false) }
+    var showChecklistModal by remember { mutableStateOf(false) }
     var input by remember { mutableStateOf("") }
     var showClearDialog by remember { mutableStateOf(false) }
-    var showTopWheel by remember { mutableStateOf(false) }
-    var showBottomWheel by remember { mutableStateOf(false) }
     val ls = rememberLazyListState()
     LaunchedEffect(chat.size) { if (chat.isNotEmpty()) ls.animateScrollToItem(chat.size - 1) }
 
@@ -219,6 +218,10 @@ internal fun MainActivity.MainScreen() {
 
     if (showSettingsModal) {
         SettingsDialog(onDismiss = { showSettingsModal = false })
+    }
+
+    if (showChecklistModal) {
+        SetupChecklistDialog(onDismiss = { showChecklistModal = false })
     }
 
     if (showClearDialog) {
@@ -272,11 +275,11 @@ internal fun MainActivity.MainScreen() {
             onClick = { upd { it.copy(dark = !isDark, darkCustom = true) } }
         ),
         WheelItem(
-            id = "accessibility",
-            label = "Accessibility",
+            id = "setup_checklist",
+            label = tr("setup_checklist"),
             icon = Icons.Default.AdminPanelSettings,
             accentColor = Color(0xFFF97316),
-            onClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+            onClick = { showChecklistModal = true }
         ),
         WheelItem(
             id = "battery_ignore",
@@ -953,6 +956,55 @@ internal fun MainActivity.MainScreen() {
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Visible Voice / Mic Error Banner
+            AnimatedVisibility(
+                visible = voiceErrorMessage != null,
+                enter = fadeIn() + scaleIn(),
+                exit = fadeOut() + scaleOut()
+            ) {
+                voiceErrorMessage?.let { err ->
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isDark) Color(0x33EF4444) else Color(0x22EF4444),
+                        border = BorderStroke(1.2.dp, Color(0xFFEF4444).copy(alpha = 0.6f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.BugReport,
+                                contentDescription = "Voice Error",
+                                modifier = Modifier.size(18.dp),
+                                tint = Color(0xFFEF4444)
+                            )
+                            Text(
+                                text = err,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = if (isDark) Color(0xFFFCA5A5) else Color(0xFFDC2626),
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(
+                                onClick = { voiceErrorMessage = null },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Dismiss",
+                                    modifier = Modifier.size(14.dp),
+                                    tint = if (isDark) Color(0xFFFCA5A5) else Color(0xFFDC2626)
+                                )
                             }
                         }
                     }

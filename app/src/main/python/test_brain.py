@@ -315,6 +315,53 @@ class TestBrainParser(unittest.TestCase):
         r = self._chat("open last file", "en")
         self.assertEqual(r["actions"][0]["type"], "ui_open_last_file")
 
+    # 12. Top Wheel & Down Wheel Commands (User explicit request)
+    def test_wheel_commands(self):
+        # 65: "actice top wheel" (typo in prompt supported)
+        r = self._chat("actice top wheel", "en")
+        self.assertEqual(r["actions"][0]["type"], "wheel_top")
+
+        # 66: "active top wheel"
+        r = self._chat("active top wheel", "en")
+        self.assertEqual(r["actions"][0]["type"], "wheel_top")
+
+        # 67: "top wheel open pannu"
+        r = self._chat("top wheel open pannu", "ta")
+        self.assertEqual(r["actions"][0]["type"], "wheel_top")
+
+        # 68: "active down wheel"
+        r = self._chat("active down wheel", "en")
+        self.assertEqual(r["actions"][0]["type"], "wheel_bottom")
+
+        # 69: "actice down wheel"
+        r = self._chat("actice down wheel", "en")
+        self.assertEqual(r["actions"][0]["type"], "wheel_bottom")
+
+        # 70: "down wheel open pannu"
+        r = self._chat("down wheel open pannu", "ta")
+        self.assertEqual(r["actions"][0]["type"], "wheel_bottom")
+
+        # 71: "actice top wheel to"
+        r = self._chat("actice top wheel to", "en")
+        self.assertEqual(r["actions"][0]["type"], "wheel_top")
+
+        # 72: "top top wheel open aganum"
+        r = self._chat("top top wheel open aganum", "ta")
+        self.assertEqual(r["actions"][0]["type"], "wheel_top")
+
+        # 73: "downwheel open aganum"
+        r = self._chat("downwheel open aganum", "ta")
+        self.assertEqual(r["actions"][0]["type"], "wheel_bottom")
+
+        # 74: "close top wheel"
+        r = self._chat("close top wheel", "en")
+        self.assertEqual(r["actions"][0]["type"], "wheel_top_close")
+
+        # 75: "close down wheel"
+        r = self._chat("close down wheel", "en")
+        self.assertEqual(r["actions"][0]["type"], "wheel_bottom_close")
+
 
 if __name__ == "__main__":
     unittest.main()
+

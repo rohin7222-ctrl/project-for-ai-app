@@ -14,7 +14,7 @@ data class Config(
     val url: String = "",
     val female: Boolean = true,
     val dark: Boolean = false,
-    val commandingWord: String = "Jarvis",
+    val commandingWord: String = "Aero Fenix",
     val commandingStopWord: String = "Stop",
     val autoWakeEnabled: Boolean = true,
     val voiceMatchEnabled: Boolean = false,
@@ -31,7 +31,10 @@ data class Config(
     val mousePadAlpha: Float = 0.92f,        // 0.50f to 1.0f transparency
     val mousePointerSize: Float = 1.0f,      // 0.8f, 1.0f, 1.3f
     val mousePointerColor: String = "white", // "white", "cyan", "green", "black"
-    val mouseHaptics: Boolean = true
+    val mouseHaptics: Boolean = true,
+    val smartUiMode: Boolean = true,         // Smart UI Mode: universal control via Accessibility snapshot + LLM
+    val appLockEnabled: Boolean = false,     // App Lock (PIN / Biometric)
+    val appLockPinHash: String = ""          // SHA-256 hash only, never plaintext
 )
 
 /** All settings (including the API key) live in AES-256 encrypted preferences backed by the Android Keystore. */
@@ -48,7 +51,7 @@ class Store(val ctx: Context) {
         sp.getString("provider", "gemini")!!, sp.getString("key", "")!!, sp.getString("model", "")!!,
         sp.getString("url", "")!!, sp.getBoolean("female", true),
         if (sp.getBoolean("dark_custom", false)) sp.getBoolean("dark", false) else systemDark,
-        sp.getString("commanding_word", "Jarvis")!!,
+        sp.getString("commanding_word", "Aero Fenix")!!,
         sp.getString("commanding_stop_word", "Stop")!!,
         sp.getBoolean("auto_wake", true),
         sp.getBoolean("voice_match", false), sp.getFloat("pitch_mean", 0f),
@@ -63,7 +66,10 @@ class Store(val ctx: Context) {
         sp.getFloat("mouse_pad_alpha", 0.92f),
         sp.getFloat("mouse_pointer_size", 1.0f),
         sp.getString("mouse_pointer_color", "white")!!,
-        sp.getBoolean("mouse_haptics", true)
+        sp.getBoolean("mouse_haptics", true),
+        sp.getBoolean("smart_ui_mode", true),
+        sp.getBoolean("app_lock_enabled", false),
+        sp.getString("app_lock_pin_hash", "")!!
     )
 
     fun save(c: Config) {
@@ -85,7 +91,10 @@ class Store(val ctx: Context) {
             .putFloat("mouse_pad_alpha", c.mousePadAlpha)
             .putFloat("mouse_pointer_size", c.mousePointerSize)
             .putString("mouse_pointer_color", c.mousePointerColor)
-            .putBoolean("mouse_haptics", c.mouseHaptics).apply()
+            .putBoolean("mouse_haptics", c.mouseHaptics)
+            .putBoolean("smart_ui_mode", c.smartUiMode)
+            .putBoolean("app_lock_enabled", c.appLockEnabled)
+            .putString("app_lock_pin_hash", c.appLockPinHash).apply()
     }
 
     fun isReady() = sp.getBoolean("ready", false)

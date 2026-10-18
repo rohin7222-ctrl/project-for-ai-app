@@ -340,32 +340,130 @@ public class AgentAccessibilityService extends AccessibilityService {
     }
 
     public static boolean autoEnable(Context ctx) {
-        if (isEnabled(ctx)) return true;
-        String serviceName = ctx.getPackageName() + "/" + AgentAccessibilityService.class.getName();
-        try {
-            android.content.ContentResolver cr = ctx.getContentResolver();
-            String current = Settings.Secure.getString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-            String updated = (current == null || current.isEmpty()) ? serviceName : (current + ":" + serviceName);
-            Settings.Secure.putString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, updated);
-            Settings.Secure.putInt(cr, Settings.Secure.ACCESSIBILITY_ENABLED, 1);
-            if (isEnabled(ctx)) return true;
-        } catch (Exception ignored) {}
-
-        try {
-            Process p = Runtime.getRuntime().exec("su");
-            OutputStream os = p.getOutputStream();
-            String cmd = "settings put secure enabled_accessibility_services " + serviceName +
-                    " && settings put secure accessibility_enabled 1\nexit\n";
-            os.write(cmd.getBytes(StandardCharsets.UTF_8));
-            os.flush();
-            os.close();
-            p.waitFor();
-            if (p.exitValue() == 0) {
-                return isEnabled(ctx);
-            }
-        } catch (Exception ignored) {}
-
         return isEnabled(ctx);
+    }
+
+    // Concurrent node storage for snapshot-based Universal Control
+    public static final java.util.Map<Integer, AccessibilityNodeInfo> activeSnapshotNodes = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Captures a compact snapshot of all interactive elements currently visible on the screen.
+     * Security: Passwords and sensitive input fields are strictly masked and never sent.
+     */
+    public JSONObject getCompactScreenSnapshot() {
+        JSONObject res = new JSONObject();
+        activeSnapshotNodes.clear();
+        try {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) {
+                res.put("nodes", new JSONArray());
+                res.put("package", "");
+                return res;
+            }
+            res.put("package", root.getPackageName() != null ? root.getPackageName().toString() : "");
+            JSONArray nodesArray = new JSONArray();
+            java.util.concurrent.atomic.AtomicInteger counter = new java.util.concurrent.atomic.AtomicInteger(1);
+            traverseAndCollectNodes(root, nodesArray, counter);
+            res.put("nodes", nodesArray);
+        } catch (Exception e) {
+            try { res.put("error", e.getMessage()); } catch (Exception ignored) {}
+        }
+        return res;
+    }
+
+    private void traverseAndCollectNodes(AccessibilityNodeInfo node, JSONArray array, java.util.concurrent.atomic.AtomicInteger counter) {
+        if (node == null || !node.isVisibleToUser()) return;
+
+        boolean isPwd = node.isPassword();
+        CharSequence textSeq = node.getText();
+        CharSequence descSeq = node.getContentDescription();
+        String text = textSeq != null ? textSeq.toString().trim() : "";
+        String desc = descSeq != null ? descSeq.toString().trim() : "";
+        String viewId = node.getViewIdResourceName() != null ? node.getViewIdResourceName() : "";
+        boolean clickable = node.isClickable();
+        boolean editable = node.isEditable();
+        boolean scrollable = node.isScrollable();
+
+        // Strict Security: NEVER send passwords or fields marked as password
+        if (isPwd) {
+            text = "[PASSWORD MASKED]";
+            desc = "[PASSWORD MASKED]";
+        }
+
+        // Only include interactive or meaningful nodes
+        if (!text.isEmpty() || !desc.isEmpty() || clickable || editable || scrollable) {
+            int id = counter.getAndIncrement();
+            activeSnapshotNodes.put(id, node);
+            try {
+                JSONObject obj = new JSONObject();
+                obj.put("id", id);
+                if (!viewId.isEmpty()) obj.put("viewId", viewId);
+                if (!text.isEmpty()) obj.put("text", text);
+                if (!desc.isEmpty()) obj.put("desc", desc);
+                if (clickable) obj.put("clickable", true);
+                if (editable) obj.put("editable", true);
+                if (scrollable) obj.put("scrollable", true);
+                Rect bounds = new Rect();
+                node.getBoundsInScreen(bounds);
+                obj.put("bounds", "[" + bounds.left + "," + bounds.top + "," + bounds.right + "," + bounds.bottom + "]");
+                array.put(obj);
+            } catch (Exception ignored) {}
+        }
+
+        int childCount = node.getChildCount();
+        for (int i = 0; i < childCount; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                traverseAndCollectNodes(child, array, counter);
+            }
+        }
+    }
+
+    public boolean executeSnapshotAction(JSONObject action) {
+        if (action == null) return false;
+        String act = action.optString("action", "");
+        try {
+            switch (act) {
+                case "click": {
+                    int nodeId = action.optInt("node", -1);
+                    AccessibilityNodeInfo node = activeSnapshotNodes.get(nodeId);
+                    if (node != null) {
+                        return click(node);
+                    }
+                    return false;
+                }
+                case "type": {
+                    int nodeId = action.optInt("node", -1);
+                    String text = action.optString("text", "");
+                    AccessibilityNodeInfo node = activeSnapshotNodes.get(nodeId);
+                    if (node != null) {
+                        Bundle args = new Bundle();
+                        args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
+                        return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
+                    }
+                    return false;
+                }
+                case "scroll": {
+                    String dir = action.optString("dir", "down");
+                    boolean down = !"up".equalsIgnoreCase(dir);
+                    String res = uiScroll(down);
+                    if (!"OK".equals(res)) {
+                        res = uiSwipeReels(down);
+                    }
+                    return "OK".equals(res);
+                }
+                case "back": {
+                    return performGlobalAction(GLOBAL_ACTION_BACK);
+                }
+                case "done": {
+                    return true;
+                }
+                default:
+                    return false;
+            }
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public static boolean perform(int globalAction) {

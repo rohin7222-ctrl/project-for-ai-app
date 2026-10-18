@@ -47,7 +47,7 @@
         android:roundIcon="@drawable/ic_launcher"
         android:label="Aero Fenix"
         android:allowBackup="false"
-        android:usesCleartextTraffic="true"
+        android:usesCleartextTraffic="false"
         android:theme="@style/Theme.App">
 
         <activity

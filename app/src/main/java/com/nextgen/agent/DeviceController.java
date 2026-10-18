@@ -145,31 +145,45 @@ public class DeviceController {
     }
 
     /** Actions that cost money / affect other people / delete data: the UI asks the user to confirm first. */
+    /** Actions that cost money / affect other people / delete data: the UI asks the user to confirm first. */
     public static boolean isSensitive(String type) {
-        return "sms".equals(type) || "end_call".equals(type);
+        return "call".equals(type) || "missed_call".equals(type) || "sms".equals(type) || "end_call".equals(type);
     }
 
     public static boolean isSensitive(JSONObject a) {
         if (a == null) return false;
         String type = a.optString("type", "");
-        if ("sms".equals(type) || "end_call".equals(type)) return true;
+        if ("call".equals(type) || "missed_call".equals(type) || "sms".equals(type) || "end_call".equals(type)) return true;
 
         if ("open_app".equals(type)) {
             String name = a.optString("name", "").toLowerCase(Locale.ROOT);
             if (name.contains("gpay") || name.contains("google pay") || name.contains("phonepe") ||
                 name.contains("paytm") || name.contains("cred") || name.contains("bhim") ||
-                name.contains("பேடிஎம்") || name.contains("கூகுள் பே") || name.contains("போன்பே")) {
+                name.contains("பேடிஎம்") || name.contains("கூகுள் பே") || name.contains("போன்பே") ||
+                name.contains("amazon") || name.contains("flipkart") || name.contains("swiggy") || name.contains("zomato")) {
                 return true;
             }
         }
 
+        // Purchases, payments, deletions, sending messages to new contacts
+        String act = a.optString("action", "").toLowerCase(Locale.ROOT);
+        String text = (a.optString("text", "") + " " + a.optString("query", "") + " " + a.optString("name", "")).toLowerCase(Locale.ROOT);
+        if (text.contains("delete") || text.contains("remove") || text.contains("clear") ||
+            text.contains("wipe") || text.contains("uninstall") || text.contains("நீக்கு") ||
+            text.contains("அழி") || text.contains("pay") || text.contains("purchase") ||
+            text.contains("buy") || text.contains("order") || text.contains("send money") ||
+            text.contains("பணம்") || text.contains("வாங்கு") || text.contains("செலுத்து") ||
+            act.contains("pay") || act.contains("delete")) {
+            return true;
+        }
+
         if (type.startsWith("ui_")) {
             String query = a.optString("query", "").toLowerCase(Locale.ROOT);
-            String text = a.optString("text", "").toLowerCase(Locale.ROOT);
+            String t = a.optString("text", "").toLowerCase(Locale.ROOT);
             String name = a.optString("name", "").toLowerCase(Locale.ROOT);
             if (query.contains("delete") || query.contains("remove") || query.contains("clear") ||
                 query.contains("நீக்கு") || query.contains("அழி") || query.contains("uninstall") ||
-                text.contains("delete") || text.contains("clear") || text.contains("நீக்கு") ||
+                t.contains("delete") || t.contains("clear") || t.contains("நீக்கு") ||
                 name.contains("delete") || name.contains("uninstall")) {
                 return true;
             }
@@ -218,6 +232,7 @@ public class DeviceController {
                 case "wifi": return wifi(a.optBoolean("on", true));
                 case "bluetooth": return bluetooth(a.optBoolean("on", true));
                 case "mobile_data": return mobileData(a.optBoolean("on", true));
+                case "airplane": return airplane(a.optBoolean("on", true));
                 case "brightness": return brightness(a.optString("dir", "up"), a.optInt("value", -1));
                 case "rotation": return rotation(a.optBoolean("on", true));
                 case "dnd": return dnd(a.optBoolean("on", true));
@@ -721,32 +736,50 @@ public class DeviceController {
     }
 
     public String hotspot(boolean on) {
+        if (AgentAccessibilityService.instance == null) {
+            start(new Intent(Settings.ACTION_WIRELESS_SETTINGS));
+            return "NEED_ACCESSIBILITY";
+        }
         try {
             Intent i = new Intent();
             i.setClassName("com.android.settings", "com.android.settings.TetherSettings");
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             ctx.startActivity(i);
-
-            new Thread(() -> {
-                try { Thread.sleep(600); } catch (Exception ignored) {}
-                AgentAccessibilityService s = AgentAccessibilityService.instance;
-                if (s != null) {
-                    s.uiClick("Hotspot");
-                    s.uiClick("Wi‑Fi hotspot");
-                    s.uiClick("ஹாட்ஸ்பாட்");
-                }
-            }).start();
-            return "OK";
         } catch (Exception e) {
             try {
                 Intent tether = new Intent("android.settings.WIFI_TETHER_SETTINGS");
                 tether.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 ctx.startActivity(tether);
-                return "OK";
             } catch (Exception ex) {
-                return start(new Intent(Settings.ACTION_WIRELESS_SETTINGS));
+                start(new Intent(Settings.ACTION_WIRELESS_SETTINGS));
             }
         }
+        SystemClock.sleep(600);
+        AgentAccessibilityService s = AgentAccessibilityService.instance;
+        if (s != null) {
+            s.uiToggleSwitch("Hotspot", on);
+            s.uiToggleSwitch("Wi‑Fi hotspot", on);
+            s.uiToggleSwitch("Portable hotspot", on);
+            s.uiToggleSwitch("ஹாட்ஸ்பாட்", on);
+            s.uiToggleAnySwitch(on);
+        }
+        boolean verified = false;
+        try {
+            WifiManager wm = (WifiManager) ctx.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            java.lang.reflect.Method method = wm.getClass().getDeclaredMethod("isWifiApEnabled");
+            method.setAccessible(true);
+            for (int i = 0; i < 6; i++) {
+                SystemClock.sleep(250);
+                Object apState = method.invoke(wm);
+                if (Boolean.valueOf(on).equals(apState)) {
+                    verified = true;
+                    break;
+                }
+            }
+        } catch (Exception ignored) {
+            verified = true;
+        }
+        return verified ? "OK:hotspot=" + (on ? "on" : "off") : "ERR:Hotspot state unchanged";
     }
 
     public String openUrl(String url) {
@@ -784,102 +817,150 @@ public class DeviceController {
     }
 
     private String wifi(boolean on) {
+        WifiManager wm = (WifiManager) ctx.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        if (wm != null && wm.isWifiEnabled() == on) {
+            return "OK:wifi=" + (on ? "on" : "off");
+        }
+        if (Build.VERSION.SDK_INT < 29 && wm != null) {
+            try {
+                wm.setWifiEnabled(on);
+                return "OK:wifi=" + (on ? "on" : "off");
+            } catch (Exception ignored) {}
+        }
+        if (AgentAccessibilityService.instance == null) {
+            start(new Intent(Settings.ACTION_WIFI_SETTINGS));
+            return "NEED_ACCESSIBILITY";
+        }
         try {
             if (Build.VERSION.SDK_INT >= 29) {
-                // Floating Wi-Fi panel for Android 10+
                 Intent panel = new Intent(Settings.Panel.ACTION_WIFI);
                 panel.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 ctx.startActivity(panel);
-                new Thread(() -> {
-                    try { Thread.sleep(500); } catch (Exception ignored) {}
-                    AgentAccessibilityService s = AgentAccessibilityService.instance;
-                    if (s != null) {
-                        s.uiToggleAnySwitch(on);
-                    }
-                }).start();
-                return "OK";
             } else {
-                WifiManager wm = (WifiManager) ctx.getSystemService(Context.WIFI_SERVICE);
-                if (wm != null) {
-                    wm.setWifiEnabled(on);
-                    return "OK";
-                }
+                start(new Intent(Settings.ACTION_WIFI_SETTINGS));
             }
-        } catch (Exception ignored) {}
-        start(new Intent(Settings.ACTION_WIFI_SETTINGS));
-        new Thread(() -> {
-            try { Thread.sleep(700); } catch (Exception ignored) {}
-            AgentAccessibilityService s = AgentAccessibilityService.instance;
-            if (s != null) {
-                s.uiToggleAnySwitch(on);
+        } catch (Exception ex) {
+            start(new Intent(Settings.ACTION_WIFI_SETTINGS));
+        }
+        SystemClock.sleep(600);
+        AgentAccessibilityService s = AgentAccessibilityService.instance;
+        if (s != null) {
+            s.uiToggleSwitch("Wi-Fi", on);
+            s.uiToggleSwitch("WiFi", on);
+            s.uiToggleSwitch("வை-ஃபை", on);
+            s.uiToggleAnySwitch(on);
+        }
+        boolean verified = false;
+        for (int i = 0; i < 6; i++) {
+            SystemClock.sleep(250);
+            if (wm != null && wm.isWifiEnabled() == on) {
+                verified = true;
+                break;
             }
-        }).start();
-        return "OK";
+        }
+        return verified ? "OK:wifi=" + (on ? "on" : "off") : "ERR:Wi-Fi state unchanged";
     }
 
     private String bluetooth(boolean on) {
-        try {
-            BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
-            if (adapter != null) {
-                if (on) {
-                    if (Build.VERSION.SDK_INT >= 31 && has(Manifest.permission.BLUETOOTH_CONNECT)) {
-                        if (!adapter.isEnabled()) {
-                            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-                            enableBtIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                            ctx.startActivity(enableBtIntent);
-                            new Thread(() -> {
-                                try { Thread.sleep(500); } catch (Exception ignored) {}
-                                AgentAccessibilityService s = AgentAccessibilityService.instance;
-                                if (s != null) {
-                                    s.uiClick("Allow");
-                                    s.uiClick("அனுமதி");
-                                }
-                            }).start();
-                            return "OK";
-                        }
-                        return "OK";
-                    } else if (Build.VERSION.SDK_INT < 33) {
-                        adapter.enable();
-                        return "OK";
-                    }
-                } else {
-                    if (Build.VERSION.SDK_INT < 33) {
-                        adapter.disable();
-                        return "OK";
-                    }
-                }
-            }
-        } catch (Exception ignored) {}
+        BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+        if (adapter == null) return "ERR:no bluetooth";
+        if (adapter.isEnabled() == on) return "OK:bluetooth=" + (on ? "on" : "off");
+
+        if (Build.VERSION.SDK_INT < 33) {
+            try {
+                if (on) adapter.enable(); else adapter.disable();
+                SystemClock.sleep(300);
+                if (adapter.isEnabled() == on) return "OK:bluetooth=" + (on ? "on" : "off");
+            } catch (Exception ignored) {}
+        }
+
+        if (AgentAccessibilityService.instance == null) {
+            start(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));
+            return "NEED_ACCESSIBILITY";
+        }
         start(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));
-        new Thread(() -> {
-            try { Thread.sleep(700); } catch (Exception ignored) {}
-            AgentAccessibilityService s = AgentAccessibilityService.instance;
-            if (s != null) {
-                s.uiToggleAnySwitch(on);
+        SystemClock.sleep(600);
+        AgentAccessibilityService s = AgentAccessibilityService.instance;
+        if (s != null) {
+            s.uiToggleSwitch("Bluetooth", on);
+            s.uiToggleSwitch("புளூடூத்", on);
+            s.uiToggleAnySwitch(on);
+        }
+        boolean verified = false;
+        for (int i = 0; i < 6; i++) {
+            SystemClock.sleep(250);
+            if (adapter.isEnabled() == on) {
+                verified = true;
+                break;
             }
-        }).start();
-        return "OK";
+        }
+        return verified ? "OK:bluetooth=" + (on ? "on" : "off") : "ERR:Bluetooth state unchanged";
     }
 
     private String mobileData(boolean on) {
-        try {
-            Intent intent = new Intent(Settings.ACTION_DATA_ROAMING_SETTINGS);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            ctx.startActivity(intent);
-            new Thread(() -> {
-                try { Thread.sleep(700); } catch (Exception ignored) {}
-                AgentAccessibilityService s = AgentAccessibilityService.instance;
-                if (s != null) {
-                    s.uiToggleSwitch("Mobile data", on);
-                    s.uiToggleSwitch("Mobile Data", on);
-                    s.uiToggleSwitch("மொபைல் டேட்டா", on);
-                    s.uiToggleAnySwitch(on);
-                }
-            }).start();
-            return "OK";
-        } catch (Exception ignored) {
-            return start(new Intent(Settings.ACTION_WIRELESS_SETTINGS));
+        if (AgentAccessibilityService.instance == null) {
+            start(new Intent(Settings.ACTION_DATA_ROAMING_SETTINGS));
+            return "NEED_ACCESSIBILITY";
         }
+        try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                Intent panel = new Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY);
+                panel.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(panel);
+            } else {
+                Intent intent = new Intent(Settings.ACTION_DATA_ROAMING_SETTINGS);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(intent);
+            }
+        } catch (Exception ignored) {
+            start(new Intent(Settings.ACTION_DATA_ROAMING_SETTINGS));
+        }
+        SystemClock.sleep(600);
+        AgentAccessibilityService s = AgentAccessibilityService.instance;
+        if (s != null) {
+            s.uiToggleSwitch("Mobile data", on);
+            s.uiToggleSwitch("Mobile Data", on);
+            s.uiToggleSwitch("மொபைல் டேட்டா", on);
+            s.uiToggleAnySwitch(on);
+        }
+        android.telephony.TelephonyManager tm = (android.telephony.TelephonyManager) ctx.getSystemService(Context.TELEPHONY_SERVICE);
+        boolean verified = false;
+        for (int i = 0; i < 6; i++) {
+            SystemClock.sleep(250);
+            if (tm != null && tm.isDataEnabled() == on) {
+                verified = true;
+                break;
+            }
+        }
+        return verified ? "OK:mobile_data=" + (on ? "on" : "off") : "ERR:Mobile data state unchanged";
+    }
+
+    private String airplane(boolean on) {
+        boolean currentlyOn = Settings.Global.getInt(ctx.getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0) != 0;
+        if (currentlyOn == on) return "OK:airplane=" + (on ? "on" : "off");
+
+        if (AgentAccessibilityService.instance == null) {
+            start(new Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS));
+            return "NEED_ACCESSIBILITY";
+        }
+        start(new Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS));
+        SystemClock.sleep(600);
+        AgentAccessibilityService s = AgentAccessibilityService.instance;
+        if (s != null) {
+            s.uiToggleSwitch("Airplane mode", on);
+            s.uiToggleSwitch("விமானப் பயன்முறை", on);
+            s.uiToggleAnySwitch(on);
+        }
+        boolean verified = false;
+        for (int i = 0; i < 6; i++) {
+            SystemClock.sleep(250);
+            boolean isAir = Settings.Global.getInt(ctx.getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0) != 0;
+            if (isAir == on) {
+                verified = true;
+                break;
+            }
+        }
+        return verified ? "OK:airplane=" + (on ? "on" : "off") : "ERR:Airplane mode state unchanged";
     }
 
     private String brightness(String dir, int val) {

@@ -46,5 +46,28 @@ object Brain {
         Reply(false, error = e.message ?: "error")
     }
 
+    fun checkLocalCommand(lang: String, text: String): Reply? = try {
+        val s = py().callAttr("check_local_command", text, lang).toString()
+        if (s.isNotBlank()) {
+            val j = JSONObject(s)
+            val arr = j.optJSONArray("actions") ?: org.json.JSONArray()
+            val speech = j.optString("speech", "")
+            val content = j.optString("content", speech)
+            Reply(true, speech = speech, content = content, actions = (0 until arr.length()).map { arr.getJSONObject(it) })
+        } else null
+    } catch (e: Exception) {
+        null
+    }
+
+    fun decideUiAction(c: Config, text: String, snapshotJson: String): JSONObject? = try {
+        val cfg = JSONObject().put("lang", c.lang).put("name", c.name).put("type", c.type)
+            .put("provider", c.provider).put("key", c.key).put("model", c.model).put("url", c.url)
+        val s = py().callAttr("decide_ui_action", cfg.toString(), text, snapshotJson).toString()
+        val j = JSONObject(s)
+        if (j.optBoolean("ok")) j.optJSONObject("action") else null
+    } catch (e: Exception) {
+        null
+    }
+
     fun reset() { runCatching { py().callAttr("reset") } }
 }

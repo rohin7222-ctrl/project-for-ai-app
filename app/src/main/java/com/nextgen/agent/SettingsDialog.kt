@@ -51,6 +51,20 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
     var inputWord by remember { mutableStateOf("") }
     var inputCmd by remember { mutableStateOf("") }
     var shortcutList by remember { mutableStateOf(shortcutManager.getShortcuts()) }
+    var showChecklistModal by remember { mutableStateOf(false) }
+    var showAppLockModal by remember { mutableStateOf(false) }
+    var appLockPinMode by remember { mutableStateOf(PinMode.SET_NEW) }
+
+    if (showChecklistModal) {
+        activity.SetupChecklistDialog(onDismiss = { showChecklistModal = false })
+    }
+    if (showAppLockModal) {
+        activity.AppLockDialog(
+            mode = appLockPinMode,
+            onSuccess = {},
+            onDismiss = { showAppLockModal = false }
+        )
+    }
 
     Dialog(
         onDismissRequest = { if (!isTraining) onDismiss() },
@@ -794,6 +808,44 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                                 }
                             }
 
+                            // Full Permissions & Readiness Checklist (Task 5)
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = Indigo.copy(alpha = 0.08f),
+                                border = BorderStroke(1.dp, Indigo.copy(alpha = 0.35f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(Icons.Default.AdminPanelSettings, null, tint = Indigo, modifier = Modifier.size(18.dp))
+                                        Text(
+                                            text = tr("setup_checklist"),
+                                            fontSize = 14.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    Text(
+                                        text = tr("setup_checklist_sub"),
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                                    )
+                                    Button(
+                                        onClick = { showChecklistModal = true },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Indigo),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Default.CheckCircle, null, Modifier.size(16.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(tr("setup_checklist"), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    }
+                                }
+                            }
+
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(
                                     onClick = {
@@ -958,6 +1010,120 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                                             enabled = cfg.voiceEnrolled,
                                             onCheckedChange = { checked ->
                                                 upd { it.copy(voiceMatchEnabled = checked) }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            // App Lock (PIN / Biometric) Card (Task 4)
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(Icons.Default.Lock, null, tint = Indigo, modifier = Modifier.size(18.dp))
+                                        Text(
+                                            text = tr("app_lock"),
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    Text(
+                                        text = tr("app_lock_sub"),
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                text = if (cfg.appLockPinHash.isNotEmpty()) "PIN Configured (SHA-256 Secured)" else "No PIN Configured",
+                                                fontSize = 12.5.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = if (cfg.appLockPinHash.isNotEmpty()) Color(0xFF10B981) else Amber
+                                            )
+                                        }
+                                        Switch(
+                                            checked = cfg.appLockEnabled,
+                                            onCheckedChange = { checked ->
+                                                if (checked && cfg.appLockPinHash.isEmpty()) {
+                                                    appLockPinMode = PinMode.SET_NEW
+                                                    showAppLockModal = true
+                                                } else {
+                                                    upd { it.copy(appLockEnabled = checked) }
+                                                }
+                                            }
+                                        )
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            appLockPinMode = PinMode.SET_NEW
+                                            showAppLockModal = true
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Default.Lock, null, Modifier.size(16.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(if (cfg.appLockPinHash.isNotEmpty()) "Change PIN" else tr("set_pin"), fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                                    }
+                                }
+                            }
+
+                            // Smart UI Mode Card (Task 3)
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(Icons.Default.Tune, null, tint = Cyan, modifier = Modifier.size(18.dp))
+                                        Text(
+                                            text = tr("smart_ui_mode"),
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    Text(
+                                        text = tr("smart_ui_mode_sub"),
+                                        fontSize = 12.sp,
+                                        lineHeight = 16.sp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = if (cfg.smartUiMode) "Active (Smart Snapshot + LLM Enabled)" else "Disabled (Local Rules Only)",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = if (cfg.smartUiMode) Color(0xFF10B981) else Color.Gray
+                                        )
+                                        Switch(
+                                            checked = cfg.smartUiMode,
+                                            onCheckedChange = { checked ->
+                                                upd { it.copy(smartUiMode = checked) }
                                             }
                                         )
                                     }

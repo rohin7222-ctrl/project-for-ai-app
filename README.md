@@ -2,41 +2,62 @@
   <img src="logo.png" alt="Aero Fenix logo" width="220">
 </p>
 
-# Aero Fenix (Kotlin + Java + Python)
+# Aero Fenix (Universal Phone Controller & Agent)
 
-## Key Features
-- **Universal Hands-Free OS & App Controller**: Control 100% of apps hands-free via voice or text.
-  - Multi-step chained actions: e.g. *"Zomato open panni biryani thedu"*, *"Instagram open panni reels cruise on"*.
-  - **Auto Skip-Ad Engine**: Automatically skips video advertisements in real time.
-  - **Auto-Reels Cruise Control**: Automatically scrolls through Instagram Reels & YouTube Shorts hands-free.
-  - **Form Auto-Fill & OTP Auto-Grabber**: Automatically fills forms and detects/enters OTPs from incoming notifications.
-  - **Voice Precision Grid**: Tap any section of the screen by voice (e.g., *"tap center"*, *"tap top right"*).
-  - **Dynamic App Resolution**: Launches and interacts with any installed or newly downloaded application dynamically without hardcoded limits.
-- **Futuristic Cyberpunk / Sci-Fi HUD Interface**:
-  - Dual Corner Helm Wheels (Top-Right Settings & Bottom-Right Quick Actions) with physical momentum spin.
-  - Quantum Arc Reactor hero visualizer with 3 concentric rotating holographic rings and orbiting quantum satellites.
-  - Real-time laser sweep radar beam and isometric cyber grid matrix.
-  - Obsidian terminal-styled AI code blocks with one-tap copy and speech equalizer waves.
-- **24/7 False-Positive-Free Ear-To-Call**:
-  - Proximity & Accelerometer Sensor Fusion validates 45°+ upright vertical ear tilt before answering, preventing accidental pocket/table answers.
-- **Multi-Wake Word & Biometrics**:
-  - Wakes up to *"Aero Fenix"*, *"Hey Fenix"*, *"Fenix"*, *"Jarvis"*, or your custom wake word with 10s voice biometric lock.
-- **Advanced Multi-Model AI Brain**:
-  - Supports Google Gemini 2.5, Claude 3.7 Sonnet, GPT-4.1, DeepSeek V3/R1, Groq, Mistral, and local Ollama LLMs with sliding-window context compression.
+Aero Fenix is an ultra-capable, universal voice & touch Android operating system controller and autonomous assistant. Built using Jetpack Compose, high-performance Java device automation, and on-device Python (via Chaquopy).
 
-- Kotlin  : UI (Jetpack Compose), voice loop, security, bridge  -> MainActivity.kt, Voice.kt, Store.kt, Strings.kt, Brain.kt, MainScreen.kt, AiAnswerCard.kt
-- Java    : phone control (calls, contacts, SMS, apps, alarm, torch, volume, system buttons, accessibility automation) -> DeviceController.java, AgentAccessibilityService.java
-- Python  : AI brain & NLP action parser -> app/src/main/python/brain.py
+## 🚀 Key Features
 
-## Build
-1. Install Android Studio (Koala or newer), JDK 17, and Python 3.11 on the PC (Chaquopy needs it at build time).
-2. File > Open > AeroFenix folder > let Gradle sync (Gradle 8.9).
-3. Run on a REAL phone (Android 11+). Emulator has no good speech engine.
-4. First Start tap: allow Mic, Phone, Contacts, SMS permissions.
-5. Gear menu > "Enable system control" > turn on Aero Fenix in Accessibility (Home/Back/Recents/lock/screenshot).
-6. Say: "Amma ku call pannu", "WhatsApp open pannu", "7 mani ku alarm vei", "torch on pannu".
+### 1. Universal Hands-Free Device & App Control
+- **100% On-Device Local Command Parser**: Phone commands run locally with 0 API calls or external latency in `brain.py`.
+- **Smart UI Mode**: When a screen requires universal UI navigation, takes a compact accessibility snapshot and executes structured UI steps (`click`, `type`, `scroll`, `back`, `done`).
+- **Autonomous 3-Ring Missed Call**: Place a missed call to any contact or phone number; automatically cuts the call exactly after 3 rings.
+- **Auto Skip-Ad Engine**: Automatically skips video advertisements across supported video players.
+- **Auto-Reels Cruise Control**: Hands-free continuous vertical scrolling for Reels & Shorts.
+- **Form Auto-Fill & OTP Auto-Grabber**: Detects OTPs from notifications and auto-enters verification codes.
 
-## APK without a PC (GitHub Actions)
-1. Push to your GitHub repo (all workflow files in `.github` are ready).
-2. Actions tab > "Build APK" runs automatically on push.
-3. When green, open the run > Artifacts > AeroFenix-apk > download > unzip > install `app-debug.apk`.
+### 2. Precision Virtual Mouse & Trackpad HUD
+- **Dedicated Trackpad HUD**: Complete precision touch surface with customizable scale, alpha, and haptic feedback.
+- **4-Way Directional D-Pad**: Instant Up, Down, Left, and Right smooth scrolling.
+- **AI Magnetic Snapping**: Pointer dynamically pulls towards interactive screen elements for effortless clicking.
+
+### 3. Fortified Security & Privacy
+- **Cleartext HTTP Blocked**: Strict TLS enforcement (`usesCleartextTraffic="false"`).
+- **App Lock (PIN / Biometric)**: SHA-256 hashed PIN challenge with 5-attempt rate-limiting and 30-second lockout.
+- **Sensitive Action Guard**: Prompts user confirmation before executing financial transactions, file deletions, or unauthorized calls.
+- **Strict Voice Match**: Fail-closed voice biometric matching.
+- **Safe Self-Uninstall**: Protected safety command triggered only on whole-utterance match.
+
+### 4. Setup Readiness & Accessibility Checklist
+- **System Setup Checklist**: Live status indicators for Accessibility, Overlay, Notification Listener, Battery Optimization, Mic, Contacts, Phone, SMS, and Bluetooth.
+- **Android 13+ Restricted Settings Guide**: Visual walkthrough for granting accessibility on newer Android OS versions.
+
+### 5. Multi-Wake Word & Resilient Audio Engine
+- **Wake Words**: Responds to *"Aero Fenix"*, *"Hey Fenix"*, *"Fenix"*, *"Jarvis"*, or your custom wake phrase.
+- **Audio Protection**: Automatic audio volume restoration ensures notification sounds and beeps are never left muted.
+
+---
+
+## 🛠️ Architecture & Tech Stack
+
+- **Kotlin (Jetpack Compose UI)**: `MainActivity.kt`, `MainScreen.kt`, `SettingsDialog.kt`, `SetupChecklistDialog.kt`, `AppLockDialog.kt`, `Voice.kt`, `Brain.kt`, `Store.kt`.
+- **Java (System Automation & Accessibility)**: `DeviceController.java`, `AgentAccessibilityService.java`, `MissedCallManager.kt`, `EarToCallManager.kt`.
+- **Python via Chaquopy**: `brain.py` (NLP parser, offline intent matching, LLM cloud connector for chat).
+
+---
+
+## 🧪 Testing & Verification
+
+1. **Python NLP Parser Tests**:
+   ```bash
+   python app/src/main/python/test_brain.py
+   ```
+   *Runs 64 automated command sentence assertions across English, Tanglish, and Tamil.*
+
+2. **Gradle Build Verification**:
+   ```bash
+   ./gradlew assembleDebug
+   ```
+
+3. **GitHub Actions CI**:
+   - Push to `main` branch automatically triggers `.github/workflows/build.yml` to produce `app-debug.apk`.

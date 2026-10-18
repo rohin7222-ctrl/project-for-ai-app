@@ -164,6 +164,7 @@ class MouseButtonManager private constructor(private val appContext: Context) {
         }
     }
 
+    @JvmOverloads
     fun setBallEnabled(enabled: Boolean, context: Context? = null) {
         isBallEnabled = enabled
         if (enabled) {
@@ -766,6 +767,7 @@ class MouseButtonManager private constructor(private val appContext: Context) {
         @Volatile
         private var instance: MouseButtonManager? = null
 
+        @JvmStatic
         fun getInstance(context: Context): MouseButtonManager {
             return instance ?: synchronized(this) {
                 instance ?: MouseButtonManager(context.applicationContext).also { instance = it }
