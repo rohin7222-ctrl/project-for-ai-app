@@ -635,15 +635,16 @@ class Voice(
     fun isEmergencyVoiceCommand(phrase: String): Boolean {
         val l = phrase.lowercase(Locale.ROOT).trim()
         val stripped = l.replace(" ", "")
-        return l.contains("code dark shadow") ||
-               l.contains("dark shadow") ||
-               stripped.contains("codedarkshadow") ||
-               stripped.contains("darkshadow") ||
-               l.contains("டார்க் ஷேடோ") ||
-               l.contains("டார்க் ஷாடோ") ||
-               l.contains("கோட் டார்க்") ||
-               l.contains("ダークシャドウ") ||
-               l.contains("コードダークシャドウ")
+        return l == "code dark shadow" ||
+               stripped == "codedarkshadow" ||
+               l == "dark shadow" ||
+               stripped == "darkshadow" ||
+               l == "டார்க் ஷேடோ" ||
+               l == "டார்க் ஷாடோ" ||
+               l == "கோட் டார்க்" ||
+               l == "கோட் டார்க் ஷேடோ" ||
+               l == "ダークシャドウ" ||
+               l == "コードダークシャドウ"
     }
 
     /** Active continuous listening loop */

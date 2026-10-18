@@ -641,7 +641,7 @@ def _app_name(raw):
     if re.search(r"\b(app|application|ஆப்|செயலி|アプリ)\b", t):
         return t_clean.title() if t_clean else None
     # If it is an in-app UI element or status, do NOT treat it as an app name
-    if t in UI_ELEMENT_WORDS or t_clean in UI_ELEMENT_WORDS or "status" in t or "ஸ்டேட்டஸ்" in t:
+    if (t in UI_ELEMENT_WORDS or t_clean in UI_ELEMENT_WORDS or "status" in t or "ஸ்டேட்டஸ்" in t) and t_clean not in ("settings", "செட்டிங்ஸ்"):
         return None
     return raw.strip().title() if t else None
 
@@ -718,7 +718,7 @@ def _parse_one(p, last_app):
     if any(k in t for k in ("lock phone", "lock screen", "lock", "லாக் பண்ணு", "போன் லாக்", "திரை பூட்டு")):
         return [{"type": "system", "name": "lock", "desc": "Lock Screen"}], "ok"
 
-    if any(k in t for k in ("notifications", "notification", "நோட்டிபிகேஷன்", "அறிவிப்புகள்")):
+    if not any(r in t for r in ("read", "படி")) and any(k in t for k in ("notifications", "notification", "நோட்டிபிகேஷன்", "அறிவிப்புகள்")):
         return [{"type": "system", "name": "notifications", "desc": "Notifications"}], "ok"
 
     if "quick settings" in t:
@@ -911,12 +911,22 @@ def _parse_one(p, last_app):
     m_chat = re.match(r"^(?:open\s+)?(?:chat\s+(?:with\s+)?(?P<t1>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)\s+(?:in|on)\s+(?P<app1>whatsapp|instagram|insta|telegram))", t) or \
              re.match(r"^(?:open\s+)?(?P<app2>whatsapp|instagram|insta|telegram)\s+(?:la|le|ல|இல்|-la)?\s*(?:chat\s+(?:with\s+)?)?(?P<t2>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)\s*(?:chat|சாட்)?\s*(?:open|thira|திற|போடு|vai)?$", t)
     if m_chat:
-        a_name = m_chat.group("app1") or m_chat.group("app2")
-        t_name = m_chat.group("t1") or m_chat.group("t2")
+        gd = m_chat.groupdict()
+        a_name = gd.get("app1") or gd.get("app2")
+        t_name = gd.get("t1") or gd.get("t2")
         if a_name and t_name:
             t_name = t_name.strip()
-            if t_name not in ("open", "thira", "app", "chat", "la"):
-                return [{"type": "chat", "app": a_name, "target": t_name, "desc": f"Chat with {t_name}"}], "chat"
+            # If the captured target contains search words (search, thedu, first, second, third, last, Tamil: தேடு, முதல், இரண்டாவது),
+            # do not treat it as a chat name; let the search / open-Nth logic handle it.
+            search_words = (
+                "search", "thedu", "theduga", "thedunga", "find", "தேடு", "தேடுங்க",
+                "first", "second", "third", "last", "latest", "kadasi", "kadaisi",
+                "முதல்", "முதலில்", "இரண்டாவது", "மூன்றாவது", "கடைசி", "கடைசியாக"
+            )
+            has_search_or_ord = any(sw in t_name.lower().split() or sw in t_name.lower() for sw in search_words)
+            if not has_search_or_ord and t_name not in ("open", "thira", "app", "chat", "la", "போடு", "சாட்"):
+                app_formatted = _app_name(a_name) or a_name.title()
+                return [{"type": "chat", "app": app_formatted, "target": t_name, "desc": f"Chat with {t_name}"}], "chat"
 
     # --- Music across Spotify, JioSaavn, Wynk, Gaana, YouTube Music
     m_music = re.match(r"^(?:play|போடு|பாடல் போடு|பாட்டு போடு)\s+(?P<q>.+?)\s+(?:in|on)\s+(?P<a>spotify|jiosaavn|wynk|gaana|youtube\s*music|yt\s*music)$", t) or \
@@ -1278,7 +1288,9 @@ def _parse_one(p, last_app):
         target_lower = target_raw.lower()
 
         # If it is clearly an in-app UI element or status, click it on screen
-        if target_lower in UI_ELEMENT_WORDS or any(w in target_lower for w in ("status", "ஸ்டேட்டஸ்", "tab", "profile", "reels", "chat")):
+        # When last_app is None, known apps (e.g. camera, settings, whatsapp) should be opened as apps
+        is_known_app = any(target_lower == k or target_lower.startswith(k + " ") or target_lower.endswith(" " + k) for k in APPS)
+        if (last_app or not is_known_app) and (target_lower in UI_ELEMENT_WORDS or any(w in target_lower for w in ("status", "ஸ்டேட்டஸ்", "tab", "profile", "reels", "chat"))):
             cap_q = "My status" if ("my status" in target_lower or "மை" in target_lower) else target_raw
             return [{"type": "ui_smart_click", "query": cap_q, "desc": f"Click '{cap_q}'"}], "ok"
 
@@ -1436,85 +1448,88 @@ SAY = {  # spoken confirmation per language
 
 def local_command(text, lang="en-US"):
     """Returns {"speech","actions"} if EVERY clause is a phone command, else None (-> normal chat)."""
-    clauses = [c for c in SPLIT.split(text.strip()) if c and c.strip()]
-    if not clauses:
-        return None
-    actions, said, last_app = [], [], None
-    for c in clauses:
-        r = _parse_one(c, last_app)
-        if r is None:
+    try:
+        clauses = [c for c in SPLIT.split(text.strip()) if c and c.strip()]
+        if not clauses:
             return None
-        acts, kind = r
-        for a in acts:
-            if a["type"] == "open_app":
-                last_app = a["name"]
-        actions.extend(acts)
-        s = SAY.get(lang, SAY["en-US"])
-        if kind.startswith("app:"): said.append(s["app"] % kind[4:])
-        elif kind == "call": said.append(s["call"] % acts[0]["target"])
-        elif kind == "missed_call": said.append(s.get("missed_call", "Giving a missed call to %s (3 rings).") % acts[0]["target"])
-        elif kind == "mouse_click": said.append(s.get("mouse_click", "Clicked."))
-        elif kind == "mouse_scroll": said.append(s.get("mouse_scroll", "Scrolled."))
-        elif kind == "mouse_toggle": said.append(s.get("mouse_toggle", "Mouse trackpad toggled."))
-        elif kind == "nth": said.append(s["nth"] % acts[-1]["n"])
-        elif kind.startswith("yt:"): said.append(s.get("yt", "Opening %s on YouTube.") % kind[3:])
-        elif kind.startswith("google:"): said.append(s.get("google", "Searching %s on Google.") % kind[7:])
-        elif kind == "google_page": said.append(s.get("google_page", "Opening Google."))
-        elif kind == "last_file": said.append(s.get("last_file", "Opening the last received file."))
-        elif kind.startswith("search:") and acts[0]["type"] == "youtube": said.append(s["yt"] % acts[0]["query"])
-        elif kind.startswith("search:"): said.append(s["search"] % acts[-1]["query"])
-        elif kind.startswith("type:"): said.append(s.get("type", "Typed '%s'.") % kind[5:])
-        elif kind == "erased": said.append(s.get("erased", "Message erased."))
-        elif kind == "sent": said.append(s.get("sent", "Message sent."))
-        elif kind == "torch_on": said.append(s["torch_on"])
-        elif kind == "torch_off": said.append(s["torch_off"])
-        elif kind == "wifi_on": said.append(s["wifi_on"])
-        elif kind == "wifi_off": said.append(s["wifi_off"])
-        elif kind == "bt_on": said.append(s["bt_on"])
-        elif kind == "bt_off": said.append(s["bt_off"])
-        elif kind == "hotspot_on": said.append(s.get("hotspot_on", "Hotspot opened."))
-        elif kind == "hotspot_off": said.append(s.get("hotspot_off", "Hotspot turned off."))
-        elif kind == "chat": said.append(s.get("chat", "Opening chat."))
-        elif kind == "screenshot": said.append(s["screenshot"])
-        elif kind == "media": said.append(s["media"])
-        elif kind == "clipboard": said.append(s["clipboard"])
-        elif kind == "reels_next": said.append(s.get("reels_next", "Next reel."))
-        elif kind == "reels_prev": said.append(s.get("reels_prev", "Previous reel."))
-        elif kind == "like": said.append(s.get("like", "Liked."))
-        elif kind == "share": said.append(s.get("share", "Share opened."))
-        elif kind == "subscribe": said.append(s.get("subscribe", "Subscribed."))
-        elif kind == "comment": said.append(s.get("comment", "Comments opened."))
-        elif kind == "cart": said.append(s.get("cart", "Added to cart."))
-        elif kind == "read_screen": said.append(s.get("read_screen", "Reading screen."))
-        elif kind.startswith("send_to:"): said.append(s.get("send_to", "Sending message to %s.") % kind[8:])
-        elif kind.startswith("music:"): said.append(s.get("music", "Playing %s.") % kind[6:])
-        elif kind == "stop": said.append(s.get("stop", "OK"))
-        elif kind == "swipe_left": said.append(s.get("swipe_left", "Swiping left."))
-        elif kind == "swipe_right": said.append(s.get("swipe_right", "Swiping right."))
-        elif kind == "swipe_up": said.append(s.get("swipe_up", "Swiping up."))
-        elif kind == "swipe_down": said.append(s.get("swipe_down", "Swiping down."))
-        elif kind == "menu": said.append(s.get("menu", "Menu opened."))
-        elif kind == "dialog_allow": said.append(s.get("dialog_allow", "Allowed."))
-        elif kind == "dialog_deny": said.append(s.get("dialog_deny", "Denied."))
-        elif kind.startswith("tab:"): said.append(s.get("tab", "Opening %s tab.") % kind[4:])
-        elif kind.startswith("toggle_on:"): said.append(s.get("toggle_on", "Turned on %s.") % kind[10:])
-        elif kind.startswith("toggle_off:"): said.append(s.get("toggle_off", "Turned off %s.") % kind[11:])
-        elif kind.startswith("feature:"): said.append(s.get("feature", "Executing %s.") % kind[8:])
-        elif kind == "read_notifications": said.append(s.get("read_notifications", "Reading notifications."))
-        elif kind == "read_sms": said.append(s.get("read_sms", "Reading SMS."))
-        elif kind == "take_photo": said.append(s.get("take_photo", "Taking photo."))
-        elif kind == "data_on": said.append(s.get("data_on", "Turning on data."))
-        elif kind == "data_off": said.append(s.get("data_off", "Turning off data."))
-        elif kind == "skip_ad": said.append(s.get("skip_ad", "Skipping ad."))
-        elif kind == "cruise_on": said.append(s.get("cruise_on", "Reels auto-cruise enabled."))
-        elif kind == "cruise_off": said.append(s.get("cruise_off", "Reels auto-cruise disabled."))
-        elif kind == "fill_form": said.append(s.get("fill_form", "Auto-filling form."))
-        elif kind == "fill_otp": said.append(s.get("fill_otp", "Reading and entering OTP."))
-        elif kind == "battery": said.append(s.get("battery", "Checking battery level."))
-        elif kind.startswith("uninstall:"): said.append(s.get("uninstall", "Opening uninstaller for %s.") % kind[10:])
-        elif kind.startswith("grid_tap:"): said.append(s.get("grid_tap", "Tapping %s.") % kind[9:])
-        else: said.append(s["ok"])
-    return {"speech": " ".join(said), "actions": actions}
+        actions, said, last_app = [], [], None
+        for c in clauses:
+            r = _parse_one(c, last_app)
+            if r is None:
+                return None
+            acts, kind = r
+            for a in acts:
+                if a["type"] == "open_app":
+                    last_app = a["name"]
+            actions.extend(acts)
+            s = SAY.get(lang, SAY["en-US"])
+            if kind.startswith("app:"): said.append(s["app"] % kind[4:])
+            elif kind == "call": said.append(s["call"] % acts[0]["target"])
+            elif kind == "missed_call": said.append(s.get("missed_call", "Giving a missed call to %s (3 rings).") % acts[0]["target"])
+            elif kind == "mouse_click": said.append(s.get("mouse_click", "Clicked."))
+            elif kind == "mouse_scroll": said.append(s.get("mouse_scroll", "Scrolled."))
+            elif kind == "mouse_toggle": said.append(s.get("mouse_toggle", "Mouse trackpad toggled."))
+            elif kind == "nth": said.append(s["nth"] % acts[-1]["n"])
+            elif kind.startswith("yt:"): said.append(s.get("yt", "Opening %s on YouTube.") % kind[3:])
+            elif kind.startswith("google:"): said.append(s.get("google", "Searching %s on Google.") % kind[7:])
+            elif kind == "google_page": said.append(s.get("google_page", "Opening Google."))
+            elif kind == "last_file": said.append(s.get("last_file", "Opening the last received file."))
+            elif kind.startswith("search:") and acts[0]["type"] == "youtube": said.append(s["yt"] % acts[0]["query"])
+            elif kind.startswith("search:"): said.append(s["search"] % acts[-1]["query"])
+            elif kind.startswith("type:"): said.append(s.get("type", "Typed '%s'.") % kind[5:])
+            elif kind == "erased": said.append(s.get("erased", "Message erased."))
+            elif kind == "sent": said.append(s.get("sent", "Message sent."))
+            elif kind == "torch_on": said.append(s["torch_on"])
+            elif kind == "torch_off": said.append(s["torch_off"])
+            elif kind == "wifi_on": said.append(s["wifi_on"])
+            elif kind == "wifi_off": said.append(s["wifi_off"])
+            elif kind == "bt_on": said.append(s["bt_on"])
+            elif kind == "bt_off": said.append(s["bt_off"])
+            elif kind == "hotspot_on": said.append(s.get("hotspot_on", "Hotspot opened."))
+            elif kind == "hotspot_off": said.append(s.get("hotspot_off", "Hotspot turned off."))
+            elif kind == "chat": said.append(s.get("chat", "Opening chat."))
+            elif kind == "screenshot": said.append(s["screenshot"])
+            elif kind == "media": said.append(s["media"])
+            elif kind == "clipboard": said.append(s["clipboard"])
+            elif kind == "reels_next": said.append(s.get("reels_next", "Next reel."))
+            elif kind == "reels_prev": said.append(s.get("reels_prev", "Previous reel."))
+            elif kind == "like": said.append(s.get("like", "Liked."))
+            elif kind == "share": said.append(s.get("share", "Share opened."))
+            elif kind == "subscribe": said.append(s.get("subscribe", "Subscribed."))
+            elif kind == "comment": said.append(s.get("comment", "Comments opened."))
+            elif kind == "cart": said.append(s.get("cart", "Added to cart."))
+            elif kind == "read_screen": said.append(s.get("read_screen", "Reading screen."))
+            elif kind.startswith("send_to:"): said.append(s.get("send_to", "Sending message to %s.") % kind[8:])
+            elif kind.startswith("music:"): said.append(s.get("music", "Playing %s.") % kind[6:])
+            elif kind == "stop": said.append(s.get("stop", "OK"))
+            elif kind == "swipe_left": said.append(s.get("swipe_left", "Swiping left."))
+            elif kind == "swipe_right": said.append(s.get("swipe_right", "Swiping right."))
+            elif kind == "swipe_up": said.append(s.get("swipe_up", "Swiping up."))
+            elif kind == "swipe_down": said.append(s.get("swipe_down", "Swiping down."))
+            elif kind == "menu": said.append(s.get("menu", "Menu opened."))
+            elif kind == "dialog_allow": said.append(s.get("dialog_allow", "Allowed."))
+            elif kind == "dialog_deny": said.append(s.get("dialog_deny", "Denied."))
+            elif kind.startswith("tab:"): said.append(s.get("tab", "Opening %s tab.") % kind[4:])
+            elif kind.startswith("toggle_on:"): said.append(s.get("toggle_on", "Turned on %s.") % kind[10:])
+            elif kind.startswith("toggle_off:"): said.append(s.get("toggle_off", "Turned off %s.") % kind[11:])
+            elif kind.startswith("feature:"): said.append(s.get("feature", "Executing %s.") % kind[8:])
+            elif kind == "read_notifications": said.append(s.get("read_notifications", "Reading notifications."))
+            elif kind == "read_sms": said.append(s.get("read_sms", "Reading SMS."))
+            elif kind == "take_photo": said.append(s.get("take_photo", "Taking photo."))
+            elif kind == "data_on": said.append(s.get("data_on", "Turning on data."))
+            elif kind == "data_off": said.append(s.get("data_off", "Turning off data."))
+            elif kind == "skip_ad": said.append(s.get("skip_ad", "Skipping ad."))
+            elif kind == "cruise_on": said.append(s.get("cruise_on", "Reels auto-cruise enabled."))
+            elif kind == "cruise_off": said.append(s.get("cruise_off", "Reels auto-cruise disabled."))
+            elif kind == "fill_form": said.append(s.get("fill_form", "Auto-filling form."))
+            elif kind == "fill_otp": said.append(s.get("fill_otp", "Reading and entering OTP."))
+            elif kind == "battery": said.append(s.get("battery", "Checking battery level."))
+            elif kind.startswith("uninstall:"): said.append(s.get("uninstall", "Opening uninstaller for %s.") % kind[10:])
+            elif kind.startswith("grid_tap:"): said.append(s.get("grid_tap", "Tapping %s.") % kind[9:])
+            else: said.append(s["ok"])
+        return {"speech": " ".join(said), "actions": actions}
+    except Exception as e:
+        return {"speech": _friendly(e, lang), "actions": [], "error": str(e)}
 
 
 # ======================================================================

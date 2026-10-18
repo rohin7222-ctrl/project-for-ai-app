@@ -55,18 +55,16 @@ class ShortcutManager(private val ctx: Context) {
         val norm = normalize(spoken)
         val stripped = stripSpaces(spoken)
         return norm == EMERGENCY_COMMAND ||
-               norm.contains(EMERGENCY_COMMAND) ||
+               norm == "codedarkshadow" ||
                stripped == "codedarkshadow" ||
-               stripped.contains("codedarkshadow") ||
                norm == "dark shadow" ||
-               norm.contains("dark shadow") ||
                stripped == "darkshadow" ||
-               stripped.contains("darkshadow") ||
-               norm.contains("டார்க் ஷேடோ") ||
-               norm.contains("டார்க் ஷாடோ") ||
-               norm.contains("கோட் டார்க்") ||
-               norm.contains("ダークシャドウ") ||
-               norm.contains("コードダークシャドウ")
+               norm == "டார்க் ஷேடோ" ||
+               norm == "டார்க் ஷாடோ" ||
+               norm == "கோட் டார்க்" ||
+               norm == "கோட் டார்க் ஷேடோ" ||
+               norm == "ダークシャドウ" ||
+               norm == "コードダークシャドウ"
     }
 
     /**
