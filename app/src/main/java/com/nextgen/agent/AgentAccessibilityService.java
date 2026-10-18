@@ -1892,7 +1892,43 @@ public class AgentAccessibilityService extends AccessibilityService {
         return false;
     }
 
-    private boolean clickPlayPause(AccessibilityNodeInfo root) {
+    public boolean clickTrackOrPlay(String query) {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return false;
+
+        String[] playIds = {
+            "com.spotify.music:id/play_button",
+            "com.spotify.music:id/button_play_pause",
+            "com.spotify.music:id/play_pause_button",
+            "com.spotify.music:id/primary_button",
+            "com.spotify.music:id/track_row",
+            "com.spotify.music:id/row_view",
+            "com.spotify.music:id/title_text"
+        };
+        for (String id : playIds) {
+            List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByViewId(id);
+            if (hits != null && !hits.isEmpty()) {
+                for (AccessibilityNodeInfo h : hits) {
+                    if (h != null && h.isVisibleToUser() && click(h)) return true;
+                }
+            }
+        }
+
+        String qClean = (query == null) ? "" : query.toLowerCase().trim();
+        for (AccessibilityNodeInfo n : all(root)) {
+            if (n == null || !n.isVisibleToUser()) continue;
+            String l = label(n).toLowerCase();
+            if (!qClean.isEmpty() && l.contains(qClean) && (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                return click(n);
+            }
+            if ((l.equals("play") || l.contains("play song") || l.contains("பாடலை இயக்கு")) && (n.isClickable() || clickableSelfOrParent(n) != null)) {
+                return click(n);
+            }
+        }
+        return false;
+    }
+
+    boolean clickPlayPause(AccessibilityNodeInfo root) {
         String[] ids = {
             "com.google.android.youtube:id/player_control_play_pause_replay_button",
             "com.google.android.youtube:id/play_pause_button",
@@ -1942,7 +1978,7 @@ public class AgentAccessibilityService extends AccessibilityService {
         return false;
     }
 
-    private boolean clickNext(AccessibilityNodeInfo root) {
+    boolean clickNext(AccessibilityNodeInfo root) {
         String[] ids = {
             "com.google.android.youtube:id/next_button",
             "com.spotify.music:id/button_next",
@@ -1967,7 +2003,7 @@ public class AgentAccessibilityService extends AccessibilityService {
         return false;
     }
 
-    private boolean clickPrev(AccessibilityNodeInfo root) {
+    boolean clickPrev(AccessibilityNodeInfo root) {
         String[] ids = {
             "com.google.android.youtube:id/prev_button",
             "com.spotify.music:id/button_prev",

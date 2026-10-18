@@ -16,8 +16,10 @@ import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.SystemClock;
+import android.app.SearchManager;
 import android.provider.AlarmClock;
 import android.provider.ContactsContract;
+import android.provider.MediaStore;
 import android.provider.Settings;
 import android.telecom.TelecomManager;
 import android.telephony.SmsManager;
@@ -219,6 +221,7 @@ public class DeviceController {
                 case "open_app": return openApp(a.optString("name"));
                 case "chat": return openChat(a.optString("app"), a.optString("target"), a.optString("text"));
                 case "music_play": return playMusic(a.optString("query"), a.optString("app"));
+                case "music_control": return controlMusic(a.optString("app"), a.optString("action"));
                 case "google_search":
                 case "web_search": return webSearch(a.optString("query"));
                 case "youtube": return openYouTube(a.optString("query"), false);
@@ -1321,22 +1324,56 @@ public class DeviceController {
         }
     }
 
+    public String controlMusic(String app, String action) {
+        String a = (app == null) ? "spotify" : app.toLowerCase(Locale.ROOT).trim();
+        String act = (action == null) ? "play" : action.toLowerCase(Locale.ROOT).trim();
+        return media(act);
+    }
+
     public String playMusic(String query, String app) {
         String q = (query == null) ? "" : query.trim();
         String a = (app == null) ? "spotify" : app.toLowerCase(Locale.ROOT).trim();
 
         if (a.contains("spotify")) {
             try {
-                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("spotify:search:" + Uri.encode(q)));
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                ctx.startActivity(intent);
-                new Thread(() -> {
-                    try { Thread.sleep(2000); } catch (Exception ignored) {}
-                    AgentAccessibilityService s = AgentAccessibilityService.instance;
-                    if (s != null) {
-                        s.uiOpenNth(1);
+                if (q.isEmpty() || "play".equalsIgnoreCase(q)) {
+                    Intent openIntent = ctx.getPackageManager().getLaunchIntentForPackage("com.spotify.music");
+                    if (openIntent != null) {
+                        openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        ctx.startActivity(openIntent);
                     }
-                }).start();
+                    media("play");
+                    return "OK";
+                }
+
+                // 1. Official Android Media Play From Search intent for Spotify
+                Intent intent = new Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH);
+                intent.setPackage("com.spotify.music");
+                intent.putExtra(SearchManager.QUERY, q);
+                intent.putExtra(MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/*");
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                boolean launched = false;
+                try {
+                    ctx.startActivity(intent);
+                    launched = true;
+                } catch (Exception err) {
+                    Intent uriIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("spotify:search:" + Uri.encode(q)));
+                    uriIntent.setPackage("com.spotify.music");
+                    uriIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    ctx.startActivity(uriIntent);
+                    launched = true;
+                }
+
+                // 2. Accessibility fallback to auto-tap play or first track if not auto-playing
+                if (launched) {
+                    new Thread(() -> {
+                        try { Thread.sleep(1800); } catch (Exception ignored) {}
+                        AgentAccessibilityService s = AgentAccessibilityService.instance;
+                        if (s != null) {
+                            s.clickTrackOrPlay(q);
+                        }
+                    }).start();
+                }
                 return "OK";
             } catch (Exception ignored) {
                 return openYouTube(q, true);
@@ -1388,16 +1425,58 @@ public class DeviceController {
     }
 
     private String media(String cmd) {
-        AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
-        if (am == null) return "ERR:audio service unavailable";
+        String c = (cmd == null) ? "toggle" : cmd.toLowerCase(Locale.ROOT).trim();
         int code;
-        if ("next".equals(cmd)) code = KeyEvent.KEYCODE_MEDIA_NEXT;
-        else if ("prev".equals(cmd) || "previous".equals(cmd)) code = KeyEvent.KEYCODE_MEDIA_PREVIOUS;
-        else if ("stop".equals(cmd)) code = KeyEvent.KEYCODE_MEDIA_STOP;
+        if ("next".equals(c)) code = KeyEvent.KEYCODE_MEDIA_NEXT;
+        else if ("prev".equals(c) || "previous".equals(c)) code = KeyEvent.KEYCODE_MEDIA_PREVIOUS;
+        else if ("pause".equals(c) || "stop".equals(c)) code = KeyEvent.KEYCODE_MEDIA_PAUSE;
+        else if ("play".equals(c) || "resume".equals(c)) code = KeyEvent.KEYCODE_MEDIA_PLAY;
         else code = KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE;
-        long eventTime = SystemClock.uptimeMillis();
-        am.dispatchMediaKeyEvent(new KeyEvent(eventTime, eventTime, KeyEvent.ACTION_DOWN, code, 0));
-        am.dispatchMediaKeyEvent(new KeyEvent(eventTime, eventTime, KeyEvent.ACTION_UP, code, 0));
+
+        // 1. Foreground on-screen UI accessibility control (if user is in Spotify or YouTube)
+        AgentAccessibilityService s = AgentAccessibilityService.instance;
+        if (s != null) {
+            try {
+                android.view.accessibility.AccessibilityNodeInfo root = s.getRootInActiveWindow();
+                if (root != null) {
+                    if ("next".equals(c)) {
+                        if (s.clickNext(root)) return "OK";
+                    } else if ("prev".equals(c) || "previous".equals(c)) {
+                        if (s.clickPrev(root)) return "OK";
+                    } else {
+                        if (s.clickPlayPause(root)) return "OK";
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 2. Direct Media Button Broadcast to Spotify
+        try {
+            Intent mbSpotify = new Intent(Intent.ACTION_MEDIA_BUTTON);
+            mbSpotify.setPackage("com.spotify.music");
+            mbSpotify.putExtra(Intent.EXTRA_KEY_EVENT, new KeyEvent(KeyEvent.ACTION_DOWN, code));
+            ctx.sendOrderedBroadcast(mbSpotify, null);
+            mbSpotify.putExtra(Intent.EXTRA_KEY_EVENT, new KeyEvent(KeyEvent.ACTION_UP, code));
+            ctx.sendOrderedBroadcast(mbSpotify, null);
+        } catch (Exception ignored) {}
+
+        // 3. Direct Media Button Broadcast to YouTube Music
+        try {
+            Intent mbYt = new Intent(Intent.ACTION_MEDIA_BUTTON);
+            mbYt.setPackage("com.google.android.apps.youtube.music");
+            mbYt.putExtra(Intent.EXTRA_KEY_EVENT, new KeyEvent(KeyEvent.ACTION_DOWN, code));
+            ctx.sendOrderedBroadcast(mbYt, null);
+            mbYt.putExtra(Intent.EXTRA_KEY_EVENT, new KeyEvent(KeyEvent.ACTION_UP, code));
+            ctx.sendOrderedBroadcast(mbYt, null);
+        } catch (Exception ignored) {}
+
+        // 4. System AudioManager broadcast
+        AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+        if (am != null) {
+            long eventTime = SystemClock.uptimeMillis();
+            am.dispatchMediaKeyEvent(new KeyEvent(eventTime, eventTime, KeyEvent.ACTION_DOWN, code, 0));
+            am.dispatchMediaKeyEvent(new KeyEvent(eventTime, eventTime, KeyEvent.ACTION_UP, code, 0));
+        }
         return "OK";
     }
 

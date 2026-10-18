@@ -88,6 +88,7 @@ class MouseButtonManager private constructor(private val appContext: Context) {
         private set
     var maxPointerY: Float = 2368f
         private set
+    private var lastSnapCheckTime: Long = 0L
 
     init {
         updateScreenDimensions()
@@ -560,8 +561,10 @@ class MouseButtonManager private constructor(private val appContext: Context) {
         cursorX = (cursorX + moveX).coerceIn(minPointerX, maxPointerX)
         cursorY = (cursorY + moveY).coerceIn(minPointerY, maxPointerY)
 
-        // AI Magnetic Snap near clickable elements when moving gently
-        if (dist < 5.0f && AgentAccessibilityService.instance != null) {
+        // AI Magnetic Snap near clickable elements when moving gently (throttled to avoid IPC lag on low-end devices)
+        val now = android.os.SystemClock.uptimeMillis()
+        if (dist < 5.0f && (now - lastSnapCheckTime > 200L) && AgentAccessibilityService.instance != null) {
+            lastSnapCheckTime = now
             val rect = AgentAccessibilityService.findClickableBoundsNear(cursorX.toInt(), cursorY.toInt(), 28)
             if (rect != null) {
                 val cx = rect.centerX().toFloat().coerceIn(minPointerX, maxPointerX)
@@ -574,7 +577,7 @@ class MouseButtonManager private constructor(private val appContext: Context) {
             } else {
                 mousePointerView?.setMagneticLocked(false)
             }
-        } else {
+        } else if (dist >= 5.0f) {
             mousePointerView?.setMagneticLocked(false)
         }
 

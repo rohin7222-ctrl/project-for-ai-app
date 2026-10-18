@@ -408,6 +408,56 @@ class TestBrainParser(unittest.TestCase):
         self.assertEqual(r6["actions"], [])
         self.assertIn("Rohin", r6["speech"])
 
+    # 14. Spotify and Universal Music Controls
+    def test_spotify_and_media_commands(self):
+        # 1. "spotify play"
+        r1 = self._chat("spotify play", "en")
+        self.assertEqual(r1["actions"][0]["type"], "media")
+        self.assertEqual(r1["actions"][0]["cmd"], "play")
+
+        # 2. "play spotify"
+        r2 = self._chat("play spotify", "en")
+        self.assertEqual(r2["actions"][0]["type"], "media")
+        self.assertEqual(r2["actions"][0]["cmd"], "play")
+
+        # 3. "spotify pause"
+        r3 = self._chat("spotify pause", "en")
+        self.assertEqual(r3["actions"][0]["type"], "media")
+        self.assertEqual(r3["actions"][0]["cmd"], "pause")
+
+        # 4. "pause spotify"
+        r4 = self._chat("pause spotify", "en")
+        self.assertEqual(r4["actions"][0]["type"], "media")
+        self.assertEqual(r4["actions"][0]["cmd"], "pause")
+
+        # 5. "spotify next"
+        r5 = self._chat("spotify next", "en")
+        self.assertEqual(r5["actions"][0]["type"], "media")
+        self.assertEqual(r5["actions"][0]["cmd"], "next")
+
+        # 6. "spotify prev"
+        r6 = self._chat("spotify prev", "en")
+        self.assertEqual(r6["actions"][0]["type"], "media")
+        self.assertEqual(r6["actions"][0]["cmd"], "prev")
+
+        # 7. "spotify la arabic kuthu play pannu"
+        r7 = self._chat("spotify la arabic kuthu play pannu", "ta")
+        self.assertEqual(r7["actions"][0]["type"], "music_play")
+        self.assertEqual(r7["actions"][0]["app"], "spotify")
+        self.assertEqual(r7["actions"][0]["query"], "arabic kuthu")
+
+        # 8. "play vaathi coming in spotify"
+        r8 = self._chat("play vaathi coming in spotify", "en")
+        self.assertEqual(r8["actions"][0]["type"], "music_play")
+        self.assertEqual(r8["actions"][0]["app"], "spotify")
+        self.assertEqual(r8["actions"][0]["query"], "vaathi coming")
+
+        # 9. "spotify la anirudh songs"
+        r9 = self._chat("spotify la anirudh songs", "ta")
+        self.assertEqual(r9["actions"][0]["type"], "music_play")
+        self.assertEqual(r9["actions"][0]["app"], "spotify")
+        self.assertEqual(r9["actions"][0]["query"], "anirudh")
+
 
 if __name__ == "__main__":
     unittest.main()

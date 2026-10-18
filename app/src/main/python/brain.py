@@ -744,7 +744,8 @@ def _parse_one(p, last_app):
         "நிறுத்து", "நிறுத்துங்க", "போதும்", "நில்", "ஸ்டாப்", "நிறுத்துப்பா", "நிறுத்துடா",
         "போதும் நிறுத்து", "பேசாத", "அமைதியா இரு", "வாயை மூடு", "niruthu", "pothum"
     )
-    if t == custom_stop or re.match(stop_pat, t, re.IGNORECASE) or any(t == s or t.startswith(s + " ") or t.endswith(" " + s) for s in universal_stops):
+    is_media_stop = any(w in t for w in ("music", "song", "paatu", "பாட்டு", "பாடல்", "spotify", "video", "youtube", "இசை"))
+    if not is_media_stop and (t == custom_stop or re.match(stop_pat, t, re.IGNORECASE) or any(t == s or t.startswith(s + " ") or t.endswith(" " + s) for s in universal_stops)):
         return [{"type": "stop_assistant", "desc": "Stop Assistant"}], "stop"
 
     # --- torch / flashlight
@@ -939,14 +940,45 @@ def _parse_one(p, last_app):
                 app_formatted = _app_name(a_name) or a_name.title()
                 return [{"type": "chat", "app": app_formatted, "target": t_name, "desc": f"Chat with {t_name}"}], "chat"
 
+    # --- Direct Media controls (Spotify, YouTube Music, System Player)
+    if any(w in t for w in (
+        "spotify pause", "pause spotify", "spotify stop", "stop spotify", "spotify la pause pannu",
+        "spotify la niruthu", "spotify la stop pannu", "pause music", "stop music", "pause song",
+        "பாட்டை நிறுத்து", "இசையை நிறுத்து", "ஸ்பாட்டிஃபை நிறுத்து", "ஸ்பாட்டிஃபை பாஸ்", "மியூசிக் நிறுத்து"
+    )):
+        return [{"type": "media", "cmd": "pause", "desc": "Pause Music"}], "media"
+
+    if any(w in t for w in (
+        "spotify play", "play spotify", "spotify resume", "resume spotify", "spotify la play pannu",
+        "spotify la resume pannu", "play music", "resume music", "play song", "பாட்டை போடு",
+        "இசையை இயக்கு", "ஸ்பாட்டிஃபை ப்ளே", "மியூசிக் போடு", "பாடலை இயக்கு"
+    )):
+        return [{"type": "media", "cmd": "play", "desc": "Play Music"}], "media"
+
+    if any(w in t for w in (
+        "spotify next", "next song in spotify", "spotify next song", "next song", "next track",
+        "next paattu", "அடுத்த பாட்டு", "அடுத்த பாடல்", "spotify la adutha paatu", "spotify adutha paatu", "அடுத்த பாடல் போடு"
+    )):
+        return [{"type": "media", "cmd": "next", "desc": "Next Song"}], "media"
+
+    if any(w in t for w in (
+        "spotify prev", "spotify previous", "prev song in spotify", "previous song in spotify",
+        "previous song", "prev song", "prev track", "முந்தைய பாட்டு", "முந்தைய பாடல்", "spotify la munthaiya paatu"
+    )):
+        return [{"type": "media", "cmd": "prev", "desc": "Previous Song"}], "media"
+
     # --- Music across Spotify, JioSaavn, Wynk, Gaana, YouTube Music
     m_music = re.match(r"^(?:play|போடு|பாடல் போடு|பாட்டு போடு)\s+(?P<q>.+?)\s+(?:in|on)\s+(?P<a>spotify|jiosaavn|wynk|gaana|youtube\s*music|yt\s*music)$", t) or \
-              re.match(r"^(?P<a>spotify|jiosaavn|wynk|gaana|youtube\s*music|yt\s*music)\s+(?:la|le|ல|இல்)?\s*(?P<q>.+?)\s*(?:nu|ன்னு|னு)?\s*(?:play|podu|போடு|பாடல் போடு|பாட்டு போடு)$", t)
+              re.match(r"^(?P<a>spotify|jiosaavn|wynk|gaana|youtube\s*music|yt\s*music)\s+(?:la|le|ல|இல்|-la)?\s*(?P<q>.+?)\s*(?:nu|ன்னு|னு)?\s*(?:play|podu|போடு|பாடல் போடு|பாட்டு போடு|thedu|search)?(?:\s+(?:pannu|vidu|seiy|podu))?$", t) or \
+              re.match(r"^(?:play|போடு)\s+(?P<q>.+?)\s+(?P<a>spotify|jiosaavn|wynk|gaana|youtube\s*music|yt\s*music)$", t) or \
+              re.match(r"^(?P<a>spotify|jiosaavn|wynk|gaana|youtube\s*music|yt\s*music)\s+(?:play|போடு)\s+(?P<q>.+)$", t)
     if m_music:
-        app_m = m_music.group("a").strip()
+        app_m = m_music.group("a").strip().lower()
         q_m = m_music.group("q").strip()
-        if q_m:
-            return [{"type": "music_play", "app": app_m, "query": q_m, "desc": f"Play on {app_m}: {q_m}"}], "music:" + q_m
+        q_clean = re.sub(r"^(?:open\s+and\s+play|play|search|thedu|போடு)\s+", "", q_m, flags=re.I).strip()
+        q_clean = re.sub(r"\s+(?:play|podu|போடு|song|songs|paatu|பாடல்|பாட்டு|pannu)$", "", q_clean, flags=re.I).strip()
+        if q_clean and q_clean not in ("app", "open", "thedu", "play", "pause", "music"):
+            return [{"type": "music_play", "app": app_m, "query": q_clean, "desc": f"Play on {app_m.title()}: {q_clean}"}], "music:" + q_clean
 
     # --- YouTube direct video play
     m_yt_play = re.match(r"^(?:play|போடு|பாடல் போடு|வீடியோ போடு)\s+(?P<q1>.+?)\s+(?:in|on)\s+youtube$", t) or \
@@ -972,16 +1004,6 @@ def _parse_one(p, last_app):
         act = {"type": "volume", "dir": d, "desc": f"Volume {val}%" if val >= 0 else f"Volume {d}"}
         if val >= 0: act["value"] = val
         return [act], "ok"
-
-    # --- media playback controls
-    if any(w in t for w in ("next song", "next track", "next paattu", "அடுத்த பாட்டு", "அடுத்த பாடல்")):
-        return [{"type": "media", "cmd": "next", "desc": "Next Song"}], "media"
-    if any(w in t for w in ("previous song", "prev song", "prev track", "முந்தைய பாட்டு", "முந்தைய பாடல்")):
-        return [{"type": "media", "cmd": "prev", "desc": "Previous Song"}], "media"
-    if any(w in t for w in ("pause music", "stop music", "pause song", "பாட்டை நிறுத்து", "இசையை நிறுத்து")):
-        return [{"type": "media", "cmd": "pause", "desc": "Pause Music"}], "media"
-    if any(w in t for w in ("play music", "resume music", "play song", "பாட்டை போடு", "பாடல் போடு", "இசையை இயக்கு")):
-        return [{"type": "media", "cmd": "play", "desc": "Play Music"}], "media"
 
     # --- calls
     if re.search(r"\b(answer|pick up|attend)\b.*\bcall\b", t) or any(w in t for w in ("அழைப்பை எடு", "போன் எடு")):
