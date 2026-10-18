@@ -212,7 +212,10 @@ object S {
         "quick_prompt_zomato" to listOf("Zomato open panni biryani thedu", "Open Zomato and search biryani", "Zomatoを開いてビリヤニを検索"),
         "quick_prompt_skip_ad" to listOf("Skip Ad (விளம்பரம் தவிர்)", "Skip Ad", "広告スキップ"),
         "quick_prompt_reels" to listOf("Reels cruise on (தானாக ரீல்ஸ் மாற்று)", "Instagram Reels cruise on", "リール自動スクロール"),
-        "quick_prompt_battery" to listOf("பேட்டரி எவ்வளவு இருக்கு?", "What is battery status?", "バッテリー残量は？")
+        "quick_prompt_battery" to listOf("பேட்டரி எவ்வளவு இருக்கு?", "What is battery status?", "バッテリー残量は？"),
+        "chip_missed_call" to listOf("மிஸ்ட் கால் (3 ரிங்)", "Missed Call (3 Rings)", "ワン切り (3コール)"),
+        "chip_agentic_auto" to listOf("AI ஆட்டோமேஷன்", "Agentic Automation", "AI自動化"),
+        "chip_trackpad" to listOf("டிராக்க்பேட் HUD", "Trackpad HUD", "トラックパッドHUD")
     )
 
     fun t(lang: String, k: String): String {

@@ -35,6 +35,8 @@ enum class ControllerTouchTarget {
     BTN_SCROLL_RIGHT,
     BTN_R_CLICK,
     BTN_RESIZE,
+    BTN_SPEED_GEAR,
+    BTN_AI_SNAP,
     BTN_CLOSE,
     HEADER_DRAG,
     STATUS_ACCESSIBILITY
@@ -268,6 +270,15 @@ class MousePointerView(context: Context) : View(context) {
         invalidate()
     }
 
+    private var isMagneticLocked = false
+
+    fun setMagneticLocked(locked: Boolean) {
+        if (isMagneticLocked != locked) {
+            isMagneticLocked = locked
+            invalidate()
+        }
+    }
+
     fun setDragActive(active: Boolean) {
         isDragActive = active
         invalidate()
@@ -331,6 +342,16 @@ class MousePointerView(context: Context) : View(context) {
             canvas.drawCircle(0f, 0f, 6f * density, dragHalo)
         }
 
+        // AI Magnetic Lock Reticle
+        if (isMagneticLocked) {
+            val lockPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = 1.4f * density
+                color = android.graphics.Color.parseColor("#00E5FF")
+            }
+            canvas.drawCircle(0f, 0f, 9f * density, lockPaint)
+        }
+
         canvas.restore()
     }
 }
@@ -347,8 +368,12 @@ class CyberMouseControllerView(context: Context) : View(context) {
     var onDragToggle: (() -> Unit)? = null
     var onScroll: ((direction: ScrollDirection) -> Unit)? = null
     var onResizeRequested: (() -> Unit)? = null
+    var onSpeedGearToggled: (() -> Unit)? = null
+    var onAiSnapRequested: (() -> Unit)? = null
     var onDismiss: (() -> Unit)? = null
     var onControllerDrag: ((dx: Int, dy: Int) -> Unit)? = null
+
+    var isHyperSpeed: Boolean = false
 
     var currentPadMode: MousePadMode = MousePadMode.TRACKPAD
     var isDragActive: Boolean = false
@@ -590,10 +615,54 @@ class CyberMouseControllerView(context: Context) : View(context) {
             canvas.drawCircle(w / 2f + (i * 6f * density), gripY, 1.6f * density, gripPaint)
         }
 
-        // Quick Resize Button [ ⤢ ]
+        // Quick Header Action Buttons: [ 🎯 AI SNAP ], [ ⚡ 1X / 🚀 2X ], [ ⤢ RESIZE ], [ ✕ CLOSE ]
         val rClose = RectF(w - (34f * density), 4f * density, w - (6f * density), getHeaderHeight() - (4f * density))
-        val rResize = RectF(rClose.left - (32f * density), 4f * density, rClose.left - (4f * density), getHeaderHeight() - (4f * density))
+        val rResize = RectF(rClose.left - (30f * density), 4f * density, rClose.left - (4f * density), getHeaderHeight() - (4f * density))
+        val rGear = RectF(rResize.left - (38f * density), 4f * density, rResize.left - (4f * density), getHeaderHeight() - (4f * density))
+        val rAiSnap = RectF(rGear.left - (30f * density), 4f * density, rGear.left - (4f * density), getHeaderHeight() - (4f * density))
 
+        // AI Snap Button [ 🎯 ]
+        val snapBg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = if (pressedTarget == ControllerTouchTarget.BTN_AI_SNAP) android.graphics.Color.parseColor("#44A855F7") else android.graphics.Color.parseColor("#19142A")
+        }
+        val snapBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1f * density
+            color = if (pressedTarget == ControllerTouchTarget.BTN_AI_SNAP) android.graphics.Color.parseColor("#A855F7") else android.graphics.Color.parseColor("#432A68")
+        }
+        val snapText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#C084FC")
+            textSize = 11f * density
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawRoundRect(rAiSnap, 6f * density, 6f * density, snapBg)
+        canvas.drawRoundRect(rAiSnap, 6f * density, 6f * density, snapBorder)
+        canvas.drawText("🎯", rAiSnap.centerX(), rAiSnap.centerY() + (3.8f * density), snapText)
+
+        // Speed Gear Button [ ⚡ 1X / 🚀 2X ]
+        val gearCol = if (isHyperSpeed) "#F59E0B" else "#00E5FF"
+        val gearBg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = if (pressedTarget == ControllerTouchTarget.BTN_SPEED_GEAR) android.graphics.Color.parseColor(if (isHyperSpeed) "#44F59E0B" else "#3300E5FF") else android.graphics.Color.parseColor("#152033")
+        }
+        val gearBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1f * density
+            color = if (pressedTarget == ControllerTouchTarget.BTN_SPEED_GEAR || isHyperSpeed) android.graphics.Color.parseColor(gearCol) else android.graphics.Color.parseColor("#334155")
+        }
+        val gearText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor(gearCol)
+            textSize = 8.5f * density
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawRoundRect(rGear, 6f * density, 6f * density, gearBg)
+        canvas.drawRoundRect(rGear, 6f * density, 6f * density, gearBorder)
+        canvas.drawText(if (isHyperSpeed) "🚀2X" else "⚡1X", rGear.centerX(), rGear.centerY() + (3.2f * density), gearText)
+
+        // Quick Resize Button [ ⤢ ]
         val resizeBg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
             color = if (pressedTarget == ControllerTouchTarget.BTN_RESIZE) android.graphics.Color.parseColor("#3300E5FF") else android.graphics.Color.parseColor("#152033")
@@ -844,7 +913,9 @@ class CyberMouseControllerView(context: Context) : View(context) {
                 val strip = getScrollStripRect()
                 val dockTop = h - getDockHeight()
                 val rClose = RectF(w - (34f * density), 0f, w, getHeaderHeight())
-                val rResize = RectF(rClose.left - (34f * density), 0f, rClose.left, getHeaderHeight())
+                val rResize = RectF(rClose.left - (30f * density), 0f, rClose.left, getHeaderHeight())
+                val rGear = RectF(rResize.left - (38f * density), 0f, rResize.left, getHeaderHeight())
+                val rAiSnap = RectF(rGear.left - (30f * density), 0f, rGear.left, getHeaderHeight())
 
                 // 1. Header controls
                 if (y <= getHeaderHeight()) {
@@ -853,6 +924,12 @@ class CyberMouseControllerView(context: Context) : View(context) {
                         pressedTarget = activeTarget
                     } else if (rResize.contains(x, y)) {
                         activeTarget = ControllerTouchTarget.BTN_RESIZE
+                        pressedTarget = activeTarget
+                    } else if (rGear.contains(x, y)) {
+                        activeTarget = ControllerTouchTarget.BTN_SPEED_GEAR
+                        pressedTarget = activeTarget
+                    } else if (rAiSnap.contains(x, y)) {
+                        activeTarget = ControllerTouchTarget.BTN_AI_SNAP
                         pressedTarget = activeTarget
                     } else {
                         activeTarget = ControllerTouchTarget.HEADER_DRAG
@@ -1040,6 +1117,12 @@ class CyberMouseControllerView(context: Context) : View(context) {
                     }
                     ControllerTouchTarget.BTN_RESIZE -> {
                         onResizeRequested?.invoke()
+                    }
+                    ControllerTouchTarget.BTN_SPEED_GEAR -> {
+                        onSpeedGearToggled?.invoke()
+                    }
+                    ControllerTouchTarget.BTN_AI_SNAP -> {
+                        onAiSnapRequested?.invoke()
                     }
                     ControllerTouchTarget.BTN_CLOSE -> {
                         onDismiss?.invoke()

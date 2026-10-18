@@ -326,12 +326,30 @@ fun CornerHelmWheel(
                             )
                         }
                         Column {
-                            Text(
-                                text = act.label,
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Black,
-                                color = if (isDark) Color.White else Color(0xFF0F172A)
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = act.label,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (isDark) Color.White else Color(0xFF0F172A)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(act.accentColor.copy(alpha = 0.22f))
+                                        .padding(horizontal = 6.dp, vertical = 1.5.dp)
+                                ) {
+                                    Text(
+                                        text = "${focusedItemIndex + 1}/$totalItems",
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = act.accentColor
+                                    )
+                                }
+                            }
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)

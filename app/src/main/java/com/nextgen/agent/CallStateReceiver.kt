@@ -24,11 +24,6 @@ class CallStateReceiver : BroadcastReceiver() {
             return
         }
 
-        val cfg = store.load()
-        if (!cfg.raiseToAnswer) {
-            return
-        }
-
         val stateStr = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
         val state = when (stateStr) {
             TelephonyManager.EXTRA_STATE_RINGING -> TelephonyManager.CALL_STATE_RINGING
@@ -39,7 +34,11 @@ class CallStateReceiver : BroadcastReceiver() {
 
         if (state >= 0) {
             Log.d("CallStateReceiver", "Phone state changed: $stateStr ($state)")
-            EarToCallManager.getInstance(context).onCallStateChanged(state, context)
+            MissedCallManager.getInstance(context).onCallStateChanged(state)
+            val cfg = store.load()
+            if (cfg.raiseToAnswer) {
+                EarToCallManager.getInstance(context).onCallStateChanged(state, context)
+            }
         }
     }
 }

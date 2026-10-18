@@ -50,6 +50,10 @@ When the user asks you to perform an on-device action or task (open any app, sea
     {"type": "ui_click_tab", "tab": "home/search/orders/cart/profile", "desc": "Opening tab"},
     {"type": "ui_handle_dialog", "action": "allow/ok", "desc": "Handling dialog"},
     {"type": "call", "target": "Contact/Number", "desc": "Calling contact"},
+    {"type": "missed_call", "target": "Contact/Number", "rings": 3, "desc": "Missed call (auto-cut after 3 rings)"},
+    {"type": "mouse_click", "desc": "Mouse Click"},
+    {"type": "mouse_scroll", "dir": "down/up/left/right", "desc": "Mouse Scroll"},
+    {"type": "mouse_toggle", "desc": "Toggle Mouse Trackpad"},
     {"type": "web_search", "query": "query", "desc": "Searching Google"},
     {"type": "youtube_play", "query": "query", "desc": "Playing video"}
   ]
@@ -949,6 +953,31 @@ def _parse_one(p, last_app):
     if re.search(r"\b(end|cut|disconnect|hang ?up)\b.*\bcall\b|\bcall\b.*\b(end|cut)\b", t) or any(w in t for w in ("அழைப்பை முடி", "போன் வை", "கால் கட்")):
         return [{"type": "end_call", "desc": "End Call"}], "ok"
 
+    # --- missed call (auto-cut after 3 rings)
+    m_missed = re.match(r"^(?:give\s+(?:a\s+)?missed\s*call\s+(?:to\s+)?|missed\s*call\s+(?:to\s+)?|place\s+(?:a\s+)?missed\s*call\s+(?:to\s+)?|மிஸ்ட்\s*கால்\s+(?:பண்ணு\s+)?)(?:my\s+)?(?P<t>.+?)(?:\s+(?:please|plz|now|pa|da|kudu|kudunga|pannu|podu))?$", t)
+    if not m_missed:
+        m_missed = re.match(r"^(?:my\s+)?(?P<t>.+?)(?:\s+(?:ku|kku|vukku|ukku|ah|la|nu)|-(?:ku|kku|ukku|vukku|ah)|வுக்கு|க்கு|க்குக்|ஐ)?\s*(?:missed\s*call|மிஸ்ட்\s*கால்)(?:\s+(?:kudu|kudunga|pannu|panni vidu|podu|vai|vidu|seiy|செய்|பண்ணு|போடு|கொடு))?$", t)
+    if not m_missed and ("missed call" in t or "missedcall" in t or "மிஸ்ட் கால்" in t):
+        m_missed = re.search(r"\b(?:missed\s*call|மிஸ்ட்\s*கால்)\s+(?:to\s+)?(?P<t>[a-zA-Z0-9\u0B80-\u0BFF\s]+?)(?:\s+(?:please|plz|now|pa|da|kudu|pannu|podu|$))", t)
+    if m_missed:
+        tgt = m_missed.group("t").strip()
+        tgt = re.sub(r"^(?:to|my)\s+", "", tgt).strip()
+        tgt = re.sub(r"\s+(?:to|pannu|panunga|podu|vidu|seiyu|sollu|kudu|kudunga)$", "", tgt).strip()
+        tgt = re.sub(r"\s+" + PART + r"$", "", tgt).strip()
+        if tgt and tgt not in ("search", "open", "thedu"):
+            num = _digits(tgt) or tgt
+            return [{"type": "missed_call", "target": num, "rings": 3, "desc": f"Missed call to {num} (3 rings)"}], "missed_call"
+
+    # --- mouse / trackpad voice controls
+    if any(w in t for w in ("mouse click", "cursor click", "click mouse", "மவுஸ் கிளிக்")):
+        return [{"type": "mouse_click", "desc": "Mouse Click"}], "mouse_click"
+    if any(w in t for w in ("toggle mouse", "show mouse", "hide mouse", "open mouse", "close mouse", "மவுஸ் ஆன்", "மவுஸ் ஆப்", "டிராக்க்பேட்")):
+        return [{"type": "mouse_toggle", "desc": "Toggle Mouse Pad"}], "mouse_toggle"
+    if any(w in t for w in ("mouse scroll down", "scroll mouse down", "மவுஸ் கீழே")):
+        return [{"type": "mouse_scroll", "dir": "down", "desc": "Mouse Scroll Down"}], "mouse_scroll"
+    if any(w in t for w in ("mouse scroll up", "scroll mouse up", "மவுஸ் மேலே")):
+        return [{"type": "mouse_scroll", "dir": "up", "desc": "Mouse Scroll Up"}], "mouse_scroll"
+
     # Direct call patterns: "call appa", "call to dad", "can you call mom", "dial appa"
     m_call = re.match(r"^(?:call|dial|phone|make a call to|place a call to|ring)\s+(?:to\s+)?(?:my\s+)?(?P<t>.+?)(?:\s+(?:please|plz|now|pa|da))?$", t)
     if not m_call:
@@ -1280,7 +1309,9 @@ SAY = {  # spoken confirmation per language
               "skip_ad": "விளம்பரம் தவிர்க்கப்பட்டது.", "cruise_on": "தானாக ரீல்ஸ் மாறும் முறை ஆன்.",
               "cruise_off": "தானாக ரீல்ஸ் மாறும் முறை ஆஃப்.", "fill_form": "படிவம் தானாக நிரப்பப்படுகிறது.",
               "fill_otp": "ஓடிபி கண்டறியப்பட்டு நிரப்பப்படுகிறது.", "battery": "பேட்டரி அளவை சரிபார்க்கிறேன்.",
-              "uninstall": "%s-ஐ நீக்க அன்இன்ஸ்டால் திரையை திறக்கிறேன்.", "grid_tap": "%s-ல் கிளிக் செய்கிறேன்."},
+              "uninstall": "%s-ஐ நீக்க அன்இன்ஸ்டால் திரையை திறக்கிறேன்.", "grid_tap": "%s-ல் கிளிக் செய்கிறேன்.",
+              "missed_call": "%s-க்கு மிஸ்ட் கால் (3 ரிங்) தருகிறேன்.",
+              "mouse_click": "மவுஸ் கிளிக் செய்யப்பட்டது.", "mouse_scroll": "மவுஸ் ஸ்க்ரோல் செய்யப்பட்டது.", "mouse_toggle": "டிராக்க்பேட் நிலை மாற்றப்பட்டது."},
     "en-US": {"app": "Opening %s.", "search": "Searching %s.", "call": "Calling %s right now.",
               "nth": "Opening number %d.", "ok": "Done.", "yt": "Playing %s on YouTube.",
               "google": "Searching %s on Google.", "google_page": "Opening Google.",
@@ -1310,7 +1341,9 @@ SAY = {  # spoken confirmation per language
               "skip_ad": "Skipping advertisement.", "cruise_on": "Reels auto-cruise enabled.",
               "cruise_off": "Reels auto-cruise disabled.", "fill_form": "Auto-filling form details.",
               "fill_otp": "Reading and entering OTP.", "battery": "Checking battery level.",
-              "uninstall": "Opening uninstaller for %s.", "grid_tap": "Tapping %s."},
+              "uninstall": "Opening uninstaller for %s.", "grid_tap": "Tapping %s.",
+              "missed_call": "Giving a missed call to %s (hanging up after 3 rings).",
+              "mouse_click": "Mouse clicked.", "mouse_scroll": "Mouse scrolled.", "mouse_toggle": "Mouse trackpad toggled."},
     "ja-JP": {"app": "%sを開きます。", "search": "%sを検索します。", "call": "%sに電話をかけています。",
               "nth": "%d番目を開きます。", "ok": "はい。", "yt": "YouTubeで%sを再生します。",
               "google": "Googleで%sを検索します。", "google_page": "Googleを開きます。",
@@ -1404,6 +1437,10 @@ def local_command(text, lang="en-US"):
         s = SAY.get(lang, SAY["en-US"])
         if kind.startswith("app:"): said.append(s["app"] % kind[4:])
         elif kind == "call": said.append(s["call"] % acts[0]["target"])
+        elif kind == "missed_call": said.append(s.get("missed_call", "Giving a missed call to %s (3 rings).") % acts[0]["target"])
+        elif kind == "mouse_click": said.append(s.get("mouse_click", "Clicked."))
+        elif kind == "mouse_scroll": said.append(s.get("mouse_scroll", "Scrolled."))
+        elif kind == "mouse_toggle": said.append(s.get("mouse_toggle", "Mouse trackpad toggled."))
         elif kind == "nth": said.append(s["nth"] % acts[-1]["n"])
         elif kind.startswith("yt:"): said.append(s.get("yt", "Opening %s on YouTube.") % kind[3:])
         elif kind.startswith("google:"): said.append(s.get("google", "Searching %s on Google.") % kind[7:])

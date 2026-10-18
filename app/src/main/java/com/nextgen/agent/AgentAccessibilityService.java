@@ -450,6 +450,34 @@ public class AgentAccessibilityService extends AccessibilityService {
         return null;
     }
 
+    public static Rect findClickableBoundsNear(int x, int y, int radius) {
+        if (instance == null) return null;
+        try {
+            AccessibilityNodeInfo root = instance.getRootInActiveWindow();
+            if (root == null) return null;
+            AccessibilityNodeInfo exact = findInnermostClickableNodeAt(root, x, y);
+            if (exact != null) {
+                Rect r = new Rect();
+                exact.getBoundsInScreen(r);
+                exact.recycle();
+                return r;
+            }
+            int[] deltas = {-radius, radius, -radius / 2, radius / 2};
+            for (int dx : deltas) {
+                for (int dy : deltas) {
+                    AccessibilityNodeInfo hit = findInnermostClickableNodeAt(root, x + dx, y + dy);
+                    if (hit != null) {
+                        Rect r = new Rect();
+                        hit.getBoundsInScreen(r);
+                        hit.recycle();
+                        return r;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
     public static void openAccessibilitySettings(Context ctx) {
         try {
             Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);

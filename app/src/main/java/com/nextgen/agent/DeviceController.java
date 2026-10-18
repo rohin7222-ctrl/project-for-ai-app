@@ -182,6 +182,10 @@ public class DeviceController {
         try {
             switch (type) {
                 case "call": return call(a.optString("target"));
+                case "missed_call": return missedCall(a.optString("target"), a.optInt("rings", 3));
+                case "mouse_click": return mouseClick();
+                case "mouse_scroll": return mouseScroll(a.optString("dir", "down"));
+                case "mouse_toggle": return mouseToggle();
                 case "sms": return sms(a.optString("target"), a.optString("text"));
                 case "open_app": return openApp(a.optString("name"));
                 case "chat": return openChat(a.optString("app"), a.optString("target"), a.optString("text"));
@@ -289,7 +293,7 @@ public class DeviceController {
     private String view(String uri) { return start(new Intent(Intent.ACTION_VIEW, Uri.parse(uri))); }
 
     /** Phone number as-is, or look a contact name up in the address book with smart phonetic/fuzzy matching. */
-    private String resolveNumber(String target) {
+    public String resolveNumber(String target) {
         if (target == null || target.trim().isEmpty()) return null;
         String digits = target.replaceAll("[\\s\\-()]", "");
         if (digits.matches("\\+?\\d{3,15}")) return digits;
@@ -461,6 +465,32 @@ public class DeviceController {
         } else {
             return start(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(num))));
         }
+    }
+
+    private String missedCall(String target, int rings) {
+        return MissedCallManager.Companion.getInstance(ctx).triggerMissedCall(target, rings, null);
+    }
+
+    private String mouseClick() {
+        MouseButtonManager.getInstance(ctx).performClick();
+        return "OK";
+    }
+
+    private String mouseScroll(String dir) {
+        ScrollDirection d = ScrollDirection.DOWN;
+        if ("up".equalsIgnoreCase(dir)) d = ScrollDirection.UP;
+        else if ("left".equalsIgnoreCase(dir)) d = ScrollDirection.LEFT;
+        else if ("right".equalsIgnoreCase(dir)) d = ScrollDirection.RIGHT;
+        MouseButtonManager.getInstance(ctx).performScroll(d);
+        return "OK";
+    }
+
+    private String mouseToggle() {
+        Store store = new Store(ctx);
+        boolean next = !store.load(false).getMouseBallEnabled();
+        store.setMouseBallEnabled(next);
+        MouseButtonManager.getInstance(ctx).setBallEnabled(next, ctx);
+        return "OK";
     }
 
     private String sms(String target, String text) {

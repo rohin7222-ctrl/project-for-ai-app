@@ -653,6 +653,16 @@ class MainActivity : FragmentActivity() {
         handleUser(prompt)
     }
 
+    internal fun quickMissedCall(target: String = "") {
+        if (target.isNotBlank()) {
+            handleUser("missed call $target")
+        } else {
+            val prompt = if (cfg.lang == "ta-IN") "யாருக்கு 3 ரிங் மிஸ்ட் கால் செய்ய வேண்டும்?" else "Who should I give a 3-ring missed call to?"
+            chat.add(Msg(mine = false, text = "📞 $prompt", time = nowTime()))
+            voice.speak(prompt)
+        }
+    }
+
     internal fun handleUser(text: String) {
         val t = text.trim()
         if (t.isBlank()) return
@@ -728,7 +738,7 @@ class MainActivity : FragmentActivity() {
                     return
                 }
 
-                if (type == "call") {
+                if (type == "call" || type == "missed_call") {
                     isInPhoneCall = true
                     wasActiveBeforeCall = voice.active
                     wasStandbyBeforeCall = voice.standby
@@ -745,6 +755,7 @@ class MainActivity : FragmentActivity() {
                 val r = withContext(Dispatchers.IO) { device.execute(a) }   // ui_* actions block while they wait for the screen
                 if (type == "open_app" || type == "chat" || type == "music_play") delay(2500)          // let the app finish opening before the next step
                 else if (type == "call") delay(1000)
+                else if (type == "missed_call") delay(11500)
                 else if (type.startsWith("ui_") || type == "click" || type == "tap" || type == "type" || type == "scroll" || type == "swipe") delay(600)
                 executingAction = ""
                 if (type == "ui_read_screen" && r.startsWith("{")) {

@@ -91,6 +91,11 @@ class Store(val ctx: Context) {
     fun isReady() = sp.getBoolean("ready", false)
     fun setReady(v: Boolean) = sp.edit().putBoolean("ready", v).apply()
 
+    fun setMouseBallEnabled(enabled: Boolean) {
+        val c = load()
+        save(c.copy(mouseBallEnabled = enabled))
+    }
+
     /** Back to the first page: forget name + brain, keep language / theme / voice. */
     fun logout() {
         val c = load()

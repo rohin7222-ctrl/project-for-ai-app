@@ -472,6 +472,12 @@ class MouseButtonManager private constructor(private val appContext: Context) {
                                 } catch (ignored: Exception) {}
                             }
                         }
+                        onSpeedGearToggled = {
+                            togglePointerSpeedGear()
+                        }
+                        onAiSnapRequested = {
+                            smartAiSnapAndClick()
+                        }
                         onDismiss = {
                             hidePointerAndController()
                         }
@@ -493,6 +499,7 @@ class MouseButtonManager private constructor(private val appContext: Context) {
                     mouseControllerView?.currentPadMode = MousePadMode.TRACKPAD
                     mouseControllerView?.applyCustomization(padAlpha)
                     mouseControllerView?.setDragState(isDragActive)
+                    mouseControllerView?.isHyperSpeed = (pointerSpeed > 1.5f)
                     mouseControllerView?.refreshAccessibilityStatus()
                 }
 
@@ -552,6 +559,24 @@ class MouseButtonManager private constructor(private val appContext: Context) {
         cursorX = (cursorX + moveX).coerceIn(minPointerX, maxPointerX)
         cursorY = (cursorY + moveY).coerceIn(minPointerY, maxPointerY)
 
+        // AI Magnetic Snap near clickable elements when moving gently
+        if (dist < 5.0f && AgentAccessibilityService.instance != null) {
+            val rect = AgentAccessibilityService.findClickableBoundsNear(cursorX.toInt(), cursorY.toInt(), 28)
+            if (rect != null) {
+                val cx = rect.centerX().toFloat().coerceIn(minPointerX, maxPointerX)
+                val cy = rect.centerY().toFloat().coerceIn(minPointerY, maxPointerY)
+                val toCenterX = cx - cursorX
+                val toCenterY = cy - cursorY
+                cursorX += toCenterX * 0.35f
+                cursorY += toCenterY * 0.35f
+                mousePointerView?.setMagneticLocked(true)
+            } else {
+                mousePointerView?.setMagneticLocked(false)
+            }
+        } else {
+            mousePointerView?.setMagneticLocked(false)
+        }
+
         updatePointerPositionOnScreen()
     }
 
@@ -588,6 +613,45 @@ class MouseButtonManager private constructor(private val appContext: Context) {
             AgentAccessibilityService.performDrag(dragStartX, dragStartY, dropX, dropY, 400)
             Toast.makeText(appContext, "✅ Item Dropped", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    fun performClick() = performMouseClick()
+
+    fun togglePointerSpeedGear() {
+        val nextFast = (pointerSpeed <= 1.2f)
+        pointerSpeed = if (nextFast) 2.5f else 1.0f
+        mouseControllerView?.isHyperSpeed = nextFast
+        mouseControllerView?.invalidate()
+        vibrate(35)
+        val msg = if (nextFast) "🚀 Trackpad: Hyper Velocity (2.5x)" else "⚡ Trackpad: Precision Mode (1.0x)"
+        Toast.makeText(appContext, msg, Toast.LENGTH_SHORT).show()
+    }
+
+    fun smartAiSnapAndClick() {
+        vibrate(40)
+        mousePointerView?.triggerClickAnimation()
+        val a11y = AgentAccessibilityService.instance
+        if (a11y != null) {
+            val rect = AgentAccessibilityService.findClickableBoundsNear(cursorX.toInt(), cursorY.toInt(), 60)
+            if (rect != null) {
+                cursorX = rect.centerX().toFloat().coerceIn(minPointerX, maxPointerX)
+                cursorY = rect.centerY().toFloat().coerceIn(minPointerY, maxPointerY)
+                updatePointerPositionOnScreen()
+                mousePointerView?.setMagneticLocked(true)
+                mainHandler.postDelayed({ mousePointerView?.setMagneticLocked(false) }, 800)
+                AgentAccessibilityService.performClickAt(cursorX, cursorY)
+                a11y.showFloatingHud("🎯 AI Snap: Clicked target")
+                return
+            }
+        }
+        performMouseClick()
+    }
+
+    fun centerPointer() {
+        cursorX = screenWidth / 2f
+        cursorY = screenHeight / 2f
+        updatePointerPositionOnScreen()
+        vibrate(25)
     }
 
     /**

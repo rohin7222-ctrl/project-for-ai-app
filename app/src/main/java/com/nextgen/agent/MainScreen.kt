@@ -363,6 +363,34 @@ internal fun MainActivity.MainScreen() {
     // 2. BOTTOM WHEEL ITEMS (Quick Actions Menu Wheel)
     val bottomWheelItems = listOf(
         WheelItem(
+            id = "quick_missed_call",
+            label = tr("chip_missed_call"),
+            icon = Icons.Default.PhoneInTalk,
+            accentColor = Color(0xFF00E5FF),
+            onClick = { quickMissedCall() }
+        ),
+        WheelItem(
+            id = "quick_agentic_auto",
+            label = tr("chip_agentic_auto"),
+            icon = Icons.Default.Bolt,
+            accentColor = Color(0xFFA855F7),
+            onClick = { handleUser(if (cfg.lang == "ta-IN") "திரையில் உள்ளவற்றை படித்து தானியங்கு செயல்களை செய்" else "Read screen and perform autonomous agent actions") }
+        ),
+        WheelItem(
+            id = "quick_trackpad_hud",
+            label = tr("chip_trackpad"),
+            icon = Icons.Default.TouchApp,
+            accentColor = Color(0xFF38BDF8),
+            onClick = {
+                val mgr = MouseButtonManager.getInstance(activity)
+                if (mgr.isPointerAndControllerShowing) {
+                    mgr.hidePointerAndController()
+                } else {
+                    mgr.showPointerAndController()
+                }
+            }
+        ),
+        WheelItem(
             id = "quick_call",
             label = tr("chip_call"),
             icon = Icons.Default.Phone,
