@@ -17,10 +17,9 @@ class TestBrainParser(unittest.TestCase):
     def setUp(self):
         self.cfg_ta = json.dumps({"lang": "ta-IN", "name": "Jarvis", "stop_word": "Stop"})
         self.cfg_en = json.dumps({"lang": "en-US", "name": "Jarvis", "stop_word": "Stop"})
-        self.cfg_ja = json.dumps({"lang": "ja-JP", "name": "Jarvis", "stop_word": "Stop"})
 
     def _chat(self, text, lang="en"):
-        cfg = self.cfg_ta if lang == "ta" else (self.cfg_ja if lang == "ja" else self.cfg_en)
+        cfg = self.cfg_ta if lang == "ta" else self.cfg_en
         res = json.loads(brain.chat(cfg, text))
         self.assertTrue(res.get("ok"), f"Command '{text}' failed: {res}")
         return res
@@ -360,6 +359,54 @@ class TestBrainParser(unittest.TestCase):
         # 75: "close down wheel"
         r = self._chat("close down wheel", "en")
         self.assertEqual(r["actions"][0]["type"], "wheel_bottom_close")
+
+    # 13. Creator Bio & Dynamic Age Verification (User explicit requirement)
+    def test_creator_bio(self):
+        # 1. "who is your creater" (typo in prompt supported)
+        r1 = self._chat("who is your creater", "en")
+        self.assertEqual(r1["actions"], [])
+        self.assertIn("Rohin", r1["speech"])
+        self.assertIn("Thoothukudi Government Hospital", r1["speech"])
+        self.assertIn("Kovilpatti", r1["speech"])
+        self.assertIn("A.V. Primary School", r1["speech"])
+        self.assertIn("Nadar Higher Secondary School", r1["speech"])
+        self.assertIn("Unnamalai Institute of Technology", r1["speech"])
+        self.assertIn("CSE", r1["speech"])
+        self.assertIn("2029", r1["speech"])
+        self.assertIn("years old", r1["speech"])
+
+        # 2. "who is your creator"
+        r2 = self._chat("who is your creator", "en")
+        self.assertEqual(r2["actions"], [])
+        self.assertIn("Rohin", r2["speech"])
+
+        # 3. "who made you"
+        r3 = self._chat("who made you", "en")
+        self.assertEqual(r3["actions"], [])
+        self.assertIn("Rohin", r3["speech"])
+
+        # 4. "creator yaar" (Tanglish)
+        r4 = self._chat("creator yaar", "ta")
+        self.assertEqual(r4["actions"], [])
+        self.assertIn("ரோஹின்", r4["speech"])
+        self.assertIn("தூத்துக்குடி அரசு மருத்துவமனை", r4["speech"])
+        self.assertIn("கோவில்பட்டி", r4["speech"])
+        self.assertIn("A.V. தொடக்கப் பள்ளி", r4["speech"])
+        self.assertIn("நாடார் மேல்நிலைப் பள்ளி", r4["speech"])
+        self.assertIn("உண்ணா மலை இன்ஸ்டிடியூட் ஆஃப் டெக்னாலஜி", r4["speech"])
+        self.assertIn("CSE", r4["speech"])
+        self.assertIn("2029", r4["speech"])
+        self.assertIn("வயது", r4["speech"])
+
+        # 5. "உன்னை உருவாக்கியவர் யார்" (Pure Tamil)
+        r5 = self._chat("உன்னை உருவாக்கியவர் யார்", "ta")
+        self.assertEqual(r5["actions"], [])
+        self.assertIn("ரோஹின்", r5["speech"])
+
+        # 6. "who is rohin"
+        r6 = self._chat("who is rohin", "en")
+        self.assertEqual(r6["actions"], [])
+        self.assertIn("Rohin", r6["speech"])
 
 
 if __name__ == "__main__":

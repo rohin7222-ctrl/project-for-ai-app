@@ -334,29 +334,26 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                             ) {
                                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                     Text(tr("voice"), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        listOf(true to tr("female"), false to tr("male")).forEach { (f, label) ->
-                                            OutlinedButton(
-                                                onClick = {
-                                                    upd { it.copy(female = f) }
-                                                    voice.speak(tr("hello").format(cfg.name))
-                                                },
-                                                shape = RoundedCornerShape(12.dp),
-                                                border = BorderStroke(1.5.dp, if (cfg.female == f) Indigo else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-                                                colors = ButtonDefaults.outlinedButtonColors(
-                                                    containerColor = if (cfg.female == f) Indigo.copy(alpha = 0.12f) else Color.Transparent
-                                                ),
-                                                modifier = Modifier.weight(1f)
-                                            ) {
-                                                Text(label, fontWeight = if (cfg.female == f) FontWeight.Bold else FontWeight.Normal, color = if (cfg.female == f) Indigo else MaterialTheme.colorScheme.onSurface)
-                                            }
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Indigo.copy(alpha = 0.12f),
+                                        border = BorderStroke(1.5.dp, Indigo),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(Icons.Default.RecordVoiceOver, null, tint = Indigo, modifier = Modifier.size(20.dp))
+                                            Text(tr("female") + " (Active)", fontWeight = FontWeight.Bold, color = Indigo)
                                         }
                                     }
 
                                     Spacer(Modifier.height(4.dp))
                                     Text(tr("app_lang"), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        listOf("ta-IN" to "தமிழ்", "en-US" to "English", "ja-JP" to "日本語").forEach { (code, label) ->
+                                        listOf("ta-IN" to "தமிழ்", "en-US" to "English").forEach { (code, label) ->
                                             OutlinedButton(
                                                 onClick = { upd { it.copy(lang = code) } },
                                                 shape = RoundedCornerShape(12.dp),
@@ -367,7 +364,7 @@ internal fun MainActivity.SettingsDialog(onDismiss: () -> Unit) {
                                                 modifier = Modifier.weight(1f),
                                                 contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
                                             ) {
-                                                Text(label, fontSize = 12.sp, fontWeight = if (cfg.lang == code) FontWeight.Bold else FontWeight.Normal, color = if (cfg.lang == code) Indigo else MaterialTheme.colorScheme.onSurface)
+                                                Text(label, fontSize = 13.sp, fontWeight = if (cfg.lang == code) FontWeight.Bold else FontWeight.Normal, color = if (cfg.lang == code) Indigo else MaterialTheme.colorScheme.onSurface)
                                             }
                                         }
                                     }

@@ -12,8 +12,8 @@ android {
         applicationId = "com.nextgen.agent"
         minSdk = 30
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 24
+        versionName = "2.4.0"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
     buildFeatures { compose = true }

@@ -217,6 +217,7 @@ class MainActivity : FragmentActivity() {
     internal val chat = mutableStateListOf<Msg>()
     internal var showTopWheel by mutableStateOf(false)
     internal var showBottomWheel by mutableStateOf(false)
+    internal var showPinUnlockDialog by mutableStateOf(false)
 
     internal fun getAllRequiredPermissions(): Array<String> {
         val list = mutableListOf(
@@ -270,7 +271,7 @@ class MainActivity : FragmentActivity() {
 
     internal fun syncVoiceConfig() {
         voice.lang = cfg.lang
-        voice.female = cfg.female
+        voice.female = true
         voice.commandingWord = cfg.commandingWord
         voice.commandingStopWord = cfg.commandingStopWord
         voice.autoWakeEnabled = cfg.autoWakeEnabled
@@ -334,7 +335,6 @@ class MainActivity : FragmentActivity() {
             } else {
                 val ack = when (cfg.lang) {
                     "ta-IN" -> "சொல்லுங்க"
-                    "ja-JP" -> "はい、聞いています"
                     else -> "Yes, I'm listening"
                 }
                 voice.speak(ack)
@@ -358,12 +358,17 @@ class MainActivity : FragmentActivity() {
         val wasUnlocked = savedInstanceState?.getBoolean(KEY_UNLOCKED, false) == true || sessionUnlocked
         if (store.isReady()) {
             screen = Screen.MAIN
-            if (wasUnlocked) {
+            if (cfg.appLockEnabled) {
+                if (wasUnlocked) {
+                    unlocked = true
+                    sessionUnlocked = true
+                } else {
+                    unlocked = false
+                    authenticate()
+                }
+            } else {
                 unlocked = true
                 sessionUnlocked = true
-            } else {
-                unlocked = false
-                authenticate()
             }
             if (cfg.autoWakeEnabled) {
                 VoiceForegroundService.start(this)
@@ -388,19 +393,25 @@ class MainActivity : FragmentActivity() {
     }
 
     // ------------------------------------------------------------------ security: biometric / PIN lock
-    private fun authenticate() {
+    internal fun authenticate() {
+        if (cfg.appLockPinHash.isNotEmpty()) {
+            showPinUnlockDialog = true
+        }
         val auth = BIOMETRIC_WEAK or DEVICE_CREDENTIAL
         if (BiometricManager.from(this).canAuthenticate(auth) != BiometricManager.BIOMETRIC_SUCCESS) {
-            unlocked = true
-            sessionUnlocked = true
+            if (cfg.appLockPinHash.isEmpty()) {
+                unlocked = true
+                sessionUnlocked = true
+            }
             return
         }
         val info = BiometricPrompt.PromptInfo.Builder()
-            .setTitle(cfg.name.ifBlank { "AI" }).setAllowedAuthenticators(auth).build()
+            .setTitle(cfg.name.ifBlank { "Aero Fenix" }).setAllowedAuthenticators(auth).build()
         BiometricPrompt(this, ContextCompat.getMainExecutor(this), object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 unlocked = true
                 sessionUnlocked = true
+                showPinUnlockDialog = false
             }
         }).authenticate(info)
     }
@@ -444,7 +455,6 @@ class MainActivity : FragmentActivity() {
     internal fun stopVoiceWithAck() {
         val ack = when (cfg.lang) {
             "ta-IN" -> "சரி, நிறுத்துகிறேன்."
-            "ja-JP" -> "わかりました。停止します。"
             else -> "Stopping assistant."
         }
         chat.add(Msg(mine = false, text = ack, time = nowTime()))
@@ -605,13 +615,12 @@ class MainActivity : FragmentActivity() {
     }
 
     internal fun cycleLanguage() {
-        val langs = listOf("ta-IN", "en-US", "ja-JP")
+        val langs = listOf("ta-IN", "en-US")
         val currentIndex = langs.indexOf(cfg.lang).coerceAtLeast(0)
         val nextLang = langs[(currentIndex + 1) % langs.size]
         upd { it.copy(lang = nextLang) }
         val langName = when (nextLang) {
             "ta-IN" -> "தமிழ் (Tamil)"
-            "ja-JP" -> "日本語 (Japanese)"
             else -> "English (US)"
         }
         Toast.makeText(this, "Language: $langName", Toast.LENGTH_SHORT).show()
@@ -707,7 +716,18 @@ class MainActivity : FragmentActivity() {
             return
         }
 
-        // 3. Custom Voice Shortcut resolution
+        // 3. App Lock Check: If App Lock is enabled and app is locked, block ALL voice & chat commands!
+        if (cfg.appLockEnabled && !unlocked) {
+            val lockedMsg = if (cfg.lang == "ta-IN") "ஆப் பூட்டப்பட்டுள்ளது. தயவுசெய்து அன்லாக் செய்யவும்." else "App is locked. Please unlock the app first."
+            chat.add(Msg(mine = true, text = t, time = nowTime()))
+            chat.add(Msg(mine = false, text = "🔒 $lockedMsg", time = nowTime(), isError = true))
+            voice.speak(lockedMsg)
+            showPinUnlockDialog = true
+            authenticate()
+            return
+        }
+
+        // 4. Custom Voice Shortcut resolution
         val resolvedAction = shortcutManager.resolve(t)
         val effectiveText = if (resolvedAction != null) {
             chat.add(Msg(mine = true, text = "$t  ➔  $resolvedAction", time = nowTime()))
@@ -1082,8 +1102,19 @@ class MainActivity : FragmentActivity() {
 
     private fun describe(a: JSONObject): String = when (a.optString("type")) {
         "call" -> tr("c_call").format(a.optString("target"))
+        "missed_call" -> tr("c_call").format(a.optString("target"))
         "sms" -> tr("c_sms").format(a.optString("target"), a.optString("text"))
-        else -> tr("c_end")
+        "chat" -> {
+            val app = a.optString("app", "WhatsApp")
+            val target = a.optString("target")
+            val text = a.optString("text")
+            "$app ➔ $target: \"$text\""
+        }
+        "ui_type", "type", "ui_type_composer" -> {
+            val text = a.optString("text")
+            if (cfg.lang == "ta-IN") "செய்தி அனுப்பு: \"$text\"" else "Send message: \"$text\""
+        }
+        else -> a.optString("desc").ifBlank { tr("c_end") }
     }
 
     internal fun logout() {
@@ -1114,10 +1145,29 @@ class MainActivity : FragmentActivity() {
         MaterialTheme(colorScheme = scheme) {
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(
                 MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .6f))))) {
-                if (!unlocked) {
+                if (!unlocked && cfg.appLockEnabled) {
+                    if (showPinUnlockDialog || cfg.appLockPinHash.isNotEmpty()) {
+                        AppLockDialog(
+                            mode = PinMode.UNLOCK,
+                            onSuccess = {
+                                unlocked = true
+                                sessionUnlocked = true
+                                showPinUnlockDialog = false
+                            },
+                            onDismiss = {
+                                showPinUnlockDialog = false
+                            }
+                        )
+                    }
                     Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         Icon(Icons.Default.Lock, null, Modifier.size(56.dp), tint = Indigo)
+                        Text(
+                            text = if (cfg.lang == "ta-IN") "ஆப் பூட்டப்பட்டுள்ளது" else "Aero Fenix is Locked",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
                         Button(onClick = { authenticate() }) { Text(tr("unlock")) }
                     }
                 } else {
@@ -1189,10 +1239,9 @@ class MainActivity : FragmentActivity() {
             GlassCard {
                 Icon(Icons.Default.Language, null, Modifier.size(48.dp), tint = Indigo)
                 Text("Choose Language", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-                Text("மொழியைத் தேர்ந்தெடுக்கவும் · 言語を選択", fontSize = 13.sp, textAlign = TextAlign.Center,
+                Text("மொழியைத் தேர்ந்தெடுக்கவும் · Select Language", fontSize = 13.sp, textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f))
-                listOf(Triple("ta-IN", "தமிழ்", "Tamil"), Triple("en-US", "English", "US English"),
-                    Triple("ja-JP", "日本語", "Japanese")).forEach { (code, native, en) ->
+                listOf(Triple("ta-IN", "தமிழ்", "Tamil"), Triple("en-US", "English", "US English")).forEach { (code, native, en) ->
                     val sel = cfg.lang == code
                     val shape = RoundedCornerShape(20.dp)
                     Row(Modifier.fillMaxWidth().clip(shape)

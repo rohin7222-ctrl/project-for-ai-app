@@ -26,7 +26,7 @@ import java.util.Locale
  * 2. High-accuracy bilingual recognition (Tamil & English code-switching).
  * 3. Responsive online recognition with graceful offline fallback when internet is disabled.
  * 4. Safe muting of system recognizer chime without muting media/TTS audio stream.
- * 5. Stop voice command detection (configurable word + universal stop phrases in Tamil/English/Japanese).
+ * 5. Stop voice command detection (configurable word + universal stop phrases in Tamil/English).
  * 6. Automatic suspension and resumption during active phone calls and video/media playback.
  * 7. Quiet Standby Wake-Word Detector with voice profile biometric verification.
  */
@@ -451,18 +451,6 @@ class Voice(
             if (n.contains("male") || n.contains("#male") || n.contains("-m-") || n.contains("_male")) return false
 
             when (langCode) {
-                "ja" -> {
-                    // Japanese: jab, htm, jaf, standard-a/b, wavenet-a/b, neural2-b are female
-                    if (n.contains("jab") || n.contains("htm") || n.contains("jaf") ||
-                        n.contains("standard-a") || n.contains("standard-b") ||
-                        n.contains("wavenet-a") || n.contains("wavenet-b") || n.contains("neural2-b") ||
-                        n.contains("achernar") || n.contains("callirrhoe") || n.contains("zephyr")) return true
-                    if (n.contains("jad") || n.contains("jac") || n.contains("jam") ||
-                        n.contains("standard-c") || n.contains("standard-d") ||
-                        n.contains("wavenet-c") || n.contains("wavenet-d") ||
-                        n.contains("neural2-c") || n.contains("neural2-d") ||
-                        n.contains("achird") || n.contains("iapetus") || n.contains("rasalgethi")) return false
-                }
                 "ta" -> {
                     // Tamil: taf, ta-in-x-taf are female; tam, ta-in-x-tam are male
                     if (n.contains("taf") || n.contains("-taf") || n.contains("_taf")) return true
@@ -484,8 +472,8 @@ class Voice(
                     if (n.contains("iom") || n.contains("sfg") || n.contains("tpc") || n.contains("iob")) return false
                 }
                 else -> {
-                    if (n.contains("taf") || n.contains("jab") || n.contains("htm") || n.contains("iof") || n.contains("tpf") || n.contains("tpd") || n.contains("hif") || n.contains("kof")) return true
-                    if (n.contains("tam") || n.contains("jad") || n.contains("jac") || n.contains("iom") || n.contains("sfg") || n.contains("tpc") || n.contains("him") || n.contains("kom")) return false
+                    if (n.contains("taf") || n.contains("iof") || n.contains("tpf") || n.contains("tpd") || n.contains("hif") || n.contains("kof")) return true
+                    if (n.contains("tam") || n.contains("iom") || n.contains("sfg") || n.contains("tpc") || n.contains("him") || n.contains("kom")) return false
                 }
             }
             return false
@@ -501,18 +489,6 @@ class Voice(
             if (n.contains("female") || n.contains("#female") || n.contains("-f-") || n.contains("_female")) return false
 
             when (langCode) {
-                "ja" -> {
-                    // Japanese: jad, jac, jam, standard-c/d, wavenet-c/d, neural2-c/d are male
-                    if (n.contains("jad") || n.contains("jac") || n.contains("jam") ||
-                        n.contains("standard-c") || n.contains("standard-d") ||
-                        n.contains("wavenet-c") || n.contains("wavenet-d") ||
-                        n.contains("neural2-c") || n.contains("neural2-d") ||
-                        n.contains("achird") || n.contains("iapetus") || n.contains("rasalgethi")) return true
-                    if (n.contains("jab") || n.contains("htm") || n.contains("jaf") ||
-                        n.contains("standard-a") || n.contains("standard-b") ||
-                        n.contains("wavenet-a") || n.contains("wavenet-b") || n.contains("neural2-b") ||
-                        n.contains("achernar") || n.contains("callirrhoe") || n.contains("zephyr")) return false
-                }
                 "ta" -> {
                     // Tamil: tam is male, taf is female
                     if (n.contains("tam") || n.contains("-tam") || n.contains("_tam")) return true
@@ -534,8 +510,8 @@ class Voice(
                     if (n.contains("iof") || n.contains("tpf") || n.contains("iol") || n.contains("tpd") || n.contains("htf")) return false
                 }
                 else -> {
-                    if (n.contains("tam") || n.contains("jad") || n.contains("jac") || n.contains("iom") || n.contains("sfg") || n.contains("tpc") || n.contains("him") || n.contains("kom")) return true
-                    if (n.contains("taf") || n.contains("jab") || n.contains("htm") || n.contains("iof") || n.contains("tpf") || n.contains("tpd") || n.contains("hif") || n.contains("kof")) return false
+                    if (n.contains("tam") || n.contains("iom") || n.contains("sfg") || n.contains("tpc") || n.contains("him") || n.contains("kom")) return true
+                    if (n.contains("taf") || n.contains("iof") || n.contains("tpf") || n.contains("tpd") || n.contains("hif") || n.contains("kof")) return false
                 }
             }
             return false
@@ -666,12 +642,6 @@ class Voice(
             }
         }
 
-        // 6. Japanese stop words
-        val jaStopWords = listOf("ストップ", "止めて", "やめて", "静かに", "終了")
-        for (w in jaStopWords) {
-            if (t.contains(w)) return true
-        }
-
         return false
     }
 
@@ -681,14 +651,7 @@ class Voice(
         val stripped = l.replace(" ", "")
         return l == "code dark shadow" ||
                stripped == "codedarkshadow" ||
-               l == "dark shadow" ||
-               stripped == "darkshadow" ||
-               l == "டார்க் ஷேடோ" ||
-               l == "டார்க் ஷாடோ" ||
-               l == "கோட் டார்க்" ||
-               l == "கோட் டார்க் ஷேடோ" ||
-               l == "ダークシャドウ" ||
-               l == "コードダークシャドウ"
+               l == "கோட் டார்க் ஷேடோ"
     }
 
     /** Active continuous listening loop */
@@ -797,7 +760,6 @@ class Voice(
                             onState(false)
                             val langMsg = when (lang) {
                                 "ta-IN" -> "தேர்ந்தெடுக்கப்பட்ட மொழி ($lang) சாதனத்தில் இல்லை. அமைப்புகளில் மாற்றவும்."
-                                "ja-JP" -> "言語 ($lang) は端末で利用できません。設定で変更してください。"
                                 else -> "Selected language ($lang) is not supported on this device. Change language in settings."
                             }
                             onErrorDescription?.invoke(e, langMsg)
@@ -822,7 +784,6 @@ class Voice(
                             onState(false)
                             val maxMsg = when (lang) {
                                 "ta-IN" -> "மைக் தொடர்ந்து பிழை ($e: $errMsg). மைக் பட்டனைத் தட்டி மீண்டும் தொடங்கவும்."
-                                "ja-JP" -> "マイクエラーが連続しました ($e: $errMsg)。タップして再起動してください。"
                                 else -> "Mic stopped after repeated errors ($e: $errMsg). Tap mic to restart."
                             }
                             onErrorDescription?.invoke(e, maxMsg)
@@ -889,77 +850,62 @@ class Voice(
         return when (e) {
             SpeechRecognizer.ERROR_AUDIO -> when (lang) {
                 "ta-IN" -> "ஆடியோ பதிவு பிழை (மைக் சிக்கல்)"
-                "ja-JP" -> "音声録音エラー (マイク)"
                 else -> "Audio recording error (Mic)"
             }
             SpeechRecognizer.ERROR_CLIENT -> when (lang) {
                 "ta-IN" -> "கிளையண்ட் அங்கீகாரப் பிழை"
-                "ja-JP" -> "クライアント認識エラー"
                 else -> "Client recognition error"
             }
             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> when (lang) {
                 "ta-IN" -> "மைக் அனுமதி தேவை (அனுமதி வழங்கவும்)"
-                "ja-JP" -> "マイクの権限が必要です"
                 else -> "Microphone permission required"
             }
             SpeechRecognizer.ERROR_NETWORK -> when (lang) {
                 "ta-IN" -> "இணைய இணைப்பு பிழை"
-                "ja-JP" -> "ネットワークエラー"
                 else -> "Network connection error"
             }
             SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> when (lang) {
                 "ta-IN" -> "இணைய நேர வரம்பு முடிந்தது"
-                "ja-JP" -> "ネットワークタイムアウト"
                 else -> "Network request timed out"
             }
             SpeechRecognizer.ERROR_NO_MATCH -> when (lang) {
                 "ta-IN" -> "வார்த்தை புரியவில்லை"
-                "ja-JP" -> "音声が一致しませんでした"
                 else -> "No speech match found"
             }
             SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> when (lang) {
                 "ta-IN" -> "மைக் இயக்கம் பிஸியாக உள்ளது (8)"
-                "ja-JP" -> "音声認識エンジンがビジー状態です (8)"
                 else -> "Speech recognition engine busy (8)"
             }
             SpeechRecognizer.ERROR_SERVER -> when (lang) {
                 "ta-IN" -> "சர்வர் பிழை"
-                "ja-JP" -> "サーバーエラー"
                 else -> "Server error"
             }
             SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> when (lang) {
                 "ta-IN" -> "பேச்சு எதுவும் கேட்கவில்லை"
-                "ja-JP" -> "音声入力が検出されませんでした"
                 else -> "No speech detected"
             }
             10 /* ERROR_TOO_MANY_REQUESTS */ -> when (lang) {
                 "ta-IN" -> "அதிக கோரிக்கைகள் (10)"
-                "ja-JP" -> "リクエスト過多 (10)"
                 else -> "Too many requests (10)"
             }
             11 /* ERROR_SERVER_DISCONNECTED */ -> when (lang) {
                 "ta-IN" -> "சர்வர் துண்டிக்கப்பட்டது (11)"
-                "ja-JP" -> "サーバーが切断されました (11)"
                 else -> "Server disconnected (11)"
             }
             12 /* ERROR_LANGUAGE_NOT_SUPPORTED */ -> when (lang) {
                 "ta-IN" -> "தேர்ந்தெடுக்கப்பட்ட மொழி சாதனத்தால் ஆதரிக்கப்படவில்லை (12)"
-                "ja-JP" -> "選択された言語は端末でサポートされていません (12)"
                 else -> "Selected language not supported on this device (12)"
             }
             13 /* ERROR_LANGUAGE_UNAVAILABLE */ -> when (lang) {
                 "ta-IN" -> "மொழி தற்போது கிடைக்கவில்லை (13)"
-                "ja-JP" -> "言語が現在利用できません (13)"
                 else -> "Language currently unavailable (13)"
             }
             14 /* ERROR_CANNOT_CHECK_SUPPORT */ -> when (lang) {
                 "ta-IN" -> "மொழி ஆதரவை சரிபார்க்க முடியவில்லை (14)"
-                "ja-JP" -> "言語サポートを確認できません (14)"
                 else -> "Cannot check language support (14)"
             }
             else -> when (lang) {
                 "ta-IN" -> "மைக் பிழை ($e)"
-                "ja-JP" -> "認識エラー ($e)"
                 else -> "Voice recognition error ($e)"
             }
         }
@@ -1033,7 +979,6 @@ class Voice(
                                 if (isStopCommand(raw) || (cmd != null && isStopCommand(cmd))) {
                                     val ack = when (lang) {
                                         "ta-IN" -> "சரி, ஓய்வில் இருக்கிறேன்."
-                                        "ja-JP" -> "休止中です。"
                                         else -> "Assistant is in standby."
                                     }
                                     speak(ack)

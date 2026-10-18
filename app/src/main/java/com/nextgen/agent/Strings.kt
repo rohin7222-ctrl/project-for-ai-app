@@ -1,6 +1,6 @@
 package com.nextgen.agent
 
-/** UI text in Tamil / English / Japanese. */
+/** UI text in Tamil / English. */
 object S {
     private val m: Map<String, List<String>> = mapOf(
         "continue" to listOf("தொடரவும்", "Continue", "次へ"),
@@ -256,7 +256,8 @@ object S {
     )
 
     fun t(lang: String, k: String): String {
-        val i = when (lang) { "ta-IN" -> 0; "ja-JP" -> 2; else -> 1 }
-        return m[k]?.get(i) ?: k
+        val i = if (lang == "ta-IN") 0 else 1
+        val list = m[k] ?: return k
+        return if (i < list.size) list[i] else list.firstOrNull() ?: k
     }
 }

@@ -57,14 +57,12 @@ class AgentNotificationListenerService : NotificationListenerService() {
             if (recentList.isEmpty()) {
                 return if (lang == "ta-IN") "புதிய செய்திகள் எதுவும் இல்லை."
                 else if (lang == "hi-IN") "कोई नई सूचनाएं नहीं हैं।"
-                else if (lang == "ja-JP") "新しい通知はありません。"
                 else "No new notifications."
             }
             val appCounts = recentList.take(15).groupingBy { it.appName }.eachCount()
             val breakdown = appCounts.entries.joinToString(", ") { "${it.key}: ${it.value}" }
             return if (lang == "ta-IN") "உங்களுக்கு ${recentList.size} புதிய அறிவிப்புகள் உள்ளன ($breakdown)."
             else if (lang == "hi-IN") "आपके पास ${recentList.size} नई सूचनाएं हैं ($breakdown)।"
-            else if (lang == "ja-JP") "${recentList.size}件の新しい通知があります ($breakdown)。"
             else "You have ${recentList.size} new notifications ($breakdown)."
         }
 
