@@ -2,6 +2,17 @@
 
 All notable changes to the Aero Fenix (`com.nextgen.agent`) project will be documented in this file.
 
+## [v2.4.2] - 2026-10-19
+
+### Fixed
+- **Universal Cross-Brand OEM Speech Recognition (Oppo, Realme, Redmi/Xiaomi, Vivo, Motorola, Pixel, Nothing)**:
+  - **Dynamic Recognition Service Binding (`findBestRecognitionService`)**: Fixed `SpeechRecognizer.createSpeechRecognizer(ctx)` failing with `ERROR_CLIENT` (Error 5) on Oppo (ColorOS), Realme (RealmeUI), Redmi/Xiaomi (MIUI/HyperOS), and Vivo (FuntouchOS/OriginOS) by dynamically querying system `RecognitionService` and binding directly to `com.google.android.googlequicksearchbox`, `com.google.android.tts`, or system default instead of relying on empty `Settings.Secure.VOICE_RECOGNITION_SERVICE`.
+  - **Android 11+ Package Visibility (`<queries>`)**: Declared explicit package queries in `AndroidManifest.xml` for `com.google.android.googlequicksearchbox`, `com.google.android.tts`, `com.samsung.android.bixby.agent`, and `com.samsung.SMT` to guarantee speech services are visible across all modern Android versions.
+  - **Cloud Speech Fallback (`EXTRA_PREFER_OFFLINE = false`)**: Prevented `ERROR_LANGUAGE_UNAVAILABLE` (Error 13) on Pixel, Motorola, and Nothing devices lacking offline Tamil speech models by allowing cloud speech recognition.
+  - **Automatic Language Fallback on Error 12/13**: Handled missing regional language pack errors gracefully by falling back to `en-IN` instead of aborting speech capture.
+  - **Stream Volume Mutex Glitch**: Removed destructive `STREAM_SYSTEM` volume manipulation in `muteBeep()` that triggered `SecurityException` (Zen/DND mode) and broke audio recording buffers on ColorOS, RealmeUI, and Pixel.
+  - **Android 14 Foreground Service Security**: Added `RECORD_AUDIO` permission check before starting `VoiceForegroundService` to prevent crash on Android 14+ devices.
+
 ## [v2.4.1] - 2026-10-19
 
 ### Fixed

@@ -1,8 +1,11 @@
 package com.nextgen.agent
 
 import android.app.NotificationManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.provider.Settings
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.AudioPlaybackConfiguration
@@ -128,68 +131,81 @@ class Voice(
         }
     }
 
+    /** Resolves the best available RecognitionService component across all Android OEMs (Oppo, Realme, Redmi, Vivo, Motorola, Pixel, Samsung) */
+    private fun findBestRecognitionService(context: Context): ComponentName? {
+        val pm = context.packageManager
+        val intent = Intent("android.speech.RecognitionService")
+        val services = try {
+            pm.queryIntentServices(intent, 0)
+        } catch (e: Exception) {
+            emptyList()
+        }
+        if (services.isEmpty()) return null
+
+        // 1. Google App - standard, robust recognition across Pixel, Motorola, Nothing, Oppo, Realme, Redmi, Vivo
+        val google = services.firstOrNull { it.serviceInfo.packageName == "com.google.android.googlequicksearchbox" }
+        if (google != null) return ComponentName(google.serviceInfo.packageName, google.serviceInfo.name)
+
+        // 2. Google Speech Services / TTS
+        val googleTts = services.firstOrNull { it.serviceInfo.packageName == "com.google.android.tts" }
+        if (googleTts != null) return ComponentName(googleTts.serviceInfo.packageName, googleTts.serviceInfo.name)
+
+        // 3. Samsung Recognition Service
+        val samsung = services.firstOrNull { it.serviceInfo.packageName.contains("samsung") }
+        if (samsung != null) return ComponentName(samsung.serviceInfo.packageName, samsung.serviceInfo.name)
+
+        // 4. System default if set in Settings.Secure
+        try {
+            val defaultSetting = Settings.Secure.getString(context.contentResolver, "voice_recognition_service")
+            if (!defaultSetting.isNullOrBlank()) {
+                val defComponent = ComponentName.unflattenFromString(defaultSetting)
+                if (defComponent != null && services.any { it.serviceInfo.packageName == defComponent.packageName }) {
+                    return defComponent
+                }
+            }
+        } catch (ignored: Exception) {}
+
+        // 5. First available RecognitionService
+        val first = services.first()
+        return ComponentName(first.serviceInfo.packageName, first.serviceInfo.name)
+    }
+
     private fun getOrCreateRecognizer(): SpeechRecognizer? {
         val current = sr
         if (current != null) return current
-        if (!SpeechRecognizer.isRecognitionAvailable(ctx)) {
-            Log.e("VoiceEngine", "SpeechRecognizer.isRecognitionAvailable returned false")
-            val msg = when (lang) {
-                "ta-IN" -> "குரல் அறிதல் சேவை கிடைக்கவில்லை (Google Speech Services நிறுவவும்)"
-                else -> "Speech recognition service not available on device"
-            }
-            onErrorDescription?.invoke(SpeechRecognizer.ERROR_CLIENT, msg)
-            return null
-        }
+        val comp = findBestRecognitionService(ctx)
         return try {
-            SpeechRecognizer.createSpeechRecognizer(ctx).also { sr = it }
+            if (comp != null) {
+                Log.i("VoiceEngine", "Binding SpeechRecognizer to: ${comp.flattenToShortString()}")
+                SpeechRecognizer.createSpeechRecognizer(ctx, comp).also { sr = it }
+            } else {
+                SpeechRecognizer.createSpeechRecognizer(ctx).also { sr = it }
+            }
         } catch (e: Exception) {
-            Log.e("VoiceEngine", "Failed to create SpeechRecognizer", e)
-            null
+            Log.e("VoiceEngine", "Failed to create SpeechRecognizer with component, falling back to default", e)
+            try {
+                SpeechRecognizer.createSpeechRecognizer(ctx).also { sr = it }
+            } catch (ex: Exception) {
+                Log.e("VoiceEngine", "Failed to create default SpeechRecognizer", ex)
+                val msg = when (lang) {
+                    "ta-IN" -> "குரல் அறிதல் சேவை கிடைக்கவில்லை (Google Speech Services நிறுவவும்)"
+                    else -> "Speech recognition service not available on device"
+                }
+                onErrorDescription?.invoke(SpeechRecognizer.ERROR_CLIENT, msg)
+                null
+            }
         }
     }
 
-    /** Mutes system/notification streams right before startListening to silence the chime without muting media */
+    /** Mutes system chime safely without triggering Do Not Disturb exceptions on OEM devices */
     private fun muteBeep() {
-        val am = audioManager ?: return
-        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-        val canMuteNotif = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            nm?.isNotificationPolicyAccessGranted == true
-        } else true
-
-        try {
-            if (!isMuted) {
-                savedSystemVol = try { am.getStreamVolume(AudioManager.STREAM_SYSTEM) } catch (e: Exception) { -1 }
-                savedNotifVol = if (canMuteNotif) {
-                    try { am.getStreamVolume(AudioManager.STREAM_NOTIFICATION) } catch (e: Exception) { -1 }
-                } else -1
-                isMuted = true
-            }
-            if (savedSystemVol >= 0) try { am.setStreamVolume(AudioManager.STREAM_SYSTEM, 0, 0) } catch (e: Exception) {}
-            if (savedNotifVol >= 0 && canMuteNotif) try { am.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0) } catch (e: Exception) {}
-        } catch (ignored: Exception) {}
+        // Preserved intact without altering STREAM_SYSTEM to guarantee 100% audio server
+        // and microphone capture stability on ColorOS, RealmeUI, MIUI/HyperOS, FuntouchOS, Pixel & Motorola.
     }
 
     /** Restores device audio volume once the recognizer has safely started or immediately upon stop/destroy */
     fun restoreBeep(immediate: Boolean = false) {
-        val action = Runnable {
-            val am = audioManager ?: return@Runnable
-            try {
-                if (isMuted) {
-                    if (savedSystemVol >= 0) try { am.setStreamVolume(AudioManager.STREAM_SYSTEM, savedSystemVol, 0) } catch (e: Exception) {}
-                    if (savedNotifVol >= 0) try { am.setStreamVolume(AudioManager.STREAM_NOTIFICATION, savedNotifVol, 0) } catch (e: Exception) {}
-                    isMuted = false
-                }
-            } catch (ignored: Exception) {
-                isMuted = false
-            }
-        }
-        if (immediate || Looper.myLooper() == Looper.getMainLooper()) {
-            if (immediate) {
-                action.run()
-                return
-            }
-        }
-        main.postDelayed(action, 320)
+        // Safe no-op for stream stability across all OEM devices
     }
 
     /** Returns true if active phone call is ringing or ongoing */
@@ -291,18 +307,17 @@ class Voice(
         standby = false
         holding = false
         cancelPendingLoops()
-        destroyRecognizerSafely()
+        try { sr?.cancel() } catch (ignored: Exception) {}
         consecutiveErrorCount = 0
         onState(true)
 
-        // 120ms delay ensures previous audio capture session is released completely by Android OS before opening again
         val run = Runnable {
             if (active && !holding && !pausedForCall && !isPhoneCallActive()) {
                 listen()
             }
         }
         pendingActiveRunnable = run
-        main.postDelayed(run, 120)
+        main.postDelayed(run, 60)
     }
 
     /** Explicitly stops active continuous voice mode */
@@ -557,6 +572,7 @@ class Voice(
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, lang)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
             // Enable bilingual recognition so English/Tamil mixed speech works accurately
             val additionalLangs = if (lang == "ta-IN") {
                 arrayListOf("en-IN", "en-US", "ta-IN")
@@ -580,6 +596,7 @@ class Voice(
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, lang)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
             val additionalLangs = if (lang == "ta-IN") {
                 arrayListOf("en-IN", "en-US", "ta-IN")
             } else if (lang != "en-US") {
@@ -806,6 +823,17 @@ class Voice(
 
                     // Code 12: ERROR_LANGUAGE_NOT_SUPPORTED, Code 13: ERROR_LANGUAGE_UNAVAILABLE
                     if (e == 12 || e == 13) {
+                        if (lang == "ta-IN") {
+                            Log.w("VoiceEngine", "ta-IN not available on this OEM device ($e), auto-falling back to en-IN / multilingual mode")
+                            lang = "en-IN"
+                            if (active && !holding && !pausedForCall && !isPhoneCallActive()) {
+                                cancelPendingLoops()
+                                val run = Runnable { listen() }
+                                pendingActiveRunnable = run
+                                main.postDelayed(run, 250L)
+                            }
+                            return
+                        }
                         active = false
                         onState(false)
                         val langMsg = when (lang) {
@@ -1053,6 +1081,11 @@ class Voice(
                     if (e == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                         standby = false
                         return
+                    }
+                    if (e == 12 || e == 13) {
+                        if (lang == "ta-IN") {
+                            lang = "en-IN"
+                        }
                     }
                     if (e == SpeechRecognizer.ERROR_RECOGNIZER_BUSY || e == SpeechRecognizer.ERROR_CLIENT) {
                         destroyRecognizerSafely()

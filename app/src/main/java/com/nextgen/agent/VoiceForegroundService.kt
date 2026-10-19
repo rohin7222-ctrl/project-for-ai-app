@@ -1,5 +1,6 @@
 package com.nextgen.agent
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -9,12 +10,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 
 /**
  * Foreground Service for keeping the AI Assistant active in background and when screen is off.
@@ -33,6 +36,7 @@ class VoiceForegroundService : Service() {
             private set
 
         fun start(ctx: Context) {
+            if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
             val store = Store(ctx)
             if (!store.isReady()) return
             val intent = Intent(ctx, VoiceForegroundService::class.java).apply {
