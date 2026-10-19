@@ -2,6 +2,18 @@
 
 All notable changes to the Aero Fenix (`com.nextgen.agent`) project will be documented in this file.
 
+## [v2.4.1] - 2026-10-19
+
+### Fixed
+- **Microphone Audio & Speech Capture Issue**:
+  - Fixed SpeechRecognizer rapid destruction and re-creation thrashing loop; now cleanly reuses recognizer instance and prevents Android mic lock contention and zeroed audio buffers.
+  - Fixed `isMediaPlaying()` reflection failure which caused false positives and constantly killed active mic sessions every 500ms via `checkMediaState()`.
+  - Guaranteed `voice.active` mode is never interrupted or blocked by media playback callbacks when user explicitly taps the microphone.
+  - Fixed RecognizerIntent extra compatibility: replaced invalid `"android.speech.extra.AUDIO_SOURCE"` and `"android.speech.extra.DICTATION_MODE"`, changed `EXTRA_ADDITIONAL_LANGUAGES` from `String[]` to `ArrayList<String>` to prevent internal ClassCastExceptions.
+  - Relaxed silence and minimum speech thresholds to prevent premature cutoffs on short Tamil and English phrases.
+  - Fixed voice biometric verification to avoid discarding speech when raw audio buffers are not emitted by Google SpeechRecognizer.
+  - Made mic button toggle check only `RECORD_AUDIO` permission for instant speech input without waiting on optional system permissions.
+
 ## [v2.4.0] - 2026-10-18
 
 ### Added

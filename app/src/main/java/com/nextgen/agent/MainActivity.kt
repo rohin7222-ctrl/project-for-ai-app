@@ -442,8 +442,11 @@ class MainActivity : FragmentActivity() {
             voice.stop()
             return
         }
-        val missing = getAllRequiredPermissions().filter { !has(it) }
-        if (missing.isEmpty()) startVoice() else permLauncher.launch(missing.toTypedArray())
+        if (has(Manifest.permission.RECORD_AUDIO)) {
+            startVoice()
+        } else {
+            permLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
+        }
     }
 
     internal fun startVoice() {
@@ -1089,6 +1092,7 @@ class MainActivity : FragmentActivity() {
     private fun checkMediaState() {
         if (isInPhoneCall) return
         if (voice.holding) return // Assistant's own speech/TTS should not pause the assistant
+        if (voice.active) return // When user is actively conversing with mic ON, never interrupt or pause!
 
         val playing = voice.isMediaPlaying()
         if (playing) {

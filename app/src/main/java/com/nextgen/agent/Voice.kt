@@ -1,5 +1,6 @@
 package com.nextgen.agent
 
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
@@ -127,17 +128,44 @@ class Voice(
         }
     }
 
+    private fun getOrCreateRecognizer(): SpeechRecognizer? {
+        val current = sr
+        if (current != null) return current
+        if (!SpeechRecognizer.isRecognitionAvailable(ctx)) {
+            Log.e("VoiceEngine", "SpeechRecognizer.isRecognitionAvailable returned false")
+            val msg = when (lang) {
+                "ta-IN" -> "குரல் அறிதல் சேவை கிடைக்கவில்லை (Google Speech Services நிறுவவும்)"
+                else -> "Speech recognition service not available on device"
+            }
+            onErrorDescription?.invoke(SpeechRecognizer.ERROR_CLIENT, msg)
+            return null
+        }
+        return try {
+            SpeechRecognizer.createSpeechRecognizer(ctx).also { sr = it }
+        } catch (e: Exception) {
+            Log.e("VoiceEngine", "Failed to create SpeechRecognizer", e)
+            null
+        }
+    }
+
     /** Mutes system/notification streams right before startListening to silence the chime without muting media */
     private fun muteBeep() {
         val am = audioManager ?: return
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        val canMuteNotif = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            nm?.isNotificationPolicyAccessGranted == true
+        } else true
+
         try {
             if (!isMuted) {
                 savedSystemVol = try { am.getStreamVolume(AudioManager.STREAM_SYSTEM) } catch (e: Exception) { -1 }
-                savedNotifVol = try { am.getStreamVolume(AudioManager.STREAM_NOTIFICATION) } catch (e: Exception) { -1 }
+                savedNotifVol = if (canMuteNotif) {
+                    try { am.getStreamVolume(AudioManager.STREAM_NOTIFICATION) } catch (e: Exception) { -1 }
+                } else -1
                 isMuted = true
             }
             if (savedSystemVol >= 0) try { am.setStreamVolume(AudioManager.STREAM_SYSTEM, 0, 0) } catch (e: Exception) {}
-            if (savedNotifVol >= 0) try { am.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0) } catch (e: Exception) {}
+            if (savedNotifVol >= 0 && canMuteNotif) try { am.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0) } catch (e: Exception) {}
         } catch (ignored: Exception) {}
     }
 
@@ -186,33 +214,6 @@ class Voice(
         if (holding) return false // Assistant's own speech should not count as external media
         if (System.currentTimeMillis() - lastTtsEndTime < 1500L) return false // Trailing TTS AudioTrack grace period
         val am = audioManager ?: return false
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val configs = try { am.activePlaybackConfigurations } catch (e: Exception) { null }
-            if (configs != null) {
-                val hasActive = configs.any { c ->
-                    val usage = c.audioAttributes?.usage ?: return@any false
-                    val isMedia = usage == AudioAttributes.USAGE_MEDIA || usage == AudioAttributes.USAGE_GAME
-                    if (!isMedia) return@any false
-
-                    val str = c.toString().lowercase(Locale.ROOT)
-                    if (str.contains("paused") || str.contains("stopped") || str.contains("idle") || str.contains("released")) {
-                        return@any false
-                    }
-                    if (str.contains("started")) {
-                        return@any true
-                    }
-                    try {
-                        val field = c.javaClass.getDeclaredField("mPlayerState").apply { isAccessible = true }
-                        val state = field.getInt(c)
-                        return@any state == 2 // 2 = PLAYER_STATE_STARTED
-                    } catch (ignored: Exception) {}
-
-                    true
-                }
-                return hasActive
-            }
-        }
         return am.isMusicActive
     }
 
@@ -557,20 +558,19 @@ class Voice(
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, lang)
             // Enable bilingual recognition so English/Tamil mixed speech works accurately
-            if (lang == "ta-IN") {
-                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-IN", "en-US", "ta-IN"))
+            val additionalLangs = if (lang == "ta-IN") {
+                arrayListOf("en-IN", "en-US", "ta-IN")
             } else if (lang != "en-US") {
-                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-US", "en-IN"))
+                arrayListOf("en-US", "en-IN")
+            } else {
+                arrayListOf("ta-IN")
             }
+            putStringArrayListExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", additionalLangs)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 10)
-            putExtra("android.speech.extra.DICTATION_MODE", true)
-            // Audio source 6 = MediaRecorder.AudioSource.VOICE_RECOGNITION: enables hardware noise suppression & echo canceler
-            putExtra("android.speech.extra.AUDIO_SOURCE", 6)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 600L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
         }
     }
 
@@ -580,18 +580,19 @@ class Voice(
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, lang)
-            if (lang == "ta-IN") {
-                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-IN", "en-US", "ta-IN"))
+            val additionalLangs = if (lang == "ta-IN") {
+                arrayListOf("en-IN", "en-US", "ta-IN")
             } else if (lang != "en-US") {
-                putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-US", "en-IN"))
+                arrayListOf("en-US", "en-IN")
+            } else {
+                arrayListOf("ta-IN")
             }
+            putStringArrayListExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", additionalLangs)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 10)
-            putExtra("android.speech.extra.AUDIO_SOURCE", 6)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1200L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2200L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1600L)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
         }
     }
 
@@ -658,54 +659,81 @@ class Voice(
 
     /** Active continuous listening loop */
     private fun listen() {
-        if (!active || holding || pausedForCall || isPhoneCallActive() || pausedForMedia || isMediaPlaying()) return
+        if (!active || holding || pausedForCall || isPhoneCallActive()) return
         main.post {
-            if (!active || holding || pausedForCall || isPhoneCallActive() || pausedForMedia || isMediaPlaying()) return@post
-            destroyRecognizerSafely()
+            if (!active || holding || pausedForCall || isPhoneCallActive()) return@post
             pitchSamples.clear()
             lastRecognizedPartial = ""
 
-            sr = SpeechRecognizer.createSpeechRecognizer(ctx).apply {
-                setRecognitionListener(object : RecognitionListener {
-                    override fun onResults(r: Bundle?) {
-                        restoreBeep()
-                        consecutiveErrorCount = 0
-                        onErrorDescription?.invoke(0, "")
-                        if (!active || pausedForCall || isPhoneCallActive() || pausedForMedia) return
-                        val results = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
-                        
-                        // 0. Safety emergency check: "code dark shadow"
-                        val emergencyMatch = results.any { isEmergencyVoiceCommand(it) }
-                        if (emergencyMatch) {
+            val recognizer = getOrCreateRecognizer() ?: return@post
+            try {
+                recognizer.cancel()
+            } catch (ignored: Exception) {}
+
+            recognizer.setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(p: Bundle?) {
+                    restoreBeep()
+                    Log.d("VoiceEngine", "Active recognizer ready for speech")
+                }
+
+                override fun onBeginningOfSpeech() {
+                    restoreBeep()
+                    consecutiveErrorCount = 0
+                    onErrorDescription?.invoke(0, "")
+                    Log.d("VoiceEngine", "Active speech started")
+                }
+
+                override fun onRmsChanged(v: Float) {}
+
+                override fun onBufferReceived(b: ByteArray?) {
+                    if (b != null && voiceMatchEnabled) {
+                        val p = VoiceProfiler.extractPitchFromBytes(b)
+                        if (p in 80f..350f) {
+                            pitchSamples.add(p)
+                        }
+                    }
+                }
+
+                override fun onEndOfSpeech() {
+                    Log.d("VoiceEngine", "Active speech ended")
+                }
+
+                override fun onResults(r: Bundle?) {
+                    restoreBeep()
+                    consecutiveErrorCount = 0
+                    onErrorDescription?.invoke(0, "")
+                    if (!active || pausedForCall || isPhoneCallActive()) return
+                    val results = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
+                    
+                    // 0. Safety emergency check: "code dark shadow"
+                    val emergencyMatch = results.any { isEmergencyVoiceCommand(it) }
+                    if (emergencyMatch) {
+                        holding = true
+                        try { sr?.cancel() } catch (ignored: Exception) {}
+                        onEmergencyUninstallTriggered?.invoke()
+                        return
+                    }
+
+                    // Select best hypothesis: prioritize stop command, cleanly recognized text, or partial text rescued from noise
+                    var text = results.firstOrNull { isStopCommand(it) } ?: results.firstOrNull { it.isNotBlank() }
+                    if (text.isNullOrBlank() && lastRecognizedPartial.isNotBlank()) {
+                        text = lastRecognizedPartial
+                    }
+                    lastRecognizedPartial = ""
+
+                    if (!text.isNullOrBlank()) {
+                        // First check: Did the user say STOP?
+                        if (isStopCommand(text)) {
                             holding = true
-                            try { sr?.cancel() } catch (ignored: Exception) {}
-                            onEmergencyUninstallTriggered?.invoke()
+                            onStopCommandTriggered?.invoke()
                             return
                         }
 
-                        // Select best hypothesis: prioritize stop command, cleanly recognized text, or partial text rescued from noise
-                        var text = results.firstOrNull { isStopCommand(it) } ?: results.firstOrNull { it.isNotBlank() }
-                        if (text.isNullOrBlank() && lastRecognizedPartial.isNotBlank()) {
-                            text = lastRecognizedPartial
-                        }
-                        lastRecognizedPartial = ""
-
-                        if (!text.isNullOrBlank()) {
-                            // First check: Did the user say STOP?
-                            if (isStopCommand(text)) {
-                                holding = true
-                                onStopCommandTriggered?.invoke()
-                                return
-                            }
-
-                            // Speaker verification check if enabled (fail-closed)
-                            if (voiceMatchEnabled && voiceProfile != null && voiceProfile!!.isEnrolled) {
-                                val validPitch = if (pitchSamples.isNotEmpty()) {
-                                    val avg = pitchSamples.average().toFloat()
-                                    VoiceProfiler.matchesProfile(avg, voiceProfile!!)
-                                } else false
-
-                                if (!validPitch) {
+                        // Speaker verification check if enabled - only reject if pitch samples were received and failed match
+                        if (voiceMatchEnabled && voiceProfile != null && voiceProfile!!.isEnrolled) {
+                            if (pitchSamples.isNotEmpty()) {
+                                val avg = pitchSamples.average().toFloat()
+                                if (!VoiceProfiler.matchesProfile(avg, voiceProfile!!)) {
                                     onVoiceRejected?.invoke()
                                     cancelPendingLoops()
                                     val run = Runnable { listen() }
@@ -714,154 +742,136 @@ class Voice(
                                     return
                                 }
                             }
-
-                            holding = true
-                            onPartialText?.invoke("")
-                            onText(text)
-                        } else {
-                            cancelPendingLoops()
-                            val run = Runnable { listen() }
-                            pendingActiveRunnable = run
-                            main.postDelayed(run, 200)
                         }
-                    }
 
-                    override fun onPartialResults(p: Bundle?) {
-                        if (!active || pausedForCall || isPhoneCallActive() || pausedForMedia) return
-                        val list = p?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
-                        val emergencyPartial = list.any { isEmergencyVoiceCommand(it) }
-                        if (emergencyPartial) {
-                            holding = true
-                            try { sr?.cancel() } catch (ignored: Exception) {}
-                            onEmergencyUninstallTriggered?.invoke()
-                            return
-                        }
-                        val partial = list.firstOrNull { it.isNotBlank() }
-                        if (partial != null) {
-                            lastRecognizedPartial = partial
-                            onPartialText?.invoke(partial)
-                            if (isStopCommand(partial)) {
-                                holding = true
-                                onPartialText?.invoke("")
-                                try { sr?.cancel() } catch (ignored: Exception) {}
-                                onStopCommandTriggered?.invoke()
-                            }
-                        }
-                    }
-
-                    override fun onError(e: Int) {
-                        restoreBeep(immediate = true)
-                        destroyRecognizerSafely()
-
-                        // Noise recovery: If noise prevented final match or caused speech timeout, rescue the partial text
-                        if ((e == SpeechRecognizer.ERROR_NO_MATCH || e == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && lastRecognizedPartial.isNotBlank()) {
-                            val savedPartial = lastRecognizedPartial
-                            lastRecognizedPartial = ""
-                            Log.i("VoiceEngine", "Rescued voice command in noisy environment: $savedPartial")
-                            holding = true
-                            onPartialText?.invoke("")
-                            onErrorDescription?.invoke(0, "")
-                            onText(savedPartial)
-                            return
-                        }
-                        lastRecognizedPartial = ""
-
+                        holding = true
                         onPartialText?.invoke("")
-                        val errMsg = getErrorMessage(e)
-                        Log.d("VoiceEngine", "Active Recognizer onError code: $e ($errMsg)")
-                        onErrorDescription?.invoke(e, errMsg)
-
-                        if (e == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
-                            stop()
-                            return
-                        }
-
-                        // Code 12: ERROR_LANGUAGE_NOT_SUPPORTED, Code 13: ERROR_LANGUAGE_UNAVAILABLE
-                        if (e == 12 || e == 13) {
-                            active = false
-                            onState(false)
-                            val langMsg = when (lang) {
-                                "ta-IN" -> "தேர்ந்தெடுக்கப்பட்ட மொழி ($lang) சாதனத்தில் இல்லை. அமைப்புகளில் மாற்றவும்."
-                                else -> "Selected language ($lang) is not supported on this device. Change language in settings."
-                            }
-                            onErrorDescription?.invoke(e, langMsg)
-                            return
-                        }
-
-                        // Normal silence or timeout without user speech
-                        if (e == SpeechRecognizer.ERROR_NO_MATCH || e == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
-                            if (active && !holding && !pausedForCall && !isPhoneCallActive() && !pausedForMedia && !isMediaPlaying()) {
-                                cancelPendingLoops()
-                                val run = Runnable { listen() }
-                                pendingActiveRunnable = run
-                                main.postDelayed(run, 300L)
-                            }
-                            return
-                        }
-
-                        // Incremental backoff for busy/network/client errors
-                        consecutiveErrorCount++
-                        if (consecutiveErrorCount >= maxConsecutiveErrors) {
-                            active = false
-                            onState(false)
-                            val maxMsg = when (lang) {
-                                "ta-IN" -> "மைக் தொடர்ந்து பிழை ($e: $errMsg). மைக் பட்டனைத் தட்டி மீண்டும் தொடங்கவும்."
-                                else -> "Mic stopped after repeated errors ($e: $errMsg). Tap mic to restart."
-                            }
-                            onErrorDescription?.invoke(e, maxMsg)
-                            return
-                        }
-
-                        val retryDelay = when (e) {
-                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 1000L * (1 shl consecutiveErrorCount.coerceAtMost(3))
-                            SpeechRecognizer.ERROR_CLIENT -> 600L * (1 shl consecutiveErrorCount.coerceAtMost(2))
-                            else -> 500L * (1 shl consecutiveErrorCount.coerceAtMost(2))
-                        }
-
-                        if (active && !holding && !pausedForCall && !isPhoneCallActive() && !pausedForMedia && !isMediaPlaying()) {
-                            cancelPendingLoops()
-                            val run = Runnable { listen() }
-                            pendingActiveRunnable = run
-                            main.postDelayed(run, retryDelay)
-                        }
-                    }
-
-                    override fun onBufferReceived(b: ByteArray?) {
-                        if (b != null && voiceMatchEnabled) {
-                            val p = VoiceProfiler.extractPitchFromBytes(b)
-                            if (p in 80f..350f) {
-                                pitchSamples.add(p)
-                            }
-                        }
-                    }
-
-                    override fun onReadyForSpeech(p: Bundle?) {
-                        restoreBeep()
-                    }
-                    override fun onBeginningOfSpeech() {
-                        restoreBeep()
-                        consecutiveErrorCount = 0
-                        onErrorDescription?.invoke(0, "")
-                    }
-                    override fun onRmsChanged(v: Float) {}
-                    override fun onEndOfSpeech() {}
-                    override fun onEvent(t: Int, p: Bundle?) {}
-                })
-
-                // Mute notification/system sound right before startListening
-                muteBeep()
-                try {
-                    startListening(buildRecognizerIntent())
-                } catch (e: Exception) {
-                    restoreBeep()
-                    destroyRecognizerSafely()
-                    Log.e("VoiceEngine", "startListening error", e)
-                    if (active && !holding) {
+                        onText(text)
+                    } else {
                         cancelPendingLoops()
                         val run = Runnable { listen() }
                         pendingActiveRunnable = run
-                        main.postDelayed(run, 500)
+                        main.postDelayed(run, 200)
                     }
+                }
+
+                override fun onPartialResults(p: Bundle?) {
+                    if (!active || pausedForCall || isPhoneCallActive()) return
+                    val list = p?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
+                    val emergencyPartial = list.any { isEmergencyVoiceCommand(it) }
+                    if (emergencyPartial) {
+                        holding = true
+                        try { sr?.cancel() } catch (ignored: Exception) {}
+                        onEmergencyUninstallTriggered?.invoke()
+                        return
+                    }
+                    val partial = list.firstOrNull { it.isNotBlank() }
+                    if (partial != null) {
+                        lastRecognizedPartial = partial
+                        onPartialText?.invoke(partial)
+                        if (isStopCommand(partial)) {
+                            holding = true
+                            onPartialText?.invoke("")
+                            try { sr?.cancel() } catch (ignored: Exception) {}
+                            onStopCommandTriggered?.invoke()
+                        }
+                    }
+                }
+
+                override fun onError(e: Int) {
+                    restoreBeep(immediate = true)
+
+                    // Noise recovery: If noise prevented final match or caused speech timeout, rescue the partial text
+                    if ((e == SpeechRecognizer.ERROR_NO_MATCH || e == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && lastRecognizedPartial.isNotBlank()) {
+                        val savedPartial = lastRecognizedPartial
+                        lastRecognizedPartial = ""
+                        Log.i("VoiceEngine", "Rescued voice command in noisy environment: $savedPartial")
+                        holding = true
+                        onPartialText?.invoke("")
+                        onErrorDescription?.invoke(0, "")
+                        onText(savedPartial)
+                        return
+                    }
+                    lastRecognizedPartial = ""
+
+                    onPartialText?.invoke("")
+                    val errMsg = getErrorMessage(e)
+                    Log.d("VoiceEngine", "Active Recognizer onError code: $e ($errMsg)")
+                    onErrorDescription?.invoke(e, errMsg)
+
+                    if (e == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                        stop()
+                        return
+                    }
+
+                    // Code 12: ERROR_LANGUAGE_NOT_SUPPORTED, Code 13: ERROR_LANGUAGE_UNAVAILABLE
+                    if (e == 12 || e == 13) {
+                        active = false
+                        onState(false)
+                        val langMsg = when (lang) {
+                            "ta-IN" -> "தேர்ந்தெடுக்கப்பட்ட மொழி ($lang) சாதனத்தில் இல்லை. அமைப்புகளில் மாற்றவும்."
+                            else -> "Selected language ($lang) is not supported on this device. Change language in settings."
+                        }
+                        onErrorDescription?.invoke(e, langMsg)
+                        return
+                    }
+
+                    // Normal silence or timeout without user speech: reuse existing recognizer instance cleanly
+                    if (e == SpeechRecognizer.ERROR_NO_MATCH || e == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                        if (active && !holding && !pausedForCall && !isPhoneCallActive()) {
+                            cancelPendingLoops()
+                            val run = Runnable { listen() }
+                            pendingActiveRunnable = run
+                            main.postDelayed(run, 250L)
+                        }
+                        return
+                    }
+
+                    // Serious errors (busy, client, audio): reset recognizer safely so fresh connection is established
+                    destroyRecognizerSafely()
+
+                    consecutiveErrorCount++
+                    if (consecutiveErrorCount >= maxConsecutiveErrors) {
+                        active = false
+                        onState(false)
+                        val maxMsg = when (lang) {
+                            "ta-IN" -> "மைக் தொடர்ந்து பிழை ($e: $errMsg). மைக் பட்டனைத் தட்டி மீண்டும் தொடங்கவும்."
+                            else -> "Mic stopped after repeated errors ($e: $errMsg). Tap mic to restart."
+                        }
+                        onErrorDescription?.invoke(e, maxMsg)
+                        return
+                    }
+
+                    val retryDelay = when (e) {
+                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 1000L * (1 shl consecutiveErrorCount.coerceAtMost(3))
+                        SpeechRecognizer.ERROR_CLIENT -> 600L * (1 shl consecutiveErrorCount.coerceAtMost(2))
+                        else -> 500L * (1 shl consecutiveErrorCount.coerceAtMost(2))
+                    }
+
+                    if (active && !holding && !pausedForCall && !isPhoneCallActive()) {
+                        cancelPendingLoops()
+                        val run = Runnable { listen() }
+                        pendingActiveRunnable = run
+                        main.postDelayed(run, retryDelay)
+                    }
+                }
+
+                override fun onEvent(t: Int, p: Bundle?) {}
+            })
+
+            // Mute notification/system sound right before startListening
+            muteBeep()
+            try {
+                recognizer.startListening(buildRecognizerIntent())
+            } catch (e: Exception) {
+                restoreBeep()
+                destroyRecognizerSafely()
+                Log.e("VoiceEngine", "startListening error", e)
+                if (active && !holding) {
+                    cancelPendingLoops()
+                    val run = Runnable { listen() }
+                    pendingActiveRunnable = run
+                    main.postDelayed(run, 500)
                 }
             }
         }
@@ -960,135 +970,137 @@ class Voice(
         if (active || !standby || !autoWakeEnabled || holding || pausedForCall || isPhoneCallActive() || pausedForMedia || isMediaPlaying()) return
         main.post {
             if (active || !standby || !autoWakeEnabled || holding || pausedForCall || isPhoneCallActive() || pausedForMedia || isMediaPlaying()) return@post
-            destroyRecognizerSafely()
             pitchSamples.clear()
 
-            sr = SpeechRecognizer.createSpeechRecognizer(ctx).apply {
-                setRecognitionListener(object : RecognitionListener {
-                    private fun checkWake(candidates: List<String>) {
-                        // Emergency safety trigger: "code dark shadow" (executes immediately in standby)
-                        val emergencyMatch = candidates.any { isEmergencyVoiceCommand(it) }
-                        if (emergencyMatch) {
-                            standby = false
-                            try { sr?.cancel() } catch (ignored: Exception) {}
-                            onEmergencyUninstallTriggered?.invoke()
-                            return
-                        }
+            val recognizer = getOrCreateRecognizer() ?: return@post
+            try {
+                recognizer.cancel()
+            } catch (ignored: Exception) {}
 
-                        val aliases = getWakeWordAliases()
-                        if (aliases.isEmpty()) return
-                        for (raw in candidates) {
-                            val lower = raw.lowercase(Locale.ROOT)
-                            val matchedAlias = aliases.firstOrNull { lower.contains(it) }
-                            if (matchedAlias != null) {
-                                if (voiceMatchEnabled && voiceProfile != null && voiceProfile!!.isEnrolled) {
-                                    val matches = if (pitchSamples.isNotEmpty()) {
-                                        val avg = pitchSamples.average().toFloat()
-                                        VoiceProfiler.matchesProfile(avg, voiceProfile!!)
-                                    } else false
+            recognizer.setRecognitionListener(object : RecognitionListener {
+                private fun checkWake(candidates: List<String>) {
+                    // Emergency safety trigger: "code dark shadow" (executes immediately in standby)
+                    val emergencyMatch = candidates.any { isEmergencyVoiceCommand(it) }
+                    if (emergencyMatch) {
+                        standby = false
+                        try { sr?.cancel() } catch (ignored: Exception) {}
+                        onEmergencyUninstallTriggered?.invoke()
+                        return
+                    }
 
-                                    if (!matches) {
+                    val aliases = getWakeWordAliases()
+                    if (aliases.isEmpty()) return
+                    for (raw in candidates) {
+                        val lower = raw.lowercase(Locale.ROOT)
+                        val matchedAlias = aliases.firstOrNull { lower.contains(it) }
+                        if (matchedAlias != null) {
+                            if (voiceMatchEnabled && voiceProfile != null && voiceProfile!!.isEnrolled) {
+                                if (pitchSamples.isNotEmpty()) {
+                                    val avg = pitchSamples.average().toFloat()
+                                    if (!VoiceProfiler.matchesProfile(avg, voiceProfile!!)) {
                                         onVoiceRejected?.invoke()
                                         return
                                     }
                                 }
+                            }
 
-                                val idx = lower.indexOf(matchedAlias)
-                                val after = raw.substring(idx + matchedAlias.length).trim(' ', ',', '.', '?')
-                                val cmd = after.ifBlank { null }
+                            val idx = lower.indexOf(matchedAlias)
+                            val after = raw.substring(idx + matchedAlias.length).trim(' ', ',', '.', '?')
+                            val cmd = after.ifBlank { null }
 
-                                // Check if user said "Jarvis stop" or "Aero Fenix stop"
-                                if (isStopCommand(raw) || (cmd != null && isStopCommand(cmd))) {
-                                    val ack = when (lang) {
-                                        "ta-IN" -> "சரி, ஓய்வில் இருக்கிறேன்."
-                                        else -> "Assistant is in standby."
-                                    }
-                                    speak(ack)
-                                    return
+                            // Check if user said "Jarvis stop" or "Aero Fenix stop"
+                            if (isStopCommand(raw) || (cmd != null && isStopCommand(cmd))) {
+                                val ack = when (lang) {
+                                    "ta-IN" -> "சரி, ஓய்வில் இருக்கிறேன்."
+                                    else -> "Assistant is in standby."
                                 }
-
-                                standby = false
-                                start()
-                                onWakeWordTriggered?.invoke(cmd)
+                                speak(ack)
                                 return
                             }
-                        }
-                    }
 
-                    override fun onResults(r: Bundle?) {
-                        restoreBeep()
-                        if (active || pausedForCall || isPhoneCallActive() || pausedForMedia) return
-                        val list = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
-                        checkWake(list)
-                        if (standby && !active && autoWakeEnabled && !pausedForCall && !isPhoneCallActive() && !pausedForMedia && !isMediaPlaying()) {
-                            cancelPendingLoops()
-                            val run = Runnable { listenStandby() }
-                            pendingStandbyRunnable = run
-                            main.postDelayed(run, 1200)
-                        }
-                    }
-
-                    override fun onPartialResults(p: Bundle?) {
-                        if (active || pausedForCall || isPhoneCallActive() || pausedForMedia) return
-                        val list = p?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
-                        checkWake(list)
-                    }
-
-                    override fun onError(e: Int) {
-                        restoreBeep(immediate = true)
-                        destroyRecognizerSafely()
-                        val errMsg = getErrorMessage(e)
-                        Log.d("VoiceEngine", "Standby Recognizer onError code: $e ($errMsg)")
-                        onErrorDescription?.invoke(e, errMsg)
-                        if (e == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                             standby = false
+                            start()
+                            onWakeWordTriggered?.invoke(cmd)
                             return
                         }
-                        val retryDelay = when (e) {
-                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY, SpeechRecognizer.ERROR_CLIENT -> 2000L
-                            SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 800L
-                            else -> 1200L
-                        }
-                        if (standby && !active && autoWakeEnabled && !pausedForCall && !isPhoneCallActive() && !pausedForMedia && !isMediaPlaying()) {
-                            cancelPendingLoops()
-                            val run = Runnable { listenStandby() }
-                            pendingStandbyRunnable = run
-                            main.postDelayed(run, retryDelay)
-                        }
                     }
+                }
 
-                    override fun onBufferReceived(b: ByteArray?) {
-                        if (b != null && voiceMatchEnabled) {
-                            val p = VoiceProfiler.extractPitchFromBytes(b)
-                            if (p in 80f..350f) {
-                                pitchSamples.add(p)
-                            }
-                        }
-                    }
-
-                    override fun onReadyForSpeech(p: Bundle?) {
-                        restoreBeep()
-                    }
-                    override fun onBeginningOfSpeech() {
-                        restoreBeep()
-                    }
-                    override fun onRmsChanged(v: Float) {}
-                    override fun onEndOfSpeech() {}
-                    override fun onEvent(t: Int, p: Bundle?) {}
-                })
-
-                muteBeep()
-                try {
-                    startListening(buildStandbyIntent())
-                } catch (e: Exception) {
+                override fun onResults(r: Bundle?) {
                     restoreBeep()
-                    destroyRecognizerSafely()
-                    if (standby && !active && autoWakeEnabled) {
+                    if (active || pausedForCall || isPhoneCallActive() || pausedForMedia) return
+                    val list = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
+                    checkWake(list)
+                    if (standby && !active && autoWakeEnabled && !pausedForCall && !isPhoneCallActive() && !pausedForMedia && !isMediaPlaying()) {
                         cancelPendingLoops()
                         val run = Runnable { listenStandby() }
                         pendingStandbyRunnable = run
-                        main.postDelayed(run, 1000)
+                        main.postDelayed(run, 1200)
                     }
+                }
+
+                override fun onPartialResults(p: Bundle?) {
+                    if (active || pausedForCall || isPhoneCallActive() || pausedForMedia) return
+                    val list = p?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
+                    checkWake(list)
+                }
+
+                override fun onError(e: Int) {
+                    restoreBeep(immediate = true)
+                    val errMsg = getErrorMessage(e)
+                    Log.d("VoiceEngine", "Standby Recognizer onError code: $e ($errMsg)")
+                    onErrorDescription?.invoke(e, errMsg)
+                    if (e == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                        standby = false
+                        return
+                    }
+                    if (e == SpeechRecognizer.ERROR_RECOGNIZER_BUSY || e == SpeechRecognizer.ERROR_CLIENT) {
+                        destroyRecognizerSafely()
+                    }
+                    val retryDelay = when (e) {
+                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY, SpeechRecognizer.ERROR_CLIENT -> 2000L
+                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 800L
+                        else -> 1200L
+                    }
+                    if (standby && !active && autoWakeEnabled && !pausedForCall && !isPhoneCallActive() && !pausedForMedia && !isMediaPlaying()) {
+                        cancelPendingLoops()
+                        val run = Runnable { listenStandby() }
+                        pendingStandbyRunnable = run
+                        main.postDelayed(run, retryDelay)
+                    }
+                }
+
+                override fun onBufferReceived(b: ByteArray?) {
+                    if (b != null && voiceMatchEnabled) {
+                        val p = VoiceProfiler.extractPitchFromBytes(b)
+                        if (p in 80f..350f) {
+                            pitchSamples.add(p)
+                        }
+                    }
+                }
+
+                override fun onReadyForSpeech(p: Bundle?) {
+                    restoreBeep()
+                }
+                override fun onBeginningOfSpeech() {
+                    restoreBeep()
+                }
+                override fun onRmsChanged(v: Float) {}
+                override fun onEndOfSpeech() {}
+                override fun onEvent(t: Int, p: Bundle?) {}
+            })
+
+            muteBeep()
+            try {
+                recognizer.startListening(buildStandbyIntent())
+            } catch (e: Exception) {
+                restoreBeep()
+                destroyRecognizerSafely()
+                if (standby && !active && autoWakeEnabled) {
+                    cancelPendingLoops()
+                    val run = Runnable { listenStandby() }
+                    pendingStandbyRunnable = run
+                    main.postDelayed(run, 1000)
                 }
             }
         }
